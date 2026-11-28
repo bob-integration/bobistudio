@@ -1,0 +1,64 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+{# Murs (fabric rework step 4, 2026-11-25): every wall of the cluster, what computes each of its
+   cells, and what the fabric proposes. Included in Composition (mode « Murs »). Nothing switches
+   without a validation. Does not load by itself: window.wallsLoad() / window.wallsStop(). #}
+<style>
+#wl-embed { display:flex; flex-direction:column; gap:14px; margin-top:10px; }
+#wl-embed .wl-lead { color:var(--text-muted); font-size:0.9em; margin:0; }
+#wl-embed .wl-prop { border:1px solid var(--accent, #5b8cff); background:var(--accent-soft, rgba(80,140,255,0.12));
+  border-radius:8px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
+#wl-embed .wl-prop h3 { margin:0; font-size:1em; }
+#wl-embed .wl-prop p { margin:0; font-size:0.9em; }
+#wl-embed .wl-prop .wl-hole { color:var(--status-warning-fg); font-weight:600; }
+#wl-embed .wl-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+#wl-embed .wl-acts .btn { min-height:44px; }
+#wl-embed .wl-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+#wl-embed .wl-chip { border:1px solid var(--border-soft); border-radius:16px; padding:6px 14px; background:none;
+  color:inherit; cursor:pointer; min-height:36px; }
+#wl-embed .wl-chip.active { border-color:var(--accent, #5b8cff); background:var(--accent-soft, rgba(80,140,255,0.15)); }
+#wl-embed .wl-scroll { overflow-x:auto; border:1px solid var(--border-soft); border-radius:8px; }
+#wl-embed table { width:100%; min-width:900px; border-collapse:collapse; font-size:0.9em; }
+#wl-embed th { text-align:left; color:var(--text-muted); font-weight:500; padding:8px; border-bottom:1px solid var(--border-soft); }
+#wl-embed td { padding:10px 8px; border-bottom:1px solid var(--border-soft); vertical-align:top; }
+#wl-embed tr.wl-proposed td { background:var(--accent-soft, rgba(80,140,255,0.08)); }
+#wl-embed .wl-sub { color:var(--text-muted); font-size:0.85em; margin-top:3px; }
+#wl-embed .wl-air { color:var(--status-warning-fg); font-weight:600; font-size:0.85em; margin-top:3px; }
+#wl-embed .wl-map { position:relative; width:128px; background:var(--border-soft); border-radius:3px; overflow:hidden; }
+#wl-embed .wl-map span { position:absolute; box-sizing:border-box; border:1px solid var(--bg, #111); }
+#wl-embed .wl-ok { color:var(--status-running-fg); font-weight:600; }
+#wl-embed .wl-bad { color:var(--status-stopped-fg); font-weight:600; }
+#wl-embed .wl-warn { color:var(--status-warning-fg); }
+#wl-embed .wl-badge { padding:2px 9px; border-radius:10px; border:1px solid var(--border-soft); font-weight:600; white-space:nowrap; }
+#wl-embed select { min-height:36px; }
+#wl-embed .wl-legend { color:var(--text-muted); font-size:0.85em; display:flex; flex-direction:column; gap:3px; }
+#wl-embed .wl-empty { color:var(--text-muted); padding:16px 0; }
+</style>
+<div id="wl-embed">
+  <p class="wl-lead">{{ _('section.walls.lead') }}</p>
+  <div id="wl-props" aria-live="polite"></div>
+  <div class="wl-bar" role="group" aria-label="{{ _('section.walls.filter') }}">
+    <span>{{ _('section.walls.filter') }}</span>
+    <button type="button" class="wl-chip active" data-f="all"></button>
+    <button type="button" class="wl-chip" data-f="sharded"></button>
+    <button type="button" class="wl-chip" data-f="proposed"></button>
+  </div>
+  <div class="wl-scroll">
+    <table>
+      <thead><tr>
+        <th>{{ _('section.walls.col_wall') }}</th>
+        <th>{{ _('section.walls.col_compo') }}</th>
+        <th>{{ _('section.walls.col_node') }}</th>
+        <th>{{ _('section.walls.col_level') }}</th>
+        <th>{{ _('section.walls.col_rate') }}</th>
+        <th>{{ _('section.walls.col_deadlines') }}</th>
+        <th>{{ _('section.walls.col_saturation') }}</th>
+      </tr></thead>
+      <tbody id="wl-rows"><tr><td colspan="7" class="wl-empty">{{ _('section.loading') }}</td></tr></tbody>
+    </table>
+  </div>
+  <div class="wl-legend">
+    <span>{{ _('section.walls.legend_colors') }}</span>
+    <span>{{ _('section.walls.legend_level') }}</span>
+  </div>
+</div>
+<script src="/static/js/walls.js?v={{ asset_v('js/walls.js') }}"></script>

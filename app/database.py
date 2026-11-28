@@ -3,6 +3,8 @@
 # Auteur : Cyril Mazouer, pour le compte de BOBI SAS
 # Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
+import contextlib
+import contextvars
 import hashlib
 import json
 import logging
@@ -169,6 +171,20 @@ def get_db():
 
 _stand_in_init_lock = threading.Lock()
 _stand_ins_initialized = set()
+
+
+def db_reopen():
+    """Drop THIS thread's connection: the next get_db() opens the file now at DB_PATH. Needed after
+    the database file is REPLACED (HA promotion): the cached connection still points at the old,
+    unlinked file, and everything written through it is lost — 2026-11-28, the settings written by
+    `ha.promote` after applying the replica never reached the promoted database."""
+    conn = getattr(_tls, "conn", None)
+    _tls.__dict__.pop("conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
 
 def _migrate_multiview_compute(db):
     """Migration de données, idempotente : un mur multiview qui porte un `force_cpu` explicite et
@@ -374,7 +390,7 @@ def init_db():
         if "cpu_mode_override" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN cpu_mode_override TEXT")
         # POIDS CPU propre au conteneur (2026-10-30) : un des niveaux NOMMÉS de
-        # `app/cpu_weight.py:LEVELS` ('dedicated'|'normal'|'background'|'batch'). NULL = le manifeste
+        # `app/cpu_weight.py:LEVELS` ('dedicated'|'shared'|'background'). NULL = le manifeste
         # fait foi. Colonne DISTINCTE de `cpu_mode_override` : la PLACE (dédié / pool partagé) et
         # le POIDS (la part de CPU sous saturation) sont deux décisions — `priority: batch` les
         # confondait, et « partagé mais prioritaire » n'existait pas.
@@ -385,7 +401,16 @@ def init_db():
         db.execute("UPDATE containers SET cpu_weight_override='dedicated' WHERE cpu_mode_override='reserved'")
         # 2026-11-07, same day: the level « onair » (« Antenne ») is renamed « dedicated » (« Dédié »).
         db.execute("UPDATE containers SET cpu_weight_override='dedicated' WHERE cpu_weight_override='onair'")
+        # 2026-11-23: three levels — « normal » is renamed « shared », « batch » merged into
+        # « background » (cf. app/cpu_weight.py).
+        db.execute("UPDATE containers SET cpu_weight_override='shared' WHERE cpu_weight_override='normal'")
+        db.execute("UPDATE containers SET cpu_weight_override='background' WHERE cpu_weight_override='batch'")
         db.execute("UPDATE containers SET cpu_mode_override=NULL WHERE cpu_mode_override IS NOT NULL")
+        # 2026-11-23: a Dedicated container whose cores are missing at deployment is REFUSED, unless
+        # the user chose « au mieux » for it (then it runs on the shared pool until cores free up).
+        # 1 = that choice; 0 = refuse (cf. docker_compute.deploy_compute).
+        if "dedicated_fallback_ok" not in cols:
+            db.execute("ALTER TABLE containers ADD COLUMN dedicated_fallback_ok INTEGER DEFAULT 0")
         if "nmos_audio_count" not in cols:
             # Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
             db.execute("ALTER TABLE containers ADD COLUMN nmos_audio_count INTEGER DEFAULT 0")
@@ -1316,6 +1341,12 @@ def init_db():
         # node-global (capacité carte).
         if "ptp_params" not in [r[1] for r in db.execute("PRAGMA table_info(media_networks)")]:
             db.execute("ALTER TABLE media_networks ADD COLUMN ptp_params TEXT")
+        # first_fabric: which pair colour ('red' | 'blue', NULL = 'red') is fabric "a" (the A
+        # multicast blocks) on this network; default_b_rule: JSON leg-B rule last saved on a
+        # multicast plan of this network, proposed for the next plan (see app/mcast_plans.py).
+        for _col in ("first_fabric", "default_b_rule"):
+            if _col not in [r[1] for r in db.execute("PRAGMA table_info(media_networks)")]:
+                db.execute(f"ALTER TABLE media_networks ADD COLUMN {_col} TEXT")
         if "media_network_id" not in [r[1] for r in db.execute("PRAGMA table_info(node_interfaces)")]:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN media_network_id INTEGER")
         # Règles de plage multicast STRICTES par port (switch qui contraint les adresses
@@ -1353,9 +1384,42 @@ def init_db():
         for _col, _typ in (("prefix_len", "INTEGER"), ("port_default_video", "INTEGER"),
                           ("port_default_audio", "INTEGER"), ("port_default_anc", "INTEGER"),
                           ("ip_offset_video", "INTEGER"), ("ip_offset_audio", "INTEGER"),
-                          ("ip_offset_anc", "INTEGER"), ("ip_step_audio", "INTEGER")):
+                          ("ip_offset_anc", "INTEGER"), ("ip_step_audio", "INTEGER"),
+                          # Independent plan axes (all NULL = historical behaviour), see
+                          # allocations.allocate_multicast_for: base_ip_b = 2022-7 leg-B base
+                          # (B = base_ip_b + rank of A), rank_mode = 'slot'|'counter',
+                          # port_mode = 'increment'|'fixed', reserve_last = last address never used.
+                          ("base_ip_b", "TEXT"), ("rank_mode", "TEXT"), ("port_mode", "TEXT"),
+                          ("reserve_last", "INTEGER"),
+                          # Plan lines (app/mcast_plans.py): plan_id NULL = legacy rule;
+                          # b_manual = the line's B block was typed, not derived from the plan's
+                          # rule; flow_class = key of the flow class the line is for (NULL = all).
+                          ("plan_id", "INTEGER"), ("b_manual", "INTEGER"), ("flow_class", "TEXT"),
+                          # explicit_span = 1: the line is an explicit range "first-last" typed by
+                          # the operator (base_ip = first, size = count, prefix_len NULL): both
+                          # ends allocatable, reserve_last ignored, output N at rank N-1.
+                          ("explicit_span", "INTEGER")):
             if _col not in [r[1] for r in db.execute("PRAGMA table_info(mcast_ranges)")]:
                 db.execute(f"ALTER TABLE mcast_ranges ADD COLUMN {_col} {_typ}")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_mcast_ranges_plan ON mcast_ranges(plan_id)")
+        # Multicast PLANS: one target (a media network, a red/blue pair of one node, or one
+        # unpaired interface) + shared settings; its lines are `mcast_ranges` rows with plan_id.
+        # Addressing is per FABRIC (A blocks on fabric a, B blocks on fabric b), see
+        # allocations.fabric_of.
+        db.execute('''CREATE TABLE IF NOT EXISTS mcast_plans (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope            TEXT NOT NULL,
+            media_network_id INTEGER,
+            node_id          INTEGER,
+            pair_group       INTEGER,
+            ifname           TEXT,
+            label            TEXT,
+            b_rule           TEXT,
+            rank_mode        TEXT,
+            port_mode        TEXT,
+            reserve_last     INTEGER,
+            created_at       TEXT
+        )''')
         # Ledger de réservation atomique (voir db_reserve_mcast) : PRIMARY KEY (ip, port) = la garantie
         # d'unicité vient de SQLite (INSERT qui échoue), pas d'une lecture Python suivie d'une décision.
         db.execute('''CREATE TABLE IF NOT EXISTS mcast_allocations (
@@ -1531,6 +1595,10 @@ def init_db():
         for _c, _t in (("tile_x", "INTEGER"), ("tile_y", "INTEGER"), ("fmt", "TEXT")):
             if _c not in _fcols:
                 db.execute(f"ALTER TABLE fabric_node_alloc ADD COLUMN {_c} {_t}")
+        # Assembler config SAVED on its `asm:<vmid>` row (2026-11-25): a restarted sharded wall is
+        # rendered straight as an assembler (cf. compositor_fabric.saved_assembler).
+        if "params" not in _fcols:
+            db.execute("ALTER TABLE fabric_node_alloc ADD COLUMN params TEXT")
         # Journal (alertes) : historiquement absente d'init_db (existait dans la DB en
         # place) → une DB recréée cassait silencieusement db_add_alert. Créée ici.
         db.execute('''CREATE TABLE IF NOT EXISTS alerts (
@@ -2797,7 +2865,8 @@ def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mo
     with get_db() as db:
         if reset:
             db.execute("UPDATE containers SET cores_override=NULL, memory_override=NULL, "
-                       "cpu_mode_override=NULL, cpu_weight_override=NULL WHERE vmid=?", (vmid,))
+                       "cpu_mode_override=NULL, cpu_weight_override=NULL, dedicated_fallback_ok=0 "
+                       "WHERE vmid=?", (vmid,))
         if cpu_mode is not None:
             # The place follows the level since 2026-11-07: « reserved » IS the level on air;
             # « shared » gives the container back to its manifest's level (the transcoder, the only
@@ -2821,6 +2890,13 @@ def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mo
         if memory is not None:
             db.execute("UPDATE containers SET memory_override=?, memory=? WHERE vmid=?",
                        (int(memory), int(memory), vmid))
+        db.commit()
+
+def db_set_dedicated_fallback(vmid, ok):
+    """The user's choice for a Dedicated container whose cores are missing at deployment: True =
+    deploy it « au mieux » on the shared pool, False = refuse (the default since 2026-11-23)."""
+    with get_db() as db:
+        db.execute("UPDATE containers SET dedicated_fallback_ok=? WHERE vmid=?", (1 if ok else 0, vmid))
         db.commit()
 
 def db_update_script(vmid, script):
@@ -3072,9 +3148,19 @@ def role_is_containers(role):
 _MN_KEEP = object()   # sentinelle « ne pas toucher » pour les champs optionnels de db_update_media_network
 
 def db_get_media_networks():
+    """Media networks; `first_fabric` normalised ('red' when unset) and `default_b_rule` decoded
+    (dict, or None when no plan of the network ever saved one)."""
     with get_db() as db:
-        return [dict(r) for r in db.execute(
+        rows = [dict(r) for r in db.execute(
             "SELECT * FROM media_networks ORDER BY domain, id").fetchall()]
+    for r in rows:
+        r["first_fabric"] = "blue" if r.get("first_fabric") == "blue" else "red"
+        try:
+            v = json.loads(r.get("default_b_rule") or "null")
+        except (ValueError, TypeError):
+            v = None
+        r["default_b_rule"] = v if isinstance(v, dict) else None
+    return rows
 
 def db_add_media_network(name, domain, ptp_params=None):
     with get_db() as db:
@@ -3085,14 +3171,20 @@ def db_add_media_network(name, domain, ptp_params=None):
         db.commit()
         return cur.lastrowid
 
-def db_update_media_network(net_id, name=None, domain=None, ptp_params=_MN_KEEP):
-    """Met à jour un réseau. `ptp_params` : dict (surcharges) → JSON ; None/{} → efface (hérite tout) ;
-    sentinelle (défaut) → ne touche pas la colonne."""
+def db_update_media_network(net_id, name=None, domain=None, ptp_params=_MN_KEEP,
+                            first_fabric=_MN_KEEP, default_b_rule=_MN_KEEP):
+    """Update a network. `ptp_params`: dict (overrides) → JSON; None/{} → cleared (inherit all);
+    sentinel (default) → column untouched. `first_fabric`: 'red' | 'blue' (validated by the
+    caller). `default_b_rule`: dict → JSON, None → cleared. Sentinel → untouched."""
     sets, args = [], []
     if name is not None:   sets.append("name=?");   args.append((name or "").strip() or "Réseau")
     if domain is not None: sets.append("domain=?"); args.append(int(domain))
     if ptp_params is not _MN_KEEP:
         sets.append("ptp_params=?"); args.append(json.dumps(ptp_params) if ptp_params else None)
+    if first_fabric is not _MN_KEEP:
+        sets.append("first_fabric=?"); args.append(first_fabric or None)
+    if default_b_rule is not _MN_KEEP:
+        sets.append("default_b_rule=?"); args.append(json.dumps(default_b_rule) if default_b_rule else None)
     if not sets:
         return
     with get_db() as db:
@@ -3384,11 +3476,17 @@ def db_tx_pending_due(now_iso):
 MCAST_RANGE_FIELDS = ("scope", "media_network_id", "node_id", "ifname", "base_ip", "size", "prefix_len",
                       "port_default", "port_default_video", "port_default_audio", "port_default_anc",
                       "ip_offset_video", "ip_offset_audio", "ip_offset_anc", "ip_step_audio",
-                      "essence", "leg", "match_json", "label")
+                      "base_ip_b", "rank_mode", "port_mode", "reserve_last",
+                      "essence", "leg", "match_json", "label", "plan_id", "b_manual", "flow_class",
+                      "explicit_span")
 
-def db_get_mcast_ranges(media_network_id=None, node_id=None, ifname=None):
+def db_get_mcast_ranges(media_network_id=None, node_id=None, ifname=None, include_plans=False):
+    """Range rules. Lines of a multicast plan (`plan_id` set) are left out unless `include_plans`:
+    they are resolved through their plan (allocations._flow_plan), never as legacy rules."""
     q = "SELECT * FROM mcast_ranges WHERE 1=1"
     args = []
+    if not include_plans:
+        q += " AND plan_id IS NULL"
     if media_network_id is not None:
         q += " AND media_network_id=?"; args.append(int(media_network_id))
     if node_id is not None:
@@ -3437,6 +3535,73 @@ def db_update_mcast_range(range_id, **fields):
 def db_delete_mcast_range(range_id):
     with get_db() as db:
         db.execute("DELETE FROM mcast_ranges WHERE id=?", (int(range_id),))
+        db.commit()
+
+# ── mcast_plans: multicast plans (target + shared settings), lines in mcast_ranges ──
+MCAST_PLAN_FIELDS = ("scope", "media_network_id", "node_id", "pair_group", "ifname", "label",
+                     "b_rule", "rank_mode", "port_mode", "reserve_last")
+
+def db_get_mcast_plans():
+    """Every plan with its `lines` (mcast_ranges rows, by id)."""
+    with get_db() as db:
+        plans = [dict(r) for r in db.execute("SELECT * FROM mcast_plans ORDER BY id").fetchall()]
+        lines = [dict(r) for r in db.execute(
+            "SELECT * FROM mcast_ranges WHERE plan_id IS NOT NULL ORDER BY id").fetchall()]
+    for p in plans:
+        p["lines"] = [ln for ln in lines if ln["plan_id"] == p["id"]]
+    return plans
+
+def db_get_mcast_plan(plan_id):
+    return next((p for p in db_get_mcast_plans() if p["id"] == int(plan_id)), None)
+
+def db_save_mcast_plan(plan, lines, plan_id=None):
+    """Create (`plan_id` None) or update a plan and REPLACE its lines in one transaction: a line
+    with an `id` of this plan is updated, one without is created, a stored line absent from
+    `lines` is deleted. `plan` / `lines` are already validated column dicts. Returns the plan id."""
+    pcols = _champs_filtres(plan, MCAST_PLAN_FIELDS, "MCAST_PLAN_FIELDS", "db_save_mcast_plan")
+    now = datetime.now().isoformat(timespec="seconds")
+    with get_db() as db:
+        try:
+            if plan_id is None:
+                pcols["created_at"] = now
+                keys = list(pcols)
+                cur = db.execute("INSERT INTO mcast_plans (%s) VALUES (%s)"
+                                 % (", ".join(keys), ", ".join("?" * len(keys))), list(pcols.values()))
+                plan_id = cur.lastrowid
+            else:
+                db.execute("UPDATE mcast_plans SET %s WHERE id=?" % ", ".join(f"{k}=?" for k in pcols),
+                           list(pcols.values()) + [int(plan_id)])
+            stored = {r["id"] for r in db.execute("SELECT id FROM mcast_ranges WHERE plan_id=?",
+                                                  (int(plan_id),))}
+            kept = set()
+            for ln in lines:
+                lid = ln.get("id")
+                cols = _champs_filtres({k: v for k, v in ln.items() if k != "id"}, MCAST_RANGE_FIELDS,
+                                       "MCAST_RANGE_FIELDS", "db_save_mcast_plan")
+                cols["plan_id"] = int(plan_id)
+                cols["scope"] = "plan"
+                if lid is not None and int(lid) in stored:
+                    kept.add(int(lid))
+                    db.execute("UPDATE mcast_ranges SET %s WHERE id=?" % ", ".join(f"{k}=?" for k in cols),
+                               list(cols.values()) + [int(lid)])
+                else:
+                    cols["created_at"] = now
+                    keys = list(cols)
+                    db.execute("INSERT INTO mcast_ranges (%s) VALUES (%s)"
+                               % (", ".join(keys), ", ".join("?" * len(keys))), list(cols.values()))
+            for lid in stored - kept:
+                db.execute("DELETE FROM mcast_ranges WHERE id=? AND plan_id=?", (lid, int(plan_id)))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    return plan_id
+
+def db_delete_mcast_plan(plan_id):
+    """Delete a plan and its lines. Reservations already made under it are left as they are."""
+    with get_db() as db:
+        db.execute("DELETE FROM mcast_ranges WHERE plan_id=?", (int(plan_id),))
+        db.execute("DELETE FROM mcast_plans WHERE id=?", (int(plan_id),))
         db.commit()
 
 # ── mcast_allocations : ledger de RÉSERVATION ATOMIQUE (ferme la fenêtre de course lire-puis-écrire
@@ -3735,6 +3900,22 @@ def _alert_int(v):
         return None
 
 
+_machine_actor = contextvars.ContextVar("machine_actor", default=False)
+
+
+@contextlib.contextmanager
+def machine_actor():
+    """Alerts raised inside this block are MACHINE alerts (user NULL) even when written from a
+    request thread. Narrow on purpose: the global derivation in `_acteur_courant` stays as is for
+    every other alert. The anti-bounce still applies (it keys on the resulting user being NULL),
+    unlike an explicit user value, which is a human gesture and never bounced."""
+    tok = _machine_actor.set(True)
+    try:
+        yield
+    finally:
+        _machine_actor.reset(tok)
+
+
 def _acteur_courant():
     """Login de l'utilisateur à l'origine de l'action, ou None pour une action de la MACHINE.
 
@@ -3744,6 +3925,8 @@ def _acteur_courant():
     le propager à la main dans 64 dispatches. Le « qui a fait quoi » est donc porté par la ligne de
     DEMANDE posée dans la route (cf. `app/audit.py`), pas par les lignes de résultat émises plus
     tard par le traitement de fond, qui restent honnêtement anonymes."""
+    if _machine_actor.get():
+        return None
     try:
         from flask import has_request_context
         if not has_request_context():
@@ -4205,6 +4388,12 @@ def db_fabric_touch(signatures):
     with get_db() as db:
         db.executemany("UPDATE fabric_node_alloc SET last_ref=? WHERE signature=?",
                        [(now, s) for s in signatures])
+        db.commit()
+
+def db_fabric_set_params(signature, params):
+    """Saved config of an `asm:<vmid>` row (JSON text, cf. compositor_fabric._save_assembler)."""
+    with get_db() as db:
+        db.execute("UPDATE fabric_node_alloc SET params=? WHERE signature=?", (params, signature))
         db.commit()
 
 def db_fabric_delete(signature):

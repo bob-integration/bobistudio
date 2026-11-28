@@ -75,4 +75,43 @@ ok(lf.includes('Journal de la dernière opération') && lf.includes('terminé') 
    'journal fini : titré « dernière opération », statut, date et durée', lf.slice(0, 200));
 ok(lf.startsWith('<details') && !/<details[^>]*\bopen\b/.test(lf), 'journal fini : REPLIÉ par défaut', lf.slice(0, 80));
 ok(lf.includes('&lt;x&gt;') && !lf.includes('<x>'), 'journal fini : contenu échappé', '');
+// ── Noyau temps réel, 2026-11-15 : la mention de licence n'existe que pour un pilote qui en a une (son
+//    nom brut s'affichait sous le bouton), et une installation arrêtée en route a son propre message.
+mk('hostdrv_rt_kernel_9');
+const rtBase = { ok: true, kind: 'rt_kernel', can_run: true, job: { status: 'none', pending: '' },
+  rows: [{ key: 'running', value: '6.12.117+deb13-amd64' }],
+  plan: { status: 'install', code: 'rt_not_installed', params: {}, steps: ['apt_update', 'install_kernel', 'modules', 'grub_default'] } };
+render(9, 'rt_kernel', rtBase);
+h = els['hostdrv_rt_kernel_9'].innerHTML;
+ok(h.includes('Installer et fixer le noyau temps réel') && !/settings\.hostdrv\.[a-z_.]+/.test(h),
+   'noyau RT à installer : bouton, aucune clé brute (licence comprise)', (h.match(/settings\.hostdrv\.[a-z_.]+/g) || []).join(','));
+render(9, 'rt_kernel', Object.assign({}, rtBase, { plan: { status: 'install', code: 'rt_incomplete',
+  params: { target: '6.12.117+deb13-rt-amd64', packages: 'linux-image-6.12.117+deb13-rt-amd64' }, steps: ['install_kernel', 'modules', 'grub_default'] } }));
+h = els['hostdrv_rt_kernel_9'].innerHTML;
+ok(h.includes('arrêtée en cours de route') && h.includes('linux-image-6.12.117+deb13-rt-amd64') && !/settings\.hostdrv\.[a-z_.]+/.test(h),
+   'installation RT inachevée : message traduit, paquets nommés', h.slice(0, 300));
+// ── DeckLink, 2026-11-25 : le bouton refuse de passer en RT un nœud à carte DeckLink (pilote Blackmagic
+//    instable sous PREEMPT_RT) — message traduit, nombre de cartes, aucun bouton d'installation.
+render(9, 'rt_kernel', Object.assign({}, rtBase, { can_run: false,
+  plan: { status: 'refused', code: 'decklink', params: { cards: 2 }, steps: [] } }));
+h = els['hostdrv_rt_kernel_9'].innerHTML;
+ok(h.includes('2 carte(s) DeckLink') && !h.includes('hostDrvRun(') && !/settings\.hostdrv\.[a-z_.]+/.test(h),
+   'noyau RT refusé (DeckLink) : message traduit, cartes comptées, aucun bouton', h.slice(0, 300));
+render(7, 'nvidia', base);
+ok(els['hostdrv_nvidia_7'].innerHTML.includes(escapeHtml(fr['settings.hostdrv.nvidia.license'])),
+   'un pilote qui a une licence l\'affiche toujours (NVIDIA)', '');
+// ── Noyau RT sous le pilote Blackmagic, 2026-11-28 : 16.4a1/16.5a1 s'installent sous PREEMPT_RT puis
+//    plantent à la première image. L'avertissement passe AU-DESSUS du plan, quel que soit son statut :
+//    « toutes à jour » seul, sur ce noyau, serait une phrase vraie qui fait croire que tout marche.
+const bmOk = { ok: true, kind: 'blackmagic', can_run: false, job: { status: 'none' },
+  rows: [{ key: 'kernel', value: '6.12.118+deb13-rt-amd64 - 2 module(s), 8 device node(s), 1 PCI device(s)' }],
+  plan: { status: 'ok', code: 'all_up_to_date', params: { count: 1 }, steps: [] } };
+render(7, 'blackmagic', Object.assign({}, bmOk, { warnings: [{ code: 'preempt_rt', params: { kernel: '6.12.118+deb13-rt-amd64' } }] }));
+h = els['hostdrv_blackmagic_7'].innerHTML;
+const iw = h.indexOf('PREEMPT_RT'), ip = h.indexOf('toutes à jour');
+ok(iw >= 0 && h.includes('noyau temps réel PREEMPT_RT (6.12.118+deb13-rt-amd64)') && !/settings\.hostdrv\.[a-z_.]+/.test(h),
+   'noyau RT : avertissement traduit, noyau nommé, aucune clé brute', h.slice(0, 400));
+ok(iw >= 0 && ip > iw, 'noyau RT : l\'avertissement précède « toutes à jour »', 'avertissement ' + iw + ', plan ' + ip);
+render(7, 'blackmagic', bmOk);
+ok(!els['hostdrv_blackmagic_7'].innerHTML.includes('PREEMPT_RT'), 'sans avertissement : rien d\'affiché', '');
 process.exit(ko ? 1 : 0);

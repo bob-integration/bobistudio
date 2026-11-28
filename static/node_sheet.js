@@ -147,7 +147,7 @@
         lastSheet = s;
         render(s, first);
         loadAlerts(id);
-        if (first) loadDrivers(id);
+        if (first) { loadDrivers(id); loadAptitude(id, false); }
     }
 
     function row(label, value) { return '<dt>' + esc(label) + '</dt><dd>' + value + '</dd>'; }
@@ -294,6 +294,7 @@
             + section('machine', '<div>' + machineHtml(s) + '</div>')
             + section('uptime', '<div>' + uptimeHtml(s) + '</div>')
             + section('load', '<div>' + loadHtml(s) + '</div>')
+            + section('aptitude', '<div class="ns-aptitude meta">' + esc(T('reading')) + '</div>')
             + section('containers', '', '<a href="/monitoring#nodes/' + s.id + '" data-ns="containers">' + esc(Tf('containers_link', {n: s.containers})) + '</a>')
             + section('images', '<div>' + imagesHtml(s) + '</div>', '<a href="#deploiement/build" data-ns="build">' + esc(T('link_build')) + '</a>')
             + section('drivers', '<div class="ns-drivers meta">' + esc(T('reading')) + '</div>')
@@ -357,6 +358,96 @@
             const dd = b && b.querySelector('dd[data-kind="' + kind + '"]');
             if (dd) { dd.textContent = txt; dd.style.color = col; }
         });
+    }
+
+    // Real-time aptitude (app/node_aptitude.py): read from the base; « Mesurer » probes the node
+    // (a few seconds, one second of work on ONE shared core — never a dedicated one).
+    const APT_COL = { ok: 'var(--status-running-fg)', warn: 'var(--status-warning-fg)',
+                      bad: 'var(--status-stopped-fg)', unknown: 'var(--text-muted)' };
+    function aptValue(l) {
+        if (l.level === 'unknown') return T('apt_unknown');
+        switch (l.key) {
+        case 'kernel': return Tf(l.rt ? 'apt_kernel_rt' : (l.reason === 'decklink' ? 'apt_kernel_decklink' : 'apt_kernel_normal'), {v: l.value});
+        case 'freq': return Tf(l.burst ? 'apt_freq_v2' : 'apt_freq_v', {v: l.value, full: l.full, burst: l.burst, nominal: l.nominal, pct: l.pct});
+        case 'governor': return l.total ? Tf('apt_governor_v', {n: l.value, total: l.total}) : T('apt_governor_none');
+        case 'ht': return l.value ? Tf('apt_ht_v', {n: l.value}) : T('apt_ht_ok');
+        case 'rt': return l.value === -1 ? T('apt_rt_none') : Tf('apt_rt_v', {pct: Math.round(l.value / 10000)});
+        case 'irq': return l.value ? Tf('apt_irq_v', {n: l.value, names: (l.names || []).join(', ')})
+            + ((l.managed || []).length ? ' — ' + Tf('apt_irq_managed', {names: l.managed.join(', ')}) : '') : T('apt_irq_ok');
+        case 'membw': return Tf('apt_membw_v', {v: l.value, ratio: l.ratio == null ? '—' : l.ratio});
+        default: return String(l.value == null ? '' : l.value);
+        }
+    }
+    function aptitudeHtml(sh, id) {
+        const btn = '<button type="button" class="ctl-push" data-ns="apt-measure">' + esc(T('apt_measure')) + '</button>';
+        if (!sh) return '<p class="meta">' + esc(T('apt_never')) + '</p>' + btn;
+        const v = '<p><b style="color:' + (sh.verdict === 'unfit' ? APT_COL.bad : sh.verdict === 'fit' ? APT_COL.ok : APT_COL.warn) + '">'
+            + esc(T('apt_verdict_' + sh.verdict)) + '</b> <span class="meta">' + esc(Tf('apt_measured', {t: dateCourte(sh.ts)})) + '</span></p>';
+        return v + '<dl class="ns-grid ns-grid--right">' + (sh.lines || []).map(l =>
+            '<dt>' + esc(T('apt_' + l.key)) + '</dt><dd style="color:' + (APT_COL[l.level] || '') + '">' + esc(aptValue(l))
+            + (l.action ? '<div class="meta">' + esc(Tf('apt_action_' + l.action, {cmdline: (l.cmdline || []).join(' ') || '—'})) + '</div>' : '')
+            + (l.action === 'irq_managed' && l.fixable
+                ? '<div><button type="button" class="ctl-push" data-ns="apt-irq-fix">' + esc(T('apt_irq_fix')) + '</button> <span class="meta" data-ns="apt-irq-msg" role="status"></span></div>' : '')
+            + '</dd>').join('')
+            + '</dl>' + btn;
+    }
+    // Kernel-managed IRQs: the host driver `irq_managed` (NODE_AGENT.md §4.6) puts the boot parameter
+    // on the node's boot line. It never reboots: the outcome says a reboot is still REQUIRED, and the
+    // drivers section of the sheet (and the node card) shows it pending. Pure, tested on its own
+    // (tests/verif_irq_managed_ui.js): finished job → label key.
+    function irqFixOutcome(job) {
+        if (!job || job.status === 'running' || job.status === 'none') return 'apt_irq_fix_running';
+        if (job.pending === 'reboot' || job.rc === 10) return 'apt_irq_fix_done';
+        if (job.status === 'done' && job.rc === 0) return 'apt_irq_fix_nothing';
+        return 'apt_irq_fix_failed';
+    }
+    async function fixManagedIrq(id, line, btn, msg) {
+        const say = (txt, col) => { msg.textContent = txt; msg.style.color = col || ''; };
+        const cmdline = (line.cmdline || []).join(' ') || '—';
+        const go = window.mxlConfirm
+            ? await window.mxlConfirm({title: T('apt_irq_fix_title'), message: Tf('apt_irq_fix_confirm', {cmdline}),
+                                       confirmLabel: T('apt_irq_fix_go'), cancelLabel: T('cancel')})
+            : window.confirm(Tf('apt_irq_fix_confirm', {cmdline}));
+        if (!go) return;
+        btn.disabled = true;
+        say(T('apt_irq_fix_running'));
+        const base = '/api/nodes/' + id + '/host-drivers/irq_managed/';
+        try {
+            const r = await fetch(base + 'run', {method: 'POST'});
+            if (r.status === 403) { say(T('apt_irq_fix_denied'), APT_COL.bad); btn.disabled = false; return; }
+            const j = await r.json();
+            if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+            let job = j.job || {status: 'running'};
+            for (let i = 0; i < 90 && (!job.status || job.status === 'running'); i++) {
+                await new Promise(res => setTimeout(res, 2000));
+                const jj = await (await fetch(base + 'job?offset=0')).json();
+                job = jj.job || job;
+            }
+            const k = irqFixOutcome(job);
+            say(k === 'apt_irq_fix_failed' ? Tf(k, {rc: job.rc == null ? '?' : job.rc}) : T(k),
+                k === 'apt_irq_fix_failed' ? APT_COL.bad : k === 'apt_irq_fix_done' ? APT_COL.warn : '');
+            if (k === 'apt_irq_fix_failed') btn.disabled = false;
+        } catch (e) { say(Tf('load_err', {e: e.message}), APT_COL.bad); btn.disabled = false; }
+        loadDrivers(id);
+    }
+    async function loadAptitude(id, measure) {
+        const box = () => current === id && sheetEl().querySelector('.ns-aptitude');
+        if (measure && box()) { const b = box().querySelector('[data-ns="apt-measure"]'); if (b) { b.disabled = true; b.textContent = T('apt_measuring'); } }
+        let j = null;
+        try {
+            const r = await fetch('/api/nodes/' + id + '/aptitude' + (measure ? '/measure' : ''), measure ? {method: 'POST'} : {});
+            j = await r.json();
+            if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        } catch (e) { if (box()) box().innerHTML = '<span style="color:var(--status-stopped-fg)">' + esc(Tf('load_err', {e: e.message})) + '</span>'; return; }
+        const b = box();
+        if (!b) return;
+        b.classList.remove('meta');
+        b.innerHTML = aptitudeHtml(j.sheet, id);
+        const m = b.querySelector('[data-ns="apt-measure"]');
+        if (m) m.onclick = () => loadAptitude(id, true);
+        const fx = b.querySelector('[data-ns="apt-irq-fix"]');
+        const irqLine = ((j.sheet || {}).lines || []).find(l => l.key === 'irq');
+        if (fx && irqLine) fx.onclick = () => fixManagedIrq(id, irqLine, fx, fx.parentNode.querySelector('[data-ns="apt-irq-msg"]'));
     }
 
     // ─── Boîte de confirmation ─────────────────────────────────────────────────────────────
@@ -525,5 +616,6 @@
         // Appelé par dessinerTopologieCluster après chaque rendu du schéma.
         afterTopology() { bindTopology(); markSelected(); },
         _dur: dur, _recDisabled: recDisabled, _airText: airText, _verdict: verdict, _nameMatches: nameMatches, _imagesHtml: imagesHtml,
+        _aptitudeHtml: aptitudeHtml, _irqFixOutcome: irqFixOutcome,
     };
 })();

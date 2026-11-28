@@ -802,6 +802,11 @@ def run(probe=live_probe):
     if plan["status"] == "refused":
         say("REFUSED: %s - nothing was changed" % plan["code"])
         return 1
+    if "PREEMPT_RT" in os.uname().version:
+        # NVIDIA's build refuses a PREEMPT_RT kernel without this; inherited by the .run installer, apt's
+        # DKMS hook and make. Unsupported by NVIDIA, measured sound on dell-1 (host driver `rt_kernel`).
+        os.environ["IGNORE_PREEMPT_RT_PRESENCE"] = "1"
+        say("PREEMPT_RT kernel: building with IGNORE_PREEMPT_RT_PRESENCE=1")
     if plan["status"] not in ("install", "upgrade", "toolkit_only"):
         say("nothing to do (%s)" % plan["status"])
         return EXIT_OK

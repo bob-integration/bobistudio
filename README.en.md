@@ -76,6 +76,17 @@ the kernel (MTL/DPDK, AF-XDP). Each output carries its transmit class — narrow
 rate limiter — its session description and its NMOS registration. The card is at 6.8 of the
 200 Gb/s it aggregates.
 
+## Known limitations
+
+- **Tested mostly in 1080p50.** Other formats have seen little testing, and interlaced formats may
+  cause problems.
+- **8-bit internal processing by default.** The ST 2110 engine receives and sends 10-bit, but the
+  internal bus brings the picture down to 8 bits before processing. A 10-bit mode exists (Settings →
+  MXL → "shm pipeline depth"): it doubles the bus memory, and not every plugin has been checked
+  with it.
+- **ST 2110 output announced as BT.709 SDR.** The SDP sent always declares BT.709 SDR, whatever the
+  format's colorimetry. BT.2020 and HDR are not supported end to end.
+
 ## Try it
 
 On a bare Debian 13 machine:

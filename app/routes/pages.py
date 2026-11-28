@@ -144,6 +144,8 @@ _DOCS_RACINE = {
     # Hors racine : référence d'intégration de la MIB SNMP. C'est le document que lit
     # l'intégrateur du client pour brancher son système de supervision.
     "snmp-mib": "docs/reference/SNMP_MIB.md",
+    # Plans d'adressage multicast : la référence qui fait foi (Réglages → Multicast).
+    "multicast": "docs/reference/MULTICAST.md",
 }
 
 @bp.route("/api/doc/<name>", methods=["GET"])

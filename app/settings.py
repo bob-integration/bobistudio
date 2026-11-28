@@ -12,6 +12,7 @@ import os   # réglage `timezone` : pose TZ dans l'environnement du process (cf.
 
 from . import config
 from .database import db_get_setting, db_set_setting, db_get_all_settings
+from .splash import DEFAULTS as _SPLASH_DEFAULTS
 
 log = logging.getLogger(__name__)
 
@@ -70,9 +71,33 @@ _BASE_DEFAULTS = {
     "update_check_enabled":    "1",
     "update_check_interval_h": 24,          # 6 | 12 | 24 | 168 (fermé, refusé à la saisie sinon)
     "update_check_scope":      "core",      # core | all (cœur + plugins et services installés)
+    # L'HEURE du contrôle, et le jour quand la fréquence est hebdomadaire (2026-11-12). Avant,
+    # la boucle comparait « maintenant − dernière vérif » à l'intervalle : l'heure du contrôle
+    # était donc celle du dernier démarrage, et personne ne pouvait dire « tous les jours à 4 h ».
+    # Heure LOCALE du contrôleur. 4 h par défaut : hors exploitation sur une régie de jour.
+    "update_check_hour":       4,           # 0..23 (fermé, refusé à la saisie sinon)
+    "update_check_weekday":    0,           # 0 = lundi .. 6 = dimanche — n'agit qu'en 168 h
     "update_notify_alert":     "1",         # journal + canaux du service Alertes
     "update_notify_banner":    "1",         # bandeau en haut de page, administrateurs seuls
     "update_notify_popup":     "0",         # fenêtre à l'ouverture, une fois par version
+    # Le MAIL est par ADMINISTRATEUR, pas global : chacun s'abonne pour lui, à l'adresse de son
+    # compte (`users.email`), sur le même grain que l'« ignorer cette version » déjà en place.
+    # La liste des abonnés n'est donc PAS un réglage global — elle vit dans
+    # `update_watch.SUBSCRIBERS_KEY`, indexée par identifiant de compte.
+
+    # ─── Envoi d'e-mail du cœur (app/mail.py) ───────────────────────────────────────────────
+    # Code d'envoi remonté du service d'alertes le 2026-11-12 : c'était le seul SMTP du produit
+    # et il vivait dans un sous-module OPTIONNEL. Un serveur, un réglage, pour tout le produit.
+    # ⚠ `mail_host` VIDE fait retomber la lecture sur les clés `alerting_mail_*` (cf.
+    # `mail.server_config`) : une instance qui avait déjà configuré le canal des alertes envoie
+    # sans rien resaisir.
+    "mail_host":        "",
+    "mail_port":        587,
+    "mail_security":    "starttls",         # none | starttls | ssl (fermé)
+    "mail_username":    "",
+    "mail_password":    "",                 # suffixe _password → expurgé de settings.public()
+    "mail_from":        "",
+    "mail_timeout_s":   15,
 
     "vmid_start":       200,
     "vmid_end":         299,
@@ -427,6 +452,20 @@ _BASE_DEFAULTS = {
     # réussie redirige vers l'assistant.
     "setup_completed":  False,
 
+    # Internal image registry (app/registry.py, Zot). Off until a storage is chosen: the product
+    # mounts nothing itself, and a dedicated disk or NFS path must BE a mount point.
+    "registry_enabled":       False,
+    "registry_port":          5500,
+    "registry_storage_kind":  "dedicated",      # dedicated | nfs | system | s3
+    "registry_storage_path":  "",
+    "registry_host":          "",               # address the nodes use; empty = VIP, else control IP
+    "registry_s3_endpoint":   "",
+    "registry_s3_bucket":     "",
+    "registry_s3_region":     "us-east-1",
+    "registry_s3_access_key": "",
+    "registry_s3_secret":     "",               # _secret suffix → kept out of settings.public()
+    "registry_published":     {},               # {tag: {digest, ts, size}} — what each tag IS
+
     # Exigence sur les mots de passe : `souple` | `standard` | `stricte` (cf. auth.PWD_PROFILS).
     # Ne s'applique qu'aux mots de passe SAISIS ENSUITE — les existants sont stockés en
     # empreinte, donc illisibles : durcir le profil ne peut pas les invalider rétroactivement.
@@ -447,6 +486,8 @@ _BASE_DEFAULTS = {
     "brand_org_name":    "",
     "brand_logo_url":    "",
     "brand_location":    "",
+    # Startup splash (Settings → Branding): see app/splash.py, the single source of these keys.
+    **_SPLASH_DEFAULTS,
     # Mode d'exposition du port web (cf. app/web_mode.py) : `http` (défaut) ou `proxy`.
     # C'est LUI, et lui seul, qui décide si l'on croit `X-Forwarded-*`. Il remplace
     # `public_trust_proxy`, qui ne couvrait que les liens publics — pendant que la connexion,

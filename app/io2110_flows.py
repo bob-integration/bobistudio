@@ -309,6 +309,58 @@ def tx_slot_audio_idxs(tx_flows, slot_i):
             if f.get("essence") == "audio" and f.get("attached_to") == vid.get("id")]
 
 
+# ── Audio format of a flow (ST 2110-30), single source ─────────────────────────────────────────
+# The engine only sends 8-channel L24/48 kHz today, but the orchestrator must not assume it: range
+# classification (`mcast_ranges.match_json`) and bandwidth estimates read the format from here, so a
+# flow declaring `channels: 2` or `channels: 64, ptime: 0.125` is classified as such.
+AUDIO_DEFAULT_CHANNELS = 8
+AUDIO_DEFAULT_SAMPLE_RATE = 48000
+AUDIO_DEFAULT_BIT_DEPTH = 24
+
+
+def _num(v, cast):
+    try:
+        return cast(v) if v not in (None, "") and not isinstance(v, bool) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def audio_format(audio_entry, params=None):
+    """`{channels, ptime, sample_rate, bit_depth}` of an audio flow: values declared on the flow entry
+    (a `tx_slots[].audios[]` entry or a `tx_flows` entry), else on the engine params
+    (`audio_channels`, `audio_ptime`, `audio_sample_rate`, `audio_bit_depth`), else the defaults
+    (8 ch, the engine's default ptime `mtl_audio_ptime`, 48000 Hz, 24 bits). `ptime` is in ms."""
+    e = audio_entry or {}
+    p = params or {}
+
+    def pick(key, pkey, cast):
+        for v in (e.get(key), p.get(pkey)):
+            n = _num(v, cast)
+            if n is not None and n > 0:
+                return n
+        return None
+
+    ptime = pick("ptime", "audio_ptime", float)
+    if ptime is None:
+        try:
+            from . import settings
+            ptime = _num(settings.get("mtl_audio_ptime"), float) or 1.0
+        except Exception:
+            ptime = 1.0
+    return {"channels": pick("channels", "audio_channels", int) or AUDIO_DEFAULT_CHANNELS,
+            "ptime": ptime,
+            "sample_rate": pick("sample_rate", "audio_sample_rate", int) or AUDIO_DEFAULT_SAMPLE_RATE,
+            "bit_depth": pick("bit_depth", "audio_bit_depth", int) or AUDIO_DEFAULT_BIT_DEPTH}
+
+
+def audio_payload_mbps(fmt):
+    """Raw PCM payload rate (Mb/s) of an audio format (`audio_format` dict), headers excluded."""
+    f = fmt or {}
+    return (int(f.get("sample_rate") or AUDIO_DEFAULT_SAMPLE_RATE)
+            * int(f.get("bit_depth") or AUDIO_DEFAULT_BIT_DEPTH)
+            * int(f.get("channels") or AUDIO_DEFAULT_CHANNELS)) / 1e6
+
+
 def tx_slot_has_anc(tx_flows, slot_i):
     """True si un flux ANC TX est attaché au slot vidéo ``slot_i``."""
     vid = next((f for f in (tx_flows or [])

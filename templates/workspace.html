@@ -2668,8 +2668,9 @@
                 el.innerHTML = '<iframe allow="autoplay" title="' + esc(fnLabel(f)) + '" src="' + esc(url) + '"></iframe>';
             } else {
                 el.innerHTML = '<div class="wsp-fn-videoempty"><span class="meta">' +
-                    esc(T(s.gateway_ready === false ? 'projects.fn_video_nogw' : 'projects.fn_video_none')) + '</span>' +
-                    (s.gateway_ready === false ? '' : '<button type="button" class="ctl-push" data-act="mkvideo" data-wid="' +
+                    esc(T(s.unavailable === 'no_streamer' ? 'projects.fn_video_nostreamer'
+                          : s.gateway_ready === false ? 'projects.fn_video_nogw' : 'projects.fn_video_none')) + '</span>' +
+                    (s.unavailable || s.gateway_ready === false ? '' : '<button type="button" class="ctl-push" data-act="mkvideo" data-wid="' +
                         esc(el.dataset.wid) + '" data-fn="' + esc(el.dataset.fn) + '">' + esc(T('projects.fn_video_create')) + '</button>') +
                     '<pre class="wsp-fn-videolog" hidden></pre></div>';
             }

@@ -577,6 +577,18 @@ Préparation MTL (`app/mtl.py:verifier`/`appliquer`, lecture seule puis applicat
    fourni par `--kernel-pkg`/`--kernel-apt` en réglage cluster). Sans paquet fourni, le script
    avertit et garde le noyau Debian courant : à vérifier manuellement contre la matrice de
    compatibilité MTL avant de compter sur le nœud pour de la production.
+   Le noyau de démarrage est **fixé** (`GRUB_DEFAULT=saved` + `grub-set-default`) : celui de
+   `--kernel-pkg` s'il est fourni, sinon le noyau courant. Un noyau tiré plus tard par apt ne
+   devient donc jamais le noyau de démarrage à l'insu de l'exploitant.
+   **Noyau temps réel — le défaut d'un nouveau nœud** depuis le 23/11/2026 (choix « Noyau » à
+   l'enrôlement : auto / temps réel / normal ; `--rt-kernel` / `--no-rt-kernel` ; ou bouton « Noyau
+   temps réel » de la fiche du nœud). « auto » garde le noyau normal dans deux cas : une carte
+   DeckLink (le pilote Blackmagic 16.4a1 plante sous PREEMPT_RT) et une réinstallation (le noyau
+   d'un nœud existant ne change pas sans qu'on le demande). Noyau PREEMPT_RT de Debian, modules hors noyau
+   (NVIDIA, DeckLink, ice MTL) recompilés pour lui, puis fixé au démarrage. Mesuré sur dell-1 :
+   0 bloc audio en retard en 20 h sur une console à cœur isolé, contre 7 360 sur le noyau
+   normal. NVIDIA ne le prend pas en charge officiellement (compilé avec
+   `IGNORE_PREEMPT_RT_PRESENCE=1`) ; refusé si Secure Boot est actif. Cf. NODE_AGENT.md §4.6.
 7. **Durcissement ARP** (`arp_ignore=1`, `arp_announce=2`) sur un nœud multi-homé (plusieurs
    ports RDMA agrégés) : sans lui, le nœud répond à une requête ARP pour n'importe laquelle de
    ses adresses depuis n'importe quelle interface — le pair distant apprend alors la mauvaise

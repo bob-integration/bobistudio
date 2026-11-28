@@ -49,6 +49,10 @@ def api_set_settings():
             data["web_mode"] = web_mode.valider(data["web_mode"])
         except ValueError as e:
             return jsonify({"error": str(e), "key": "web_mode"}), 400
+    from .. import splash                    # startup splash: refused at input, not at render
+    _err = splash.validate(data)
+    if _err:
+        return jsonify({"error": _err, "key": _err.split(":")[0]}), 400
     if "web_tls_port" in data:
         # 5000 et 8000 sont déjà pris par l'orchestrateur lui-même (écoute HTTP, PXE) : les
         # accepter ferait échouer l'écoute HTTPS au prochain démarrage, donc un repli en clair.
@@ -77,6 +81,39 @@ def api_set_settings():
         if data["update_check_scope"] not in SCOPES:
             return jsonify({"error": "update_check_scope : %s" % ", ".join(SCOPES),
                             "key": "update_check_scope"}), 400
+    # L'heure et le jour du contrôle : bornes refusées À LA SAISIE, même motif que ci-dessus.
+    for _cle, _permis in (("update_check_hour", "HOURS"), ("update_check_weekday", "WEEKDAYS")):
+        if _cle not in data:
+            continue
+        from .. import update_watch
+        _vals = getattr(update_watch, _permis)
+        try:
+            data[_cle] = int(data[_cle])
+        except (TypeError, ValueError):
+            data[_cle] = None
+        if data[_cle] not in _vals:
+            return jsonify({"error": "%s : %d..%d" % (_cle, min(_vals), max(_vals)),
+                            "key": _cle}), 400
+    # Envoi d'e-mail du cœur (app/mail.py). `mail_security` est un vocabulaire FERMÉ : une faute
+    # de frappe retomberait sur `starttls` en silence, donc sur une connexion qui n'est pas celle
+    # que l'exploitant croit avoir demandée.
+    if "mail_security" in data:
+        from .. import mail
+        _sec = str(data["mail_security"] or "").strip().lower()
+        if _sec not in mail.SECURITIES:
+            return jsonify({"error": "mail_security : " + " | ".join(mail.SECURITIES),
+                            "key": "mail_security"}), 400
+        data["mail_security"] = _sec
+    for _cle, _lo, _hi in (("mail_port", 1, 65535), ("mail_timeout_s", 1, 120)):
+        if _cle not in data:
+            continue
+        try:
+            _n = int(data[_cle])
+        except (TypeError, ValueError):
+            _n = None
+        if _n is None or not _lo <= _n <= _hi:
+            return jsonify({"error": "%s : %d..%d" % (_cle, _lo, _hi), "key": _cle}), 400
+        data[_cle] = _n
     if "ha_tls_port" in data:
         from .. import pxe, web_mode
         try:
@@ -117,6 +154,52 @@ def api_set_settings():
     # `ignored` = clés absentes de settings.DEFAULTS. Avant, elles étaient jetées en silence et la
     # route répondait ok : un champ d'UI oublié dans DEFAULTS semblait s'enregistrer sans effet.
     return jsonify({"status": "ok", "updated": n, "ignored": ignored})
+
+
+@bp.route("/api/mail/config", methods=["GET"])
+@require_perm("settings.edit")
+def api_mail_config():
+    """Le serveur d'envoi du cœur (app/mail.py), tel que l'onglet Système → E-mail le montre.
+
+    ⚠ Le mot de passe ne sort JAMAIS (suffixe `_password` → expurgé de `settings.public()`).
+    On ne renvoie que `password_set` : sans lui, l'interface afficherait un champ vide et
+    laisserait croire qu'aucun mot de passe n'est enregistré."""
+    from .. import mail
+    from .. import settings as st
+    cfg = mail.server_config()
+    return jsonify({"host": cfg["host"], "port": cfg["port"], "security": cfg["security"],
+                    "username": cfg["username"], "from": cfg["from"],
+                    "timeout_s": cfg["timeout_s"],
+                    "password_set": bool(str(st.get("mail_password", "") or "")),
+                    # D'OÙ viennent ces valeurs : « alerting » = les champs du cœur sont vides et
+                    # on lit ceux du service. L'exploitant doit le savoir avant de s'étonner.
+                    "source": cfg["source"], "missing": mail.missing(cfg)})
+
+
+@bp.route("/api/mail/test", methods=["POST"])
+@require_perm("settings.edit")
+def api_mail_test():
+    """Envoi d'essai SYNCHRONE à l'adresse demandée (à défaut, celle du compte connecté).
+
+    Borné par `mail_timeout_s`. C'est le seul moyen de distinguer « réglages plausibles » de
+    « le serveur accepte nos messages »."""
+    from ..auth import current_user
+    from .. import mail
+    data = request.json or {}
+    dest = mail.split_addrs(data.get("to")) or \
+        mail.split_addrs((current_user() or {}).get("email"))
+    if not dest:
+        return jsonify({"error": "no_address"}), 400
+    gaps = mail.missing()
+    if gaps:
+        return jsonify({"error": "server_missing", "missing": gaps}), 400
+    try:
+        mail.send("[Bobi.Studio] Test", "Essai d'envoi depuis Réglages → Système → E-mail.\n"
+                  "S'il vous parvient, le serveur d'envoi est bon.\n\n— Bobi.Studio", dest)
+    except Exception as e:
+        return jsonify({"error": "send_failed",
+                        "detail": ("%s: %s" % (type(e).__name__, e))[:200]}), 502
+    return jsonify({"ok": True, "to": dest})
 
 
 @bp.route("/api/web-mode", methods=["GET"])
@@ -176,6 +259,14 @@ def api_set_node_settings(node_id):
     if "mxl_history_ms" in clear or "mxl_history_ms" in (data.get("set") or {}):
         from .. import mxl_history
         mxl_history.propagate_async([node_id], reason="setting")
+    # « Dedicated = physical core » turned on or off: the shared containers already running take the
+    # new pool now (`docker update`, no cut), not at their next deployment — otherwise they keep
+    # running on the twins the pool just closed while the agent's guard partition takes them.
+    if "pin_reserve_physical" in clear or "pin_reserve_physical" in (data.get("set") or {}):
+        import threading
+        from .. import core_pool
+        threading.Thread(target=core_pool.reappliquer_partages, args=(node_id,), kwargs={"force": True},
+                         daemon=True, name="reapply-shared-%s" % node_id).start()
     return jsonify({"status": "ok", "updated": n})
 
 @bp.route("/api/settings/logo", methods=["POST"])

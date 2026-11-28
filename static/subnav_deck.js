@@ -7,7 +7,25 @@
 // Position MESURÉE et re-mesurée : la barre change de taille (mode condensé, passage sur deux
 // lignes, chargement des polices, viewport réécrit après coup sur iPad par layout.html). Un calcul
 // unique au chargement serait faux.
+//
+// Same file, second job: the active tab is bold (base.css), which widened it and pushed its
+// neighbours a few pixels at every click. `reserve()` gives each text-only tab a `data-label`, from
+// which base.css draws an invisible bold twin in the same grid cell — the tab keeps its bold width
+// whatever its state. Tabs added later (plugin sections build theirs) are caught by an observer.
 (function () {
+    const TABS = '.subnav-deck > .tab, .navpair-deck > .tab, .navpair-items > .tab';
+    function reserve() {
+        document.querySelectorAll(TABS).forEach(b => {
+            if (b.dataset.label || b.children.length) return;   // done, or richer than a label
+            const txt = b.textContent.trim();
+            if (!txt) return;
+            b.dataset.label = txt;
+            b.textContent = '';
+            const sp = document.createElement('span');
+            sp.textContent = txt;
+            b.appendChild(sp);
+        });
+    }
     function place() {
         const on = document.querySelector('.topnav a.active');
         document.querySelectorAll('.subnav-deck').forEach(deck => {
@@ -42,7 +60,12 @@
         });
     }
     function start() {
+        reserve();
         place();
+        if (window.MutationObserver) {
+            const mo = new window.MutationObserver(reserve);
+            document.querySelectorAll('.subnav-deck, .navpair-deck, .navpair-items').forEach(d => mo.observe(d, { childList: true }));
+        }
         const nav = document.querySelector('.topnav');
         if (window.ResizeObserver) {
             const ro = new ResizeObserver(place);
@@ -53,7 +76,9 @@
         }
         if (document.fonts && document.fonts.ready) document.fonts.ready.then(place);
     }
+    reserve();   // now, on the tabs already parsed: no first paint at the unreserved width
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
     else start();
     window.subnavDeckPlace = place;
+    window.subnavDeckReserve = reserve;
 })();

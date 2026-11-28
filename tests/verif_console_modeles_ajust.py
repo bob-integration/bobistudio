@@ -35,7 +35,7 @@ import tempfile
 _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PLUG = os.path.join(_R, "plugins", "audio_console")
 if not os.path.isfile(os.path.join(_PLUG, "plugin.json")):
-    print("SAUTÉ : plugin audio_console absent")
+    print("SKIP(component): audio_console plugin absent - nothing checked")
     sys.exit(0)
 sys.path.insert(0, os.path.join(_PLUG, "src"))
 sys.path.insert(0, _R)

@@ -8,6 +8,7 @@
 # l'orchestrateur. Ces routes exigent donc `settings.edit`, ne travaillent que sur
 # la LISTE BLANCHE que le catalogue a construite depuis l'organisation configurée,
 # et ne prennent jamais une URL fournie par l'appelant.
+import logging
 import tempfile
 import shutil
 
@@ -148,6 +149,15 @@ def install_plugin_archive(brut, tmp, activer):
             "version_precedente": courante, "activee": activer, "derive": derive}, 200
 
 
+def _reconcile_update_notice():
+    """The update banner must stop offering what was just installed (app/update_watch.py)."""
+    try:
+        from .. import update_watch
+        update_watch.reconcile()
+    except Exception as exc:                     # the install succeeded: never turn it into a 500
+        logging.getLogger(__name__).warning("update notice not reconciled: %s", exc)
+
+
 @bp.route("/api/catalogue/install", methods=["POST"])
 @require_perm("settings.edit")
 def catalogue_installer():
@@ -184,6 +194,7 @@ def catalogue_installer():
     try:
         if e["genre"] == "plugin":
             corps, code = install_plugin_archive(brut, tmp, activer)
+            _reconcile_update_notice()
             return jsonify(corps), code
 
         # ── Service : MÊME chemin que l'import manuel d'un .mxlservice ───────
@@ -210,6 +221,7 @@ def catalogue_installer():
                             "version_courante": courante}), 409
         core_plugins.stamp_imported_at(root)
         core_plugins.install_package(root, activate=activer)
+        _reconcile_update_notice()
         db_add_alert("alert.deploy.service_importe", "info", kind="deploy",
                      params={"id": svc_id, "v": ver,
                              "statut": "installe" if activer else "range"})

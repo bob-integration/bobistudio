@@ -160,10 +160,11 @@ def _slot_bw_mbps(slot):
     bw = (int(v.get("w") or 0) * int(v.get("h") or 0) * float(v.get("fps") or 0) * bpp) / 1e6
     if str(v.get("scan") or "p").lower() == "i":
         bw /= 2.0
-    # Audio 2110-30 : ~9,2 Mb/s par flux (L24/48k, 8 canaux). Le nombre EXACT de canaux par flux n'est
-    # pas porté par le modèle → estimation conservatrice (8ch) pour le garde-fou de lien. Compté même
-    # sur une sortie sans vidéo (audio-seul). ANC 2110-40 = variable/bursty et négligeable → ignoré.
-    bw += int(slot.get("audio_count") or 0) * (48000 * 24 * 8 / 1e6)
+    # Audio 2110-30: PCM payload per flow from `io2110_flows.audio_format` (the layout declares only a
+    # count, so each flow gets the default format: 8 ch L24/48k ≈ 9.2 Mb/s). Counted on an output
+    # without video too (audio-only). ANC 2110-40 = variable/bursty and negligible → ignored.
+    from .io2110_flows import audio_format, audio_payload_mbps
+    bw += int(slot.get("audio_count") or 0) * audio_payload_mbps(audio_format({}))
     return bw
 
 
@@ -612,6 +613,86 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
     return out
 
 
+def _layout_alloc_ctx(node_id, ukey, i, decl, slot, params, total):
+    """Everything `allocate_multicast_for` needs to resolve a NETWORK/INTERFACE-scope range for TX
+    slot `i` of the unit `ukey`, computed exactly as the deploy hook (`plugins/2110_io/hooks.py`)
+    does so both paths give the same address and port for the same slot.
+
+    - `(ifname, media_network_id)` comes from `allocations._egress_iface` fed with the pin of this
+      unit (the canonical ifname is the egress port of the slot, leg 0);
+    - the video format criteria are the ones the layout DECLARES for the slot (it is applied to the
+      slot right after the allocation), falling back to the slot's current values, then to the
+      engine's session values;
+    - base ports follow the rule (`port_default_for`), the per-slot/per-index offset is added on top
+      like the hook does: `+ aidx*2` for audio (FLAT audio index, see `flat_audio_idx`), `+ i*2` ANC.
+
+    Returns a dict consumed by `_alloc_layout_flow`."""
+    from . import allocations as _alloc
+    from . import io2110_flows as _iof
+    ifn, netid = _alloc._egress_iface(node_id, {"tx_pins": {str(i): ukey}}, i, leg=0)
+    v = (decl or {}).get("video") or {}
+    fmt_v = {"scan": v.get("scan") or slot.get("scan") or str(params.get("scan") or "p"),
+             "width": v.get("w") or slot.get("width") or int(params.get("width") or 1920),
+             "height": v.get("h") or slot.get("height") or int(params.get("height") or 1080),
+             "fps": v.get("fps") or slot.get("fps") or float(params.get("fps") or 25)}
+    return {
+        "ifname": ifn or ukey, "media_network_id": netid, "fmt_v": fmt_v,
+        "port_v": _alloc.port_default_for(node_id, ifn, netid, "video", 0, fmt_v, 5000),
+        "port_a": _alloc.port_default_for(node_id, ifn, netid, "audio", 0,
+                                          _iof.audio_format({}, params), 5004),
+        "fmt_a": _iof.audio_format({}, params),
+        "port_d": _alloc.port_default_for(node_id, ifn, netid, "anc", 0, None, 5008),
+        "node_id": node_id,
+    }
+
+
+def flat_audio_idx(params, total, i, ai):
+    """Flat audio flow index of audio `ai` of slot `i`, as `io2110_flows.derive_tx_flows` will
+    number it right after the layout is applied (`i*n_aud_per_tx + ai`, with the structural slot
+    count the layout is about to persist). The hook uses this index for the audio port offset."""
+    from . import docker_driver as _dd
+    n_full = max(_dd._pcount(params, "tx_count", 0), total)
+    n_per = max(1, (int(params.get("audio_count") or 0) // n_full) if n_full else 1)
+    return i * n_per + ai
+
+
+def layout_owner_ref(vmid, slot_i, essence, aidx=0):
+    """Ledger owner ref of a layout-allocated leg-0 flow: the deploy hook's format
+    (`plugins/2110_io/hooks.py`, audio indexed by its FLAT flow index, see `flat_audio_idx`), so the
+    hook's leg-1 allocation finds the leg-0 address it derives from, and a later deployment reuses
+    the same reservation instead of doubling it."""
+    if essence == "audio":
+        return f"tx:{vmid}:{slot_i}:audio:{aidx}:leg0"
+    return f"tx:{vmid}:{slot_i}:{essence}:leg0"
+
+
+def _release_legacy_layout_ref(vmid, slot_i, essence, ai=0):
+    """Release the reservation an older layout made under its own owner ref ('…:layout', audio
+    indexed by its RANK in the slot): the flow is being re-allocated under `layout_owner_ref`, and
+    the old row would otherwise hold a group nobody sends."""
+    from .database import db_release_mcast_owner
+    if essence == "audio":
+        db_release_mcast_owner(f"tx:{vmid}:{slot_i}:audio:{ai}:layout")
+    else:
+        db_release_mcast_owner(f"tx:{vmid}:{slot_i}:{essence}:layout")
+
+
+def _alloc_layout_flow(ctx, essence, owner_ref, slot_i, sub_index=0, aidx=0):
+    """One leg-0 allocation for a layout slot, with the full resolution context (see
+    `_layout_alloc_ctx`). Returns `(ip, port)` or `(None, None)`."""
+    from . import allocations as _alloc
+    if essence == "video":
+        port, fmt = ctx["port_v"], ctx["fmt_v"]
+    elif essence == "audio":
+        port, fmt = ctx["port_a"] + aidx * 2, ctx["fmt_a"]
+    else:
+        port, fmt = ctx["port_d"] + slot_i * 2, None
+    return _alloc.allocate_multicast_for(
+        ctx["node_id"], ctx["ifname"], media_network_id=ctx["media_network_id"],
+        essence=essence, leg=0, port=port, fmt=fmt, owner_ref=owner_ref,
+        slot=slot_i, sub_index=sub_index)
+
+
 def apply_layout(vmid, iface=None, redeploy=False):
     """APPLIQUE les modèles de carte déclarés à un moteur déployé.
 
@@ -634,7 +715,6 @@ def apply_layout(vmid, iface=None, redeploy=False):
     perdue), `infos.redeploy_required` dit si le moteur doit être recréé pour que ça prenne effet."""
     import json as _json
     from .database import db_get_container, db_update_deploy_config, db_add_alert
-    from . import allocations as _alloc
     from . import docker_driver as _dd
 
     c = db_get_container(vmid) or {}
@@ -685,16 +765,17 @@ def apply_layout(vmid, iface=None, redeploy=False):
             i = mine[k]
             decl = slots_decl[k]
             slot = dict(tx_slots[i] or {})
-            # Le multicast est alloué avec l'ifname CANONIQUE de l'unité : une plage déclarée par
-            # interface (`mcast_ranges.ifname`) doit être celle du port qui émet réellement.
-            iface_alloc = ukey
+            # Multicast is allocated with the unit's CANONICAL ifname AND its media network: a range
+            # declared per interface (`mcast_ranges.ifname`) or per network must be the one of the
+            # port that really transmits (same resolution as the deploy hook).
+            actx = _layout_alloc_ctx(node_id, ukey, i, decl, slot, params, total)
             v = decl.get("video") or None
             if v:
                 slot.pop("video_off", None)   # (re)devenu un slot vidéo
                 if not (slot.get("multicast_ip") and slot.get("dest_port")):
-                    mcast, port = _alloc.allocate_multicast_for(
-                        node_id, iface_alloc, essence="video", owner_ref=f"tx:{vmid}:{i}:video:layout",
-                        slot=i)
+                    _release_legacy_layout_ref(vmid, i, "video")
+                    mcast, port = _alloc_layout_flow(
+                        actx, "video", layout_owner_ref(vmid, i, "video"), i)
                     if mcast:
                         slot["multicast_ip"], slot["dest_port"] = mcast, port
                 if v.get("w"):    slot["width"] = int(v["w"])
@@ -710,16 +791,18 @@ def apply_layout(vmid, iface=None, redeploy=False):
                 # ne PAS enregistrer de sender vidéo fantôme sur ce slot.
                 slot["video_off"] = True
                 for _k in ("multicast_ip", "dest_port", "multicast_ip_leg1", "dest_port_leg1",
-                           "width", "height"):
+                           "multicast_ip_manual", "multicast_ip_leg1_manual", "width", "height"):
                     slot.pop(_k, None)
 
             naud = int(decl.get("audio_count") or 0)
             audios = list(slot.get("audios") or [])
             while len(audios) < naud:
                 ai = len(audios)
-                m2, p2 = _alloc.allocate_multicast_for(
-                    node_id, iface_alloc, essence="audio", owner_ref=f"tx:{vmid}:{i}:audio:{ai}:layout",
-                    slot=i, sub_index=ai)
+                aidx = flat_audio_idx(params, total, i, ai)
+                _release_legacy_layout_ref(vmid, i, "audio", ai)
+                m2, p2 = _alloc_layout_flow(
+                    actx, "audio", layout_owner_ref(vmid, i, "audio", aidx), i, sub_index=ai,
+                    aidx=aidx)
                 audios.append({"multicast_ip": m2, "dest_port": p2} if m2 else {})
             # naud == 0 → zéro audio (sortie vidéo seule) : troncature stricte, jamais de repli sur la liste
             # existante (cf. même correctif dans preview_layout_params).
@@ -727,16 +810,17 @@ def apply_layout(vmid, iface=None, redeploy=False):
 
             if decl.get("anc"):
                 if not (slot.get("anc_multicast_ip") and slot.get("anc_dest_port")):
-                    m3, p3 = _alloc.allocate_multicast_for(
-                        node_id, iface_alloc, essence="anc", owner_ref=f"tx:{vmid}:{i}:anc:layout",
-                        slot=i)
+                    _release_legacy_layout_ref(vmid, i, "anc")
+                    m3, p3 = _alloc_layout_flow(
+                        actx, "anc", layout_owner_ref(vmid, i, "anc"), i)
                     if m3:
                         slot["anc_multicast_ip"], slot["anc_dest_port"] = m3, p3
             else:
                 # ANC désactivée dans le modèle → retirer la destination ANC (sinon la session ANC restait
                 # provisionnée : symétrique du bug audio ci-dessus, « je mets 0 ANC et il en crée quand même »).
-                for _k in ("anc_multicast_ip", "anc_dest_port",
-                           "anc_multicast_ip_leg1", "anc_dest_port_leg1"):
+                for _k in ("anc_multicast_ip", "anc_dest_port", "anc_multicast_ip_leg1",
+                           "anc_dest_port_leg1", "anc_multicast_ip_manual",
+                           "anc_multicast_ip_leg1_manual"):
                     slot.pop(_k, None)
 
             tx_slots[i] = slot

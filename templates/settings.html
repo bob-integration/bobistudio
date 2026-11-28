@@ -68,12 +68,14 @@
     <button class="tab" id="set-tab-btn-alarmes" onclick="switchSetTab('alarmes')">{{ _('settings.tab.alarms') }}</button>
     <button class="tab" id="set-tab-btn-src_alarmes" onclick="switchSetTab('src_alarmes')">{{ _('settings.tab.src_alarms') }}</button>
     {% if has_perm('settings.edit') %}
+    <button class="tab"        id="set-tab-btn-mail" onclick="switchSetTab('mail')">{{ _('settings.tab.mail') }}</button>
     <button class="tab"        id="set-tab-btn-journalisation" onclick="switchSetTab('journalisation')">{{ _('settings.tab.journalisation') }}</button>
     <button class="tab"        id="set-tab-btn-plugins"   onclick="switchSetTab('plugins')">Plugins</button>
     <button class="tab"        id="set-tab-btn-catalogue" onclick="switchSetTab('catalogue')">{{ _('catalogue.title') }}</button>
     <button class="tab"        id="set-tab-btn-recette"   onclick="switchSetTab('recette')">{{ _('recette.title') }}</button>
     <button class="tab"        id="set-tab-btn-securite"  onclick="switchSetTab('securite')">{{ _('settings.tab.securite') }}</button>
     <button class="tab"        id="set-tab-btn-acces_publics" onclick="switchSetTab('acces_publics')">{{ _('settings.tab.public_access') }}</button>
+    <button class="tab"        id="set-tab-btn-report" onclick="switchSetTab('report')">{{ _('settings.tab.report') }}</button>
     {% endif %}
     {% if has_perm('containers.delete') %}
     <button class="tab"        id="set-tab-btn-raz"       onclick="switchSetTab('raz')" style="margin-left:auto; color:var(--status-error-fg)">RAZ</button>
@@ -155,19 +157,6 @@ document.querySelectorAll('.navpair-deck > .tab, .navpair-items > .tab').forEach
             <div class="meta" style="margin-top:var(--space-2)">{{ _('settings.doc.plan_management_ci_dessus_informatif_ou_')|safe }}</div>
             <!-- Patte de l'orchestrateur sur le plan conteneurs : provisionnée par l'OPÉRATEUR, vérifiée ici. -->
             <div id="orch-leg-status" class="meta" style="margin-top:var(--space-2)">{{ _('settings.loading') }}</div>
-        </div>
-    </div>
-
-    <h2>Pool multicast 2110</h2>
-    <div class="form">
-        <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.doc.plage_de_groupes_multicast_allouee_par_l')|safe }}</div>
-        <div class="row">
-            <div class="field"><label for="s_mcast_pool_base">Base</label>
-                <input type="text" id="s_mcast_pool_base" placeholder="239.100.0.0"></div>
-            <div class="field"><label for="s_mcast_pool_size">{{ _('settings.doc.nb_de_groupes')|safe }}</label>
-                <input type="number" id="s_mcast_pool_size" min="1"></div>
-            <div class="field"><label for="s_mcast_port_default">{{ _('settings.st.default_port') }}</label>
-                <input type="number" id="s_mcast_port_default" min="1" max="65535"></div>
         </div>
     </div>
 
@@ -295,101 +284,185 @@ document.querySelectorAll('.navpair-deck > .tab, .navpair-items > .tab').forEach
 
 </div>
 
+<style>
+.set-search { position: relative; margin-left: auto; }
+.set-search input { width: 220px; max-width: 60vw; }
+.set-search-results { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50; width: min(420px, 90vw);
+    max-height: 60vh; overflow-y: auto; background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0,0,0,.35); padding: 4px; }
+.set-search-results button { display: block; width: 100%; text-align: left; background: none; border: 0;
+    padding: 6px 8px; border-radius: var(--radius-small); color: var(--text); cursor: pointer; }
+.set-search-results button:hover, .set-search-results button.on { background: var(--bg-input); }
+.set-search-results .where { display: block; font-size: 0.8em; color: var(--text-muted); }
+.set-search-results .none { padding: 6px 8px; color: var(--text-muted); }
+.set-search-hit { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+/* Éditeur de plans multicast (Réglages → Multicast). Rouge/bleu = mêmes teintes que les puces de paire du
+   volet Réseau ; la lettre et le nom d'interface sont toujours écrits (jamais la couleur seule). */
+.mp-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.mp-table th, .mp-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+.mp-editor { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); background: var(--bg-elev); margin-bottom: var(--space-4); }
+.mp-editor[hidden] { display: none; }
+.mp-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin-bottom: var(--space-3); }
+.mp-fabrics { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.mp-fab { flex: 1 1 220px; max-width: 360px; border: 2px solid var(--fab); border-radius: var(--radius);
+    background: color-mix(in srgb, var(--fab) 12%, transparent); padding: var(--space-3); }
+.mp-fab-head { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+.mp-fab-letter { display: inline-flex; align-items: center; justify-content: center; width: 1.8em; height: 1.8em;
+    border-radius: 50%; background: var(--fab); color: #fff; font-weight: 700; }
+.mp-fab-if { font-family: var(--font-mono); }
+.mp-fab-col { margin-left: auto; font-size: 0.8em; color: var(--fab); font-weight: 600; text-transform: uppercase; }
+.mp-rule-mid { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; }
+.mp-rule-btn { min-width: 220px; text-align: center; }
+/* Rule still to choose: same warning colour as a line typed by hand. */
+.mp-rule-btn.is-pending { color: var(--status-warning-fg); border-color: var(--status-warning-fg); }
+.mp-line { border: 1px solid var(--border); border-radius: var(--radius-small, 6px); padding: var(--space-2); margin-bottom: var(--space-2);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); align-items: start; }
+/* The remove button stays top-right of its line instead of wrapping alone onto a row of its own. */
+.mp-line > .mp-offsets-d { grid-column: 1 / -1; }
+.mp-line > .mp-fieldcol > label { height: 1.3em; line-height: 1.3em; margin: 0 0 4px; }
+.mp-line > .mp-fieldcol > .btn { height: 34px; box-sizing: border-box; margin: 0; }
+.mp-line-main { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
+/* A line is four unbreakable groups: type + format, range A + its notation, B + how it follows,
+   ports + free/capacity. A line too wide for one row breaks BETWEEN groups only, so the ports
+   and free/capacity move together and no column is ever left alone on a row. */
+.mp-grp { display: flex; flex-wrap: nowrap; gap: var(--space-2); align-items: flex-start; flex: 0 0 auto; }
+.mp-line .mp-port.is-invalid { border-color: var(--status-error-fg); }
+.mp-ports-hint { margin: 0 0 var(--space-2); }
+.mp-st.mp-st-full { color: var(--status-error-fg); border-color: var(--status-error-fg); font-weight: 700; }
+.mp-short { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--status-error-fg);
+    border-radius: var(--radius-small, 6px); background: var(--status-stopped-bg); font-weight: 600; }
+.mp-short-info { margin: 0 0 var(--space-2); }
+.mp-inactive-d { margin-top: var(--space-3); }
+.mp-st.mp-st-outside { color: var(--status-error-fg); border-color: var(--status-error-fg); font-weight: 700; }
+.mp-st.mp-st-full.is-info, .mp-st.mp-st-outside.is-info { color: var(--text-muted); border-color: var(--border); font-weight: 400; }
+/* Active and folded tables share their column widths, so the two read as one list. */
+#mp-given .mp-table { table-layout: fixed; }
+.mp-inactive-d > summary { cursor: pointer; min-height: 34px; display: flex; align-items: center; gap: 6px; list-style: none; }
+.mp-inactive-d > summary::-webkit-details-marker { display: none; }
+.mp-inactive-d > summary::before { content: '▸'; }
+.mp-inactive-d[open] > summary::before { content: '▾'; }
+.mp-pool { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-start; margin-bottom: var(--space-4); }
+.mp-pool .mp-fieldcol > label { height: 1.3em; line-height: 1.3em; margin: 0 0 4px; white-space: nowrap; }
+.mp-pool .ctl-input, .mp-pool .btn { height: 34px; box-sizing: border-box; margin: 0; }
+.mp-pool .mp-cidr { width: 170px; font-family: var(--font-mono); }
+.mp-pool .mp-pool-n { width: 120px; }
+.mp-pool > .meta { align-self: center; margin-top: 1.3em; }
+.mp-line .mp-cidr { width: 170px; font-family: var(--font-mono); }
+.mp-line .mp-port { width: 84px; }
+.mp-fieldcol { display: flex; flex-direction: column; gap: 2px; }
+.mp-fieldcol > label { font-size: 0.78em; color: var(--text-muted); }
+.mp-line .mp-cidr-wide { width: 250px; }
+.mp-line .mp-ip { width: 130px; font-family: var(--font-mono); }
+.mp-span { display: flex; align-items: center; gap: 4px; }
+.mp-span > .meta { margin: 0; line-height: 34px; }
+.mp-span-btn { width: 150px; text-align: center; font-size: 0.85em; }
+.mp-range-info { font-size: 0.78em; font-family: var(--font-mono); min-height: 1.2em; }
+/* The read-out never sets its column's width (typing used to push the next controls sideways):
+   it wraps inside the width of the field above it. */
+.mp-fieldcol > .mp-range-info { width: 0; min-width: 100%; margin-top: 2px; }
+.mp-line-main { align-items: flex-start; }
+.mp-line-main .mp-fieldcol > label { height: 1.3em; line-height: 1.3em; margin: 0 0 4px; white-space: nowrap; }
+.mp-line-main .ctl-input, .mp-line-main .btn, .mp-row .ctl-input { height: 34px; box-sizing: border-box; }
+.mp-row { align-items: flex-start; }
+.mp-row .mp-fieldcol > label { height: 1.3em; line-height: 1.3em; margin: 0 0 4px; white-space: nowrap; }
+/* The switch is shorter than a field: centred on the 34 px line of its neighbours. */
+.mp-row .ios-toggle { margin: 7px 0; }
+.mp-line-main .btn { display: inline-flex; align-items: center; justify-content: center; padding-top: 0; padding-bottom: 0; margin: 0; }
+.mp-line .mp-x { width: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.mp-cap { line-height: 34px; white-space: nowrap; }
+.mp-follow { width: 130px; font-size: 0.85em; }
+.mp-follow.is-manual { color: var(--status-warning-fg); border-color: var(--status-warning-fg); }
+.mp-b-ro { background: var(--status-unknown-bg); }
+.mp-offsets { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.mp-offsets .ctl-input { height: 34px; box-sizing: border-box; }
+.mp-offsets-d > summary { cursor: pointer; min-height: 34px; display: flex; align-items: center; gap: 6px; }
+.mp-offsets-d > summary::before { content: '▸'; }
+.mp-offsets-d[open] > summary::before { content: '▾'; }
+.mp-offsets-d > summary::-webkit-details-marker { display: none; }
+.mp-offsets-d > summary { list-style: none; }
+.mp-given { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.mp-st { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.8em; border: 1px solid var(--border); white-space: nowrap; }
+.mp-st-move, .mp-st-new, .mp-st-manual { color: var(--status-warning-fg); border-color: var(--status-warning-fg); }
+.mp-st-unmatched { color: var(--status-error-fg); border-color: var(--status-error-fg); font-weight: 700; }
+/* A flow no line covers would be refused at deploy: the whole row stands out, not only its badge. */
+.mp-table tr.mp-row-unmatched > td { background: var(--status-stopped-bg); }
+.mp-warn { color: var(--status-warning-fg); }
+.mp-err { color: var(--status-error-fg); }
+.mp-rule-opt { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.mp-rule-args { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* The global `label` style is a field caption (small, muted): here the labels ARE the choices. */
+.mp-rule-opt > label { font-size: 0.92em; color: var(--text); margin: 0; cursor: pointer; }
+.mp-rule-opt { min-height: 34px; }
+.mp-rule-args label { margin: 0; white-space: nowrap; }
+.mp-rule-args .ctl-input { height: 34px; box-sizing: border-box; }
+/* The global stepper takes the full width of its parent: here a short signed number. */
+.mp-rule-args .num-stepper { width: auto; }
+.mp-rule-args .num-stepper input { width: 64px; flex: 0 0 64px; }
+.mp-legacy > summary { cursor: pointer; font-weight: 600; padding: var(--space-2) 0; }
+</style>
 <!-- ═══ Onglet Multicast (groupe « Cluster & Réseau ») ═══════════ -->
 <div id="set-tab-mcast" class="set-tab-content" style="display:none">
     <div class="meta" style="margin-bottom:var(--space-3)">
         {{ _('settings.mcast.intro') }}
     </div>
 
-    <h2>{{ _('settings.mcast.pool_global') }}</h2>
-    <div class="meta" style="margin-bottom:var(--space-2)">
-        {{ _('settings.mcast.pool_global_hint') }}
-        (<a href="javascript:void(0)" onclick="switchSetTab('proxmox')">{{ _('settings.tab.cluster') }}</a>)
+    <!-- Global pool: the default addresses, used where no plan applies. Saved on its own (button
+         below), not with the Cluster form: these three settings live on this tab only. -->
+    <h2>{{ _('settings.mcast.pool_title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.mcast.pool_hint') }}</div>
+    <div class="mp-pool">
+        <div class="mp-fieldcol"><label for="s_mcast_pool_base">{{ _('settings.mcast.pool_base') }}</label>
+            <input type="text" class="ctl-input mp-cidr" id="s_mcast_pool_base" oninput="McastPool.refresh()">
+            <span class="meta mp-range-info" id="mp_pool_info"></span></div>
+        <div class="mp-fieldcol"><label for="s_mcast_pool_size">{{ _('settings.mcast.pool_size') }}</label>
+            <input type="number" class="ctl-input mp-pool-n" id="s_mcast_pool_size" min="2" oninput="McastPool.refresh()"></div>
+        <div class="mp-fieldcol"><label for="s_mcast_port_default">{{ _('settings.mcast.pool_port') }}</label>
+            <input type="number" class="ctl-input mp-pool-n" id="s_mcast_port_default" min="1" max="65535" oninput="McastPool.refresh()"></div>
+        <div class="mp-fieldcol"><label>&nbsp;</label>
+            <button type="button" class="btn btn-green" id="mp-pool-save" onclick="McastPool.save()">{{ _('settings.mcast.pool_save') }}</button></div>
+        <span id="mp-pool-msg" class="meta" role="status"></span>
     </div>
 
-    <h2>{{ _('settings.mcast.rules') }}</h2>
-    <div class="meta palette-hint" style="margin-bottom:var(--space-3)">{{ _('settings.mcast.rules_hint') }}</div>
-    <div id="mcast-ranges-table"><span class="meta">{{ _('settings.loading') }}</span></div>
+    <h2>{{ _('settings.mcast.plans_title') }}</h2>
+    <div class="meta palette-hint" style="margin-bottom:var(--space-3)">{{ _('settings.mcast.plans_hint') }}</div>
+    <div id="mp-list"><span class="meta">{{ _('settings.loading') }}</span></div>
+    <div style="margin:var(--space-3) 0">
+        <button type="button" class="btn btn-green" id="mp-new-btn" onclick="McastPlans.startNew()">{{ _('settings.mcast.plan_new') }}</button>
+    </div>
+    <div id="mp-editor" class="mp-editor" hidden></div>
 
-    <h2 style="margin-top:var(--space-4)" id="mcast-form-title">{{ _('settings.mcast.add_rule') }}</h2>
-    <div class="form">
-        <div class="row">
-            <div class="field"><label>{{ _('settings.mcast.f_scope') }}</label>
-                <select id="mc_scope" onchange="McastRanges.onScopeChange()">
-                    <option value="network">{{ _('settings.mcast.scope_network') }}</option>
-                    <option value="interface">{{ _('settings.mcast.scope_interface') }}</option>
-                </select></div>
-            <div class="field" id="mc_network_field"><label>{{ _('settings.mcast.f_network') }}</label>
-                <select id="mc_network"></select></div>
-            <div class="field" id="mc_node_field" style="display:none"><label>{{ _('settings.mcast.f_node') }}</label>
-                <select id="mc_node" onchange="McastRanges.onNodeChange()"></select></div>
-            <div class="field" id="mc_iface_field" style="display:none"><label>{{ _('settings.mcast.f_iface') }}</label>
-                <select id="mc_iface"></select></div>
+    <dialog id="mp-rule-dlg" class="modal-card" aria-labelledby="mp-rule-t">
+        <h2 id="mp-rule-t">{{ _('settings.mcast.rule_title') }}</h2>
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.mcast.rule_help') }}</div>
+        <div class="mp-rule-opt">
+            <input type="radio" name="mp_rule_mode" id="mp_rule_octet" value="octet">
+            <label for="mp_rule_octet">{{ _('settings.mcast.rule_octet') }}</label>
+            <span class="mp-rule-args" onpointerdown="McastPlans.rulePickOctet()" onfocusin="McastPlans.rulePickOctet()">
+                <label for="mp_rule_oct_n" class="meta">{{ _('settings.mcast.rule_octet_n') }}</label>
+                <select class="ctl-input" id="mp_rule_oct_n"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+                <label for="mp_rule_delta" class="meta">{{ _('settings.mcast.rule_delta') }}</label>
+                <input class="ctl-input" id="mp_rule_delta" type="number" min="-255" max="255" value="100">
+            </span>
         </div>
-        <div class="row">
-            <div class="field"><label>{{ _('settings.mcast.f_essence') }}</label>
-                <select id="mc_essence" onchange="McastRanges.onEssenceChange()">
-                    <option value="">{{ _('settings.mcast.essence_all') }}</option>
-                    <option value="video">{{ _('settings.mcast.essence_video') }}</option>
-                    <option value="audio">{{ _('settings.mcast.essence_audio') }}</option>
-                    <option value="anc">{{ _('settings.mcast.essence_anc') }}</option>
-                </select></div>
-            <div class="field"><label>{{ _('settings.mcast.f_leg') }}</label>
-                <select id="mc_leg">
-                    <option value="">{{ _('settings.mcast.leg_both') }}</option>
-                    <option value="0">0 (red)</option>
-                    <option value="1">1 (blue, 2022-7)</option>
-                </select></div>
+        <div class="mp-rule-opt">
+            <input type="radio" name="mp_rule_mode" id="mp_rule_same" value="same">
+            <label for="mp_rule_same">{{ _('settings.mcast.rule_same') }}</label>
         </div>
-        <div class="row" id="mc_fmt_video_row" style="display:none">
-            <div class="field"><label>{{ _('settings.mcast.f_scan') }}</label>
-                <select id="mc_fmt_scan"><option value="">{{ _('settings.mcast.any') }}</option>
-                    <option value="p">p</option><option value="i">i</option></select></div>
-            <div class="field"><label>{{ _('settings.mcast.f_resolution') }}</label>
-                <input id="mc_fmt_width" type="number" min="0" placeholder="1920" style="width:90px">
-                × <input id="mc_fmt_height" type="number" min="0" placeholder="1080" style="width:90px"></div>
-            <div class="field"><label>{{ _('settings.mcast.f_fps') }}</label>
-                <input id="mc_fmt_fps" type="number" min="0" step="0.01" placeholder="{{ _('settings.mcast.any') }}" style="width:90px"></div>
+        <div class="mp-rule-opt">
+            <input type="radio" name="mp_rule_mode" id="mp_rule_none" value="none">
+            <label for="mp_rule_none">{{ _('settings.mcast.rule_none') }}</label>
         </div>
-        <div class="row" id="mc_fmt_audio_row" style="display:none">
-            <div class="field"><label>{{ _('settings.mcast.f_channels') }}</label>
-                <select id="mc_fmt_channels"><option value="">{{ _('settings.mcast.any') }}</option>
-                    <option value="2">2</option><option value="8">8</option></select></div>
+        <div id="mp-rule-err" class="meta mp-err" role="alert"></div>
+        <div class="row" style="justify-content:flex-end; gap:var(--space-2); margin-top:var(--space-3)">
+            <button type="button" class="btn" onclick="document.getElementById('mp-rule-dlg').close()">{{ _('settings.mcast.cancel') }}</button>
+            <button type="button" class="btn btn-green" onclick="McastPlans.ruleDlgApply()">{{ _('settings.mcast.rule_apply') }}</button>
         </div>
-        <div class="row">
-            <div class="field"><label>{{ _('settings.mcast.f_cidr') }}</label>
-                <input id="mc_cidr" type="text" placeholder="239.10.30.0/24" class="wide"
-                       oninput="McastRanges.onCidrChange()"></div>
-            <div class="field"><label>{{ _('settings.mcast.f_label') }}</label>
-                <input id="mc_label" type="text" class="wide"></div>
-        </div>
-        <div class="row">
-            <div class="meta" id="mc_cidr_preview" style="align-self:center"></div>
-        </div>
-        <div class="row" id="mc_port_all_row">
-            <div class="field" id="mc_port_video_field"><label>{{ _('settings.mcast.f_port_video') }}</label>
-                <input id="mc_port_video" type="number" min="1" max="65535" placeholder="5000" style="width:100px"></div>
-            <div class="field" id="mc_port_audio_field"><label>{{ _('settings.mcast.f_port_audio') }}</label>
-                <input id="mc_port_audio" type="number" min="1" max="65535" placeholder="5004" style="width:100px"></div>
-            <div class="field" id="mc_port_anc_field"><label>{{ _('settings.mcast.f_port_anc') }}</label>
-                <input id="mc_port_anc" type="number" min="1" max="65535" placeholder="5008" style="width:100px"></div>
-        </div>
-        <div class="meta" style="margin-top:var(--space-3)">{{ _('settings.mcast.plan_help') }}</div>
-        <div class="row" id="mc_plan_row">
-            <div class="field"><label>{{ _('settings.mcast.f_off_video') }}</label>
-                <input id="mc_off_video" type="number" min="0" max="65535" placeholder="0" style="width:100px"></div>
-            <div class="field"><label>{{ _('settings.mcast.f_off_anc') }}</label>
-                <input id="mc_off_anc" type="number" min="0" max="65535" placeholder="50" style="width:100px"></div>
-            <div class="field"><label>{{ _('settings.mcast.f_off_audio') }}</label>
-                <input id="mc_off_audio" type="number" min="0" max="65535" placeholder="100" style="width:100px"></div>
-            <div class="field"><label>{{ _('settings.mcast.f_step_audio') }}</label>
-                <input id="mc_step_audio" type="number" min="1" max="65535" placeholder="100" style="width:100px"></div>
-        </div>
-        <div style="margin-top:var(--space-3); display:flex; gap:var(--space-2)">
-            <button class="btn btn-green" onclick="McastRanges.submit()">{{ _('settings.mcast.save_rule') }}</button>
-            <button class="btn" id="mc_cancel_btn" style="display:none" onclick="McastRanges.cancelEdit()">{{ _('settings.mcast.cancel') }}</button>
-            <span id="mcast-save-result" class="meta" style="align-self:center"></span>
-        </div>
+    </dialog>
+
+    <div id="mcast-legacy" style="display:none; margin-top:var(--space-4)">
+    <h2>{{ _('settings.mcast.legacy_title') }}</h2>
+    <div class="meta palette-hint" style="margin-bottom:var(--space-3)">{{ _('settings.mcast.legacy_hint') }}</div>
+    <div id="mcast-ranges-table"></div>
     </div>
 </div>
 
@@ -568,6 +641,10 @@ async function fontDelete(f) {
 
     <h2>{{ _('settings.cluster.pinned_containers') }}</h2>
     <div id="cpu_containers_table" class="meta">—</div>
+
+    <h2 style="margin-top:var(--space-6)">{{ _('settings.cpu_mem.title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.cpu_mem.intro') }}</div>
+    <div id="cpu_mem_plugins" class="meta">—</div>
 
     <h2 style="margin-top:var(--space-6)">{{ _('settings.cpu_alerts.title') }}</h2>
     <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.cpu_alerts.intro') }}</div>
@@ -951,6 +1028,7 @@ async function fontDelete(f) {
             <div class="field" style="min-width:min(340px,100%)">
                 <label for="s_pwd_profil">{{ _('settings.securite.pwd_profil') }}</label>
                 <select id="s_pwd_profil" onchange="pwdProfilEnregistrer()">
+                    <option value="aucune">{{ _('settings.securite.pwd_aucune') }}</option>
                     <option value="souple">{{ _('settings.securite.pwd_souple') }}</option>
                     <option value="standard">{{ _('settings.securite.pwd_standard') }}</option>
                     <option value="stricte">{{ _('settings.securite.pwd_stricte') }}</option>
@@ -1130,6 +1208,58 @@ async function fontDelete(f) {
         <div class="identity-actions">
             <button class="btn btn-green" type="button" onclick="enregistrerSettingsBranding()">{{ _('settings.branding.save') }}</button>
             <span id="save-brand-result" class="meta"></span>
+        </div>
+    </div>
+
+    {# STARTUP SPLASH (2026-11-24) : what an output shows while its plugin opens the inputs. One
+       setting for the cluster, only the name differs per container — cf. app/splash.py. #}
+    <h2>{{ _('settings.splash.title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.splash.intro') }}</div>
+    <div class="form splash-form">
+        <div class="splash-layout">
+            <div class="splash-fields">
+                <div class="identity-field">
+                    <label>{{ _('settings.splash.enabled') }}</label>
+                    <button type="button" id="s_splash_enabled" class="ctl-push ctl-push--led" role="switch"
+                            aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') !== 'true'); apercuSplash()">{{ _('settings.splash.enabled_on') }}</button>
+                </div>
+                <div class="identity-field">
+                    <label for="s_splash_bg">{{ _('settings.splash.bg') }}</label>
+                    <input type="color" id="s_splash_bg" class="ctl-color" value="#000000" oninput="apercuSplash()">
+                </div>
+                <div class="identity-field">
+                    <label for="s_splash_logo_pct">{{ _('settings.splash.logo_pct') }}</label>
+                    <input type="number" id="s_splash_logo_pct" min="0" max="90" step="1" value="25" oninput="apercuSplash()">
+                    <p class="identity-hint">{{ _('settings.splash.logo_pct_help') }}</p>
+                </div>
+                <div class="identity-field">
+                    <label for="s_splash_text">{{ _('settings.splash.text') }}</label>
+                    <select id="s_splash_text" onchange="apercuSplash()">
+                        <option value="none">{{ _('settings.splash.text_none') }}</option>
+                        <option value="name">{{ _('settings.splash.text_name') }}</option>
+                        <option value="custom">{{ _('settings.splash.text_custom') }}</option>
+                    </select>
+                    <input type="text" id="s_splash_text_custom" class="identity-input" maxlength="120"
+                           placeholder="{{ _('settings.splash.text_custom_ph') }}" oninput="apercuSplash()">
+                </div>
+                <div class="identity-field">
+                    <label for="s_splash_text_pct">{{ _('settings.splash.text_pct') }}</label>
+                    <input type="number" id="s_splash_text_pct" min="1" max="30" step="1" value="5" oninput="apercuSplash()">
+                </div>
+                <div class="identity-field">
+                    <label for="s_splash_text_color">{{ _('settings.splash.text_color') }}</label>
+                    <input type="color" id="s_splash_text_color" class="ctl-color" value="#ffffff" oninput="apercuSplash()">
+                </div>
+            </div>
+            <div class="splash-preview-wrap">
+                <canvas id="splash-preview" width="640" height="360" aria-label="{{ _('settings.splash.preview') }}"></canvas>
+                <p class="identity-hint">{{ _('settings.splash.preview_help') }}</p>
+            </div>
+        </div>
+        <p class="identity-hint">{{ _('settings.splash.applies') }}</p>
+        <div class="identity-actions">
+            <button class="btn btn-green" type="button" onclick="enregistrerSplash()">{{ _('settings.splash.save') }}</button>
+            <span id="save-splash-result" class="meta"></span>
         </div>
     </div>
 </div>
@@ -1885,6 +2015,59 @@ async function fontDelete(f) {
 
 <!-- ═══ Onglet Journalisation (groupe « Système ») ═══════════════ -->
 {% if has_perm('settings.edit') %}
+<div id="set-tab-mail" class="set-tab-content" style="display:none">
+    <h2>{{ _('settings.mail.title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-4)">{{ _('settings.mail.lead') }}</div>
+    <div class="form">
+      <div class="row" style="gap:var(--space-3); flex-wrap:wrap; align-items:flex-end">
+        <div class="field" style="min-width:260px">
+          <label for="s_mail_host">{{ _('settings.mail.host') }}</label>
+          <input type="text" id="s_mail_host" class="wide" placeholder="smtp.exemple.fr">
+        </div>
+        <div class="field" style="max-width:110px">
+          <label for="s_mail_port">{{ _('settings.mail.port') }}</label>
+          <input type="number" id="s_mail_port" min="1" max="65535">
+        </div>
+        <div class="field" style="max-width:180px">
+          <label for="s_mail_security">{{ _('settings.mail.security') }}</label>
+          <select id="s_mail_security">
+            <option value="none">{{ _('settings.mail.sec_none') }}</option>
+            <option value="starttls">{{ _('settings.mail.sec_starttls') }}</option>
+            <option value="ssl">{{ _('settings.mail.sec_ssl') }}</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:140px">
+          <label for="s_mail_timeout_s">{{ _('settings.mail.timeout') }}</label>
+          <input type="number" id="s_mail_timeout_s" min="1" max="120">
+        </div>
+      </div>
+      <div class="row" style="gap:var(--space-3); flex-wrap:wrap; align-items:flex-end; margin-top:var(--space-3)">
+        <div class="field" style="min-width:220px">
+          <label for="s_mail_username">{{ _('settings.mail.username') }}</label>
+          <input type="text" id="s_mail_username" class="wide" autocomplete="off">
+        </div>
+        <div class="field" style="min-width:220px">
+          <label for="s_mail_password">{{ _('settings.mail.password') }}</label>
+          <input type="password" id="s_mail_password" class="wide" autocomplete="new-password">
+        </div>
+        <div class="field" style="min-width:240px">
+          <label for="s_mail_from">{{ _('settings.mail.from') }}</label>
+          <input type="email" id="s_mail_from" class="wide" placeholder="bobistudio@exemple.fr">
+        </div>
+      </div>
+      <div class="meta" id="mail-pwd-note" style="margin-top:var(--space-2); display:none">{{ _('settings.mail.password_set') }}</div>
+      <div class="row" style="margin-top:var(--space-3); align-items:center; gap:var(--space-2); flex-wrap:wrap">
+        <button class="btn btn-blue" onclick="mailEnregistrer()">{{ _('settings.mail.save') }}</button>
+        <div class="field" style="max-width:260px">
+          <label for="mail-test-to">{{ _('settings.mail.test_to') }}</label>
+          <input type="email" id="mail-test-to" class="wide">
+        </div>
+        <button class="btn" onclick="mailEssai()">{{ _('settings.mail.test') }}</button>
+        <span id="mail-etat" class="meta" role="status"></span>
+      </div>
+    </div>
+</div>
+
 <div id="set-tab-journalisation" class="set-tab-content" style="display:none">
     <h2>{{ _('settings.jrn.title') }}</h2>
     <div class="meta" style="margin-bottom:var(--space-4)">{{ _('settings.jrn.intro') }}</div>
@@ -2149,6 +2332,52 @@ async function fontDelete(f) {
         </div>
     </div>
 
+    <!-- Internal image registry (app/registry.py, Zot): build once, nodes pull by digest. -->
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:var(--space-3); margin-bottom:var(--space-4)">
+        <h3 style="margin-top:0">{{ _('settings.registry.title') }}</h3>
+        <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.registry.intro') }}</div>
+        <div id="reg-status" class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.loading') }}</div>
+        <div class="row" style="align-items:center; gap:var(--space-2); margin-bottom:var(--space-2)">
+            <label><input type="checkbox" id="reg_enabled"> {{ _('settings.registry.enabled') }}</label>
+        </div>
+        <div class="row" style="gap:var(--space-3); flex-wrap:wrap; margin-bottom:var(--space-2)">
+            <div class="field"><label for="reg_kind">{{ _('settings.registry.kind') }}</label>
+                <select id="reg_kind" class="ctl-input" onchange="registreFormulaire()">
+                    <option value="dedicated">{{ _('settings.registry.kind_dedicated') }}</option>
+                    <option value="nfs">{{ _('settings.registry.kind_nfs') }}</option>
+                    <option value="system">{{ _('settings.registry.kind_system') }}</option>
+                    <option value="s3">{{ _('settings.registry.kind_s3') }}</option>
+                </select></div>
+            <div class="field reg-path"><label for="reg_path">{{ _('settings.registry.path') }}</label>
+                <input type="text" id="reg_path" class="ctl-input" placeholder="/srv/bobi-registry" style="min-width:260px"></div>
+            <div class="field"><label for="reg_port">{{ _('settings.registry.port') }}</label>
+                <input type="number" id="reg_port" class="ctl-input" min="1024" max="65535" style="width:90px"></div>
+            <div class="field"><label for="reg_host">{{ _('settings.registry.host') }}</label>
+                <input type="text" id="reg_host" class="ctl-input" style="width:150px"></div>
+        </div>
+        <div class="row reg-s3" style="gap:var(--space-3); flex-wrap:wrap; margin-bottom:var(--space-2)">
+            <div class="field"><label for="reg_s3_endpoint">{{ _('settings.registry.s3_endpoint') }}</label>
+                <input type="text" id="reg_s3_endpoint" class="ctl-input" placeholder="https://minio:9000"></div>
+            <div class="field"><label for="reg_s3_bucket">{{ _('settings.registry.s3_bucket') }}</label>
+                <input type="text" id="reg_s3_bucket" class="ctl-input"></div>
+            <div class="field"><label for="reg_s3_region">{{ _('settings.registry.s3_region') }}</label>
+                <input type="text" id="reg_s3_region" class="ctl-input" style="width:110px"></div>
+            <div class="field"><label for="reg_s3_access_key">{{ _('settings.registry.s3_access_key') }}</label>
+                <input type="text" id="reg_s3_access_key" class="ctl-input"></div>
+            <div class="field"><label for="reg_s3_secret">{{ _('settings.registry.s3_secret') }}</label>
+                <input type="password" id="reg_s3_secret" class="ctl-input" autocomplete="new-password"></div>
+        </div>
+        <div class="meta" id="reg-kind-help" style="margin-bottom:var(--space-2)"></div>
+        <div class="row" style="align-items:center; gap:var(--space-3)">
+            <button class="btn btn-blue" onclick="registreEnregistrer()">{{ _('settings.registry.apply') }}</button>
+            <button class="btn" onclick="registreEmpreintes()">{{ _('settings.registry.check_digests') }}</button>
+            <button class="btn" onclick="registreVersions()">{{ _('settings.registry.versions') }}</button>
+            <span id="reg-msg" class="meta" role="status"></span>
+        </div>
+        <div id="reg-digests" class="meta" style="margin-top:var(--space-2)"></div>
+        <div id="reg-versions" class="meta" style="margin-top:var(--space-2)"></div>
+    </div>
+
     <!-- ── Matrice des images par nœud : dépôt / présentes / UTILISÉE ──────────────────────────
          Les trois notions étaient confondues (« ok » = simple présence du tag attendu) : on pouvait
          builder, lire « ok », et ne RIEN avoir changé parce que nodes.<x>_image pointait encore sur
@@ -2226,6 +2455,12 @@ async function fontDelete(f) {
                     <label class="toggle-inline"><input type="checkbox" class="np-cap ios-toggle" value="webrtc"> webrtc</label>
                     <label class="toggle-inline" title="{{ _('settings.js.gpu_cap_title') }}"><input type="checkbox" class="np-cap ios-toggle" value="gpu"> gpu</label>
                 </div></div>
+            <div class="field"><label for="np_rt_kernel">{{ _('settings.st.rt_kernel') }}</label>
+                <select id="np_rt_kernel" title="{{ _('settings.st.rt_kernel_title') }}">
+                    <option value="auto" selected>{{ _('settings.st.rt_kernel_auto') }}</option>
+                    <option value="rt">{{ _('settings.st.rt_kernel_on') }}</option>
+                    <option value="normal">{{ _('settings.st.rt_kernel_off') }}</option>
+                </select></div>
         </div>
         <div class="row" style="gap:var(--space-3); flex-wrap:wrap; align-items:flex-start; margin-top:var(--space-2)">
             <div class="field" style="min-width:300px; flex:1 1 300px">
@@ -2883,7 +3118,22 @@ async function fontDelete(f) {
             <option value="all">{{ _('settings.updwatch.scope_all') }}</option>
           </select>
         </div>
+        {# L'HEURE du contrôle (2026-11-12). Le JOUR ne s'affiche qu'en fréquence hebdomadaire :
+           montrer un sélecteur de jour qui ne pilote rien vaut un réglage qui mentirait. #}
+        <div class="field" style="max-width:150px">
+          <label for="s_update_check_hour">{{ _('settings.updwatch.hour') }}</label>
+          <select id="s_update_check_hour"
+                  onchange="updwSauver({update_check_hour: +this.value})"></select>
+        </div>
+        <div class="field" style="max-width:170px; display:none" id="updw-wd-champ">
+          <label for="s_update_check_weekday">{{ _('settings.updwatch.weekday') }}</label>
+          <select id="s_update_check_weekday"
+                  onchange="updwSauver({update_check_weekday: +this.value})">
+            {% for i in range(7) %}<option value="{{ i }}">{{ _('settings.updwatch.wd_' ~ i) }}</option>{% endfor %}
+          </select>
+        </div>
       </div>
+      <div class="meta">{{ _('settings.updwatch.hour_hint') }}</div>
       <div style="margin-top:var(--space-2)"><strong>{{ _('settings.updwatch.notify') }}</strong></div>
       {% for k in ('alert', 'banner', 'popup') %}
       <div class="cat-source-reglage">
@@ -2894,9 +3144,22 @@ async function fontDelete(f) {
         </label>
       </div>
       {% endfor %}
+      {# L'E-MAIL est le quatrième canal, mais il n'est pas un réglage GLOBAL comme les trois
+         autres : il vaut pour CE compte seul (cf. update_watch.subscribers), à l'adresse de ce
+         compte. Il passe donc par sa propre route, pas par /api/settings. #}
+      <div class="cat-source-reglage">
+        <label class="ctl-switch-inline">
+          <input type="checkbox" class="ctl-switch" id="s_update_notify_mail"
+                 onchange="updwAbonner(this.checked)">
+          <span id="updw-mail-lab"></span>
+        </label>
+      </div>
       <div class="meta">{{ _('settings.updwatch.notify_hint') }}</div>
-      <div class="row" style="margin-top:var(--space-3); align-items:center; gap:var(--space-2)">
+      <div class="meta" id="updw-mail-hint">{{ _('settings.updwatch.mail_hint') }}</div>
+      <div class="meta" id="updw-mail-srv" style="display:none"></div>
+      <div class="row" style="margin-top:var(--space-3); align-items:center; gap:var(--space-2); flex-wrap:wrap">
         <button class="btn" onclick="updwVerifier()">{{ _('settings.updwatch.check_now') }}</button>
+        <button class="btn" id="updw-mail-essai" onclick="updwEssai()">{{ _('settings.updwatch.mail_test') }}</button>
         <span id="updw-etat" class="meta" role="status"></span>
       </div>
     </div>
@@ -3038,6 +3301,41 @@ async function fontDelete(f) {
 
 <!-- ═══ Onglet Recette ════════════════════════════════════════ -->
 {% if has_perm('settings.edit') %}
+<div id="set-tab-report" class="set-tab-content" style="display:none">
+    <h2>{{ _('settings.report.title') }}</h2>
+    <div class="form" style="display:flex; flex-direction:column; gap:var(--space-4)">
+
+        <div class="meta">{{ _('settings.report.intro') }}</div>
+        {# Les deux paragraphes suivants sont la transparence même : ce qui part, et ce qui ne
+           part pas. Ils sont AU-DESSUS du bouton, pas en dessous — on les lit avant de produire,
+           pas après avoir envoyé. #}
+        <div class="meta">{{ _('settings.report.what') }}</div>
+        <div class="meta">{{ _('settings.report.never') }}</div>
+
+        <div>
+            <label for="rap_desc">{{ _('settings.report.desc_lbl') }}</label>
+            <textarea id="rap_desc" rows="4" style="width:100%; max-width:70ch"></textarea>
+            <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.report.desc_hint') }}</div>
+        </div>
+
+        <div>
+            <label class="ctl-switch-inline">
+                <input type="checkbox" class="ctl-switch" id="rap_nodes" checked>
+                <span>{{ _('settings.report.with_nodes') }}</span>
+            </label>
+            <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.report.with_nodes_hint') }}</div>
+        </div>
+
+        <div style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center">
+            <button type="button" class="btn btn-blue" style="min-height:44px; padding:0 16px"
+                    id="rap_btn" onclick="rapProduire()">{{ _('settings.report.build') }}</button>
+            <span class="meta" id="rap_msg"></span>
+        </div>
+
+        <div id="rap_out"></div>
+    </div>
+</div>
+
 <div id="set-tab-recette" class="set-tab-content" style="display:none">
     <h2>{{ _('recette.title') }}</h2>
     <div class="form" style="display:flex; flex-direction:column; gap:var(--space-4)">
@@ -3843,7 +4141,7 @@ function ctlPlan() {
         bloc.length ? bloc.join('\n') : T('settings.controls.plan_empty');
 }
 
-const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'projets', 'reseau', 'cpu', 'mxl', 'video', 'audio'{% if has_perm('audio_plugins.manage') and audio_service %}, 'lv2'{% endif %}, 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% if has_perm('media.manage') %}, 'media_registry'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'jetons'{% endif %}{% if has_perm('settings.edit') %}, 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
+const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'projets', 'reseau', 'cpu', 'mxl', 'video', 'audio'{% if has_perm('audio_plugins.manage') and audio_service %}, 'lv2'{% endif %}, 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% if has_perm('media.manage') %}, 'media_registry'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'jetons'{% endif %}{% if has_perm('settings.edit') %}, 'mail', 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics', 'report'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
 
 // ─── Groupes de menus (niveau 0) — refonte menus Réglages ───────────────────
 // Chaque groupe liste ses onglets (niveau 1) ; on les filtre à ceux PRÉSENTS dans SET_TABS
@@ -3885,8 +4183,116 @@ const SET_GROUPS = [
     // « acces_publics » va avec Sécurité, et pas ailleurs : ce sont les seules portes du
     // produit qui s'ouvrent SANS identification. Les ranger auprès des utilisateurs ou des
     // services les aurait noyées dans du réglage courant.
-    {id: 'systeme',    tabs: ['services', 'alertes', 'journalisation', 'plugins', 'catalogue', 'recette', 'database', 'projets', 'securite', 'acces_publics', 'raz']},
+    // « mail » = LE serveur d'envoi du produit (app/mail.py), remonté du service d'alertes le
+    // 2026-11-12. Il voisine « alertes » parce que c'est son premier client, et « catalogue »
+    // parce que la veille des mises à jour est le second — mais il n'appartient à aucun des deux.
+    // « report » ferme le groupe : c'est l'écran vers lequel on va quand plus rien d'autre
+    // n'a aidé, et il ne se lit pas en passant.
+    {id: 'systeme',    tabs: ['services', 'alertes', 'mail', 'journalisation', 'plugins', 'catalogue', 'recette', 'database', 'projets', 'securite', 'acces_publics', 'report', 'raz']},
 ].map(g => ({...g, tabs: g.tabs.filter(t => SET_TABS.includes(t))}));
+
+// ── Rapport de problème ────────────────────────────────────────────────────────────────────
+// CE QUI EST MONTRÉ EST CE QUI PART. Les lignes affichées sont celles que le fichier porte, et
+// le téléchargement reprend le rapport par son identifiant au lieu de recollecter : sans ça, le
+// fichier téléchargé pourrait différer de celui qu'on vient de relire, et la relecture ne
+// vaudrait plus rien. Rien n'est collecté à l'ouverture de l'onglet — la collecte interroge les
+// nœuds, donc elle attend un geste.
+const rapEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const rapFmt = (s, p) => String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null) ? p[k] : '');
+let _rapId = null, _rapNom = '';
+
+// Le téléchargement passe par fetch, pas par un lien : un lien qui tombe sur un rapport plus
+// gardé en mémoire afficherait du JSON brut dans un onglet neuf. Ici le refus se dit dans la
+// page, dans la langue du lecteur, avec ce qu'il faut faire ensuite.
+async function rapTelecharger() {
+    const msg = document.getElementById('rap_msg');
+    try {
+        const r = await fetch('/api/support-report/' + encodeURIComponent(_rapId) + '/file');
+        if (!r.ok) {
+            let code = '';
+            try { code = (await r.json()).error || ''; } catch (e) { /* corps non JSON */ }
+            msg.textContent = '✕ ' + (code === 'report_expired' ? T('settings.report.expired')
+                : rapFmt(T('settings.report.failed'), {e: 'HTTP ' + r.status}));
+            return;
+        }
+        const url = URL.createObjectURL(await r.blob());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = _rapNom || 'bobi-rapport.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        msg.textContent = '';
+    } catch (e) {
+        msg.textContent = '✕ ' + rapFmt(T('settings.report.failed'), {e: String(e)});
+    }
+}
+
+async function rapProduire() {
+    const btn = document.getElementById('rap_btn'), msg = document.getElementById('rap_msg');
+    const out = document.getElementById('rap_out');
+    btn.disabled = true;
+    msg.textContent = '⏳ ' + T('settings.report.building');
+    out.innerHTML = '';
+    try {
+        const r = await fetch('/api/support-report', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                with_nodes: document.getElementById('rap_nodes').checked,
+                description: document.getElementById('rap_desc').value || ''})});
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        _rapId = j.id;
+        _rapNom = j.filename || '';
+        msg.textContent = '';
+        rapRendre(j);
+    } catch (e) {
+        msg.textContent = '✕ ' + rapFmt(T('settings.report.failed'), {e: String(e)});
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function rapDeplier(ouvert) {
+    document.querySelectorAll('#rap_out details').forEach(d => { d.open = !!ouvert; });
+}
+
+function rapRendre(j) {
+    const out = document.getElementById('rap_out');
+    const rep = j.report || {}, secs = rep.sections || [];
+    const entete = rapFmt(T('settings.report.produced'), {
+        d: rep.generated, w: rep.withheld, m: rep.redacted, o: j.size, ms: rep.took_ms});
+    const corps = secs.map(s => {
+        const titre = T('settings.report.sec.' + s.id);
+        const nb = rapFmt(T('settings.report.lines'), {n: s.lines.length});
+        return '<details style="margin:var(--space-2) 0; border:1px solid var(--border);'
+            + ' border-radius:6px; padding:var(--space-2)">'
+            + '<summary style="cursor:pointer"><strong>'
+            + rapEsc(titre !== ('settings.report.sec.' + s.id) ? titre : s.id)
+            + '</strong> <span class="meta">' + rapEsc(nb)
+            + (s.truncated ? ' · ' + rapEsc(T('settings.report.truncated')) : '')
+            + '</span></summary>'
+            + '<pre style="white-space:pre-wrap; overflow-x:auto; margin:var(--space-2) 0 0;'
+            + ' font-size:0.82em; line-height:1.45">' + rapEsc(s.lines.join('\n')) + '</pre>'
+            + '</details>';
+    }).join('');
+    out.innerHTML =
+        '<div style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center;'
+        + ' margin-bottom:var(--space-2)">'
+        + '<button type="button" class="btn btn-blue" style="min-height:44px; padding:0 16px"'
+        + ' onclick="rapTelecharger()">' + rapEsc(T('settings.report.download')) + '</button>'
+        + '<button type="button" class="btn" style="min-height:44px; padding:0 16px"'
+        + ' onclick="rapDeplier(true)">' + rapEsc(T('settings.report.expand')) + '</button>'
+        + '<button type="button" class="btn" style="min-height:44px; padding:0 16px"'
+        + ' onclick="rapDeplier(false)">' + rapEsc(T('settings.report.collapse')) + '</button>'
+        + '</div>'
+        + '<div class="meta">' + rapEsc(entete) + '</div>'
+        + '<div class="meta" style="margin-bottom:var(--space-2)">'
+        + rapEsc(T('settings.report.exact')) + '</div>'
+        + corps;
+}
 
 // ── Accès publics ──────────────────────────────────────────────────────────────────────────
 // Une seule vue de TOUTES les portes qui s'ouvrent sans identification, avec de quoi les
@@ -4652,12 +5058,730 @@ async function labelsSaveNames() {
 // Câblage ARIA du tablist (role/aria-controls/aria-selected/tabindex) + flèches.
 // Fait en JS pour ne pas dupliquer les attributs sur 16 boutons et panneaux.
 // ─── Règles de plage multicast strictes (onglet Multicast, groupe Cluster & Réseau) ───────────
-const McastRanges = {
-    _ranges: [], _networks: [], _nodes: [], _ifacesByNode: {}, _editId: null,
+/* Plan editor (Réglages → Multicast): a plan targets a media network, a 2022-7 pair or one interface
+   without pair; its lines map a flow class to a range on fabric A, B being derived from A by the plan's
+   rule (or typed by hand, line by line). The server owns every computation (capacity, derived B, states):
+   this object only edits a draft and shows POST /api/mcast_plans/preview. */
+// Global pool (default addresses where no plan applies): loaded with the other settings
+// (chargerSettings), saved on its own by the button of the Multicast tab.
+const McastPool = {
+    _ipNum(t) { return McastPlans._ipNum(t); },
+    // Allocatable span: the pool hands out base+1 .. base+size-1 (the base itself never).
+    refresh() {
+        const info = document.getElementById('mp_pool_info');
+        if (!info) return;
+        const base = document.getElementById('s_mcast_pool_base').value.trim();
+        const size = parseInt(document.getElementById('s_mcast_pool_size').value, 10);
+        const ip = this._ipNum(base);
+        if (!base) { info.textContent = ''; info.classList.remove('mp-err'); return; }
+        const bad = ip == null || ((ip >>> 28) !== 14) || !(size >= 2) || ip + size - 1 > 0xEFFFFFFF;
+        info.classList.toggle('mp-err', bad);
+        info.textContent = bad ? T('settings.mcast.range_bad')
+            : T('settings.mcast.range_info').replace('{first}', McastPlans._ipStr(ip + 1))
+                .replace('{last}', McastPlans._ipStr(ip + size - 1)).replace('{n}', size - 1);
+        return !bad;
+    },
+    async save() {
+        const msg = document.getElementById('mp-pool-msg');
+        const port = parseInt(document.getElementById('s_mcast_port_default').value, 10);
+        if (!this.refresh() || !(port >= 1 && port <= 65535)) {
+            msg.className = 'meta mp-err'; msg.textContent = T('settings.mcast.pool_invalid'); return;
+        }
+        const payload = {mcast_pool_base: document.getElementById('s_mcast_pool_base').value.trim(),
+                         mcast_pool_size: parseInt(document.getElementById('s_mcast_pool_size').value, 10),
+                         mcast_port_default: port};
+        msg.className = 'meta'; msg.textContent = '…';
+        try {
+            const r = await fetch('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify(payload)});
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            msg.style.color = 'var(--status-running-fg)'; msg.textContent = T('settings.js.saved_now');
+        } catch (e) {
+            msg.className = 'meta mp-err'; msg.style.color = ''; msg.textContent = '✕ ' + T('settings.js.error');
+        }
+        setTimeout(() => { msg.textContent = ''; msg.style.color = ''; }, 5000);
+    },
+};
 
+const McastPlans = {
+    targets: {networks: [], pairs: [], interfaces: []}, classes: [], plans: [],
+    draft: null, editId: null, _pv: null, _pvMap: [], _pvTimer: null, _pvSeq: 0, _msg: '',
+    _portErr: {}, _inactOpen: false,
+    COLORS: {red: '#ef4444', blue: '#3b82f6'},
+
+    async _api(method, url, body) {
+        try {
+            const r = await fetch(url, {method, headers: {'Content-Type': 'application/json'},
+                                        body: body === undefined ? undefined : JSON.stringify(body)});
+            const j = await r.json().catch(() => ({}));
+            if (r.status === 404 && !j.error) return {ok: false, error: T('settings.mcast.plan_api_missing')};
+            if (!r.ok || j.ok === false) return {ok: false, error: j.error || ('HTTP ' + r.status)};
+            return j;
+        } catch (e) {
+            return {ok: false, error: T('settings.mcast.plan_api_missing')};
+        }
+    },
+
+    // "New plan" needs the targets and the flow classes, not the list of plans: the button is armed
+    // as soon as those two are in, and stays disabled until then (a plan started on an empty target
+    // list had no target to offer).
     async load() {
-        const box = document.getElementById('mcast-ranges-table');
-        box.innerHTML = `<span class="meta">${T('settings.loading')}</span>`;
+        const btn = document.getElementById('mp-new-btn');
+        this._ready = false;
+        if (btn) btn.disabled = true;
+        const refs = Promise.all([this._api('GET', '/api/mcast_targets'), this._api('GET', '/api/flow_classes')]).then(([t, c]) => {
+            if (t.ok) this.targets = {networks: t.networks || [], pairs: t.pairs || [], interfaces: t.interfaces || []};
+            if (c.ok) this.classes = c.classes || [];
+            this._ready = !!(t.ok && c.ok);
+            if (btn) btn.disabled = !this._ready;
+        });
+        const [p] = await Promise.all([this._api('GET', '/api/mcast_plans'), refs]);
+        const box = document.getElementById('mp-list');
+        if (!p.ok) {
+            this.plans = [];
+            box.innerHTML = `<p class="meta mp-err" role="alert">${escapeHtml(p.error)}</p>`;
+            return;
+        }
+        this.plans = p.plans || [];
+        this._renderList();
+    },
+
+    _ruleText(r) {
+        r = r || {mode: 'none'};
+        if (r.mode === 'octet') {
+            const d = parseInt(r.delta, 10) || 0;
+            return T('settings.mcast.rule_octet_txt').replace('{o}', r.octet).replace('{d}', (d >= 0 ? '+' : '−') + Math.abs(d));
+        }
+        if (r.mode === 'same') return T('settings.mcast.rule_same_txt');
+        return T('settings.mcast.rule_none_txt');
+    },
+
+    _renderList() {
+        const box = document.getElementById('mp-list');
+        if (!this.plans.length) { box.innerHTML = `<p class="meta">${T('settings.mcast.plans_empty')}</p>`; return; }
+        box.innerHTML = `<table class="mp-table"><thead><tr>
+            <th>${T('settings.mcast.col_target')}</th><th>${T('settings.mcast.col_rule')}</th>
+            <th>${T('settings.mcast.col_lines')}</th><th>${T('settings.mcast.col_used')}</th>
+            <th>${T('settings.mcast.f_label')}</th><th></th></tr></thead><tbody>
+            ${this.plans.map(p => {
+                const used = (p.lines || []).reduce((s, l) => s + (l.used || 0), 0);
+                const cap = (p.lines || []).reduce((s, l) => s + (l.capacity || 0), 0);
+                const paired = p.fabrics && p.fabrics.b;
+                return `<tr><td>${escapeHtml(p.target_label || '')}</td>
+                    <td>${paired ? escapeHtml(this._ruleText(p.b_rule)) : '—'}</td>
+                    <td>${(p.lines || []).length}</td><td>${used} / ${cap}</td>
+                    <td>${escapeHtml(p.label || '')}</td>
+                    <td style="white-space:nowrap">
+                      <button type="button" class="btn" onclick="McastPlans.edit(${p.id})">${T('settings.mcast.edit')}</button>
+                      <button type="button" class="btn" onclick="McastPlans.remove(${p.id})">${T('settings.mcast.delete')}</button>
+                    </td></tr>`;
+            }).join('')}</tbody></table>`;
+    },
+
+    _newLine() {
+        return {flow_class: null, label: '', cidr_a: '', cidr_b: '', b_manual: 0, port_video: null, port_audio: null,
+                port_anc: null, ip_offset_video: null, ip_offset_anc: null, ip_offset_audio: null, ip_step_audio: null};
+    },
+
+    startNew() {
+        if (!this._ready) return;
+        const t = this.targets;
+        // A target holds one plan: start on a network that has none yet (the first one otherwise).
+        const free = t.networks.find(n => !this.plans.some(p => p.scope === 'network' && p.media_network_id == n.id));
+        const net = free || t.networks[0];
+        const d = {scope: 'network', media_network_id: net ? net.id : null, node_id: null,
+                   pair_group: null, ifname: null, label: '', b_rule: {mode: 'none'}, rank_mode: 'counter',
+                   port_mode: 'fixed', reserve_last: 1, lines: [this._newLine()]};
+        this.editId = null; this.draft = d; this._pv = null; this._msg = ''; this._portErr = {}; this._inactOpen = false;
+        this._applyDefaultRule();
+        this.render();
+        this.schedulePreview();
+        document.getElementById('mp-editor').scrollIntoView({block: 'nearest'});
+    },
+
+    edit(id) {
+        const p = this.plans.find(x => x.id === id);
+        if (!p) return;
+        this.editId = id; this._pv = null; this._msg = ''; this._portErr = {}; this._inactOpen = false;
+        this.draft = JSON.parse(JSON.stringify(p));
+        if (!this.draft.b_rule) this.draft.b_rule = {mode: 'none'};
+        if (!(this.draft.lines || []).length) this.draft.lines = [this._newLine()];
+        this.render();
+        this.schedulePreview();
+        document.getElementById('mp-editor').scrollIntoView({block: 'nearest'});
+    },
+
+    cancel() {
+        this.draft = null; this.editId = null;
+        const ed = document.getElementById('mp-editor');
+        ed.hidden = true; ed.innerHTML = '';
+    },
+
+    async remove(id) {
+        if (!await mxlConfirm({message: T('settings.mcast.plan_confirm_delete'), danger: true,
+                               confirmLabel: T('settings.mcast.delete'), cancelLabel: T('settings.mcast.cancel')})) return;
+        const r = await this._api('DELETE', `/api/mcast_plans/${id}`);
+        if (!r.ok) { mxlToast(r.error, 'error'); return; }
+        if (this.editId === id) this.cancel();
+        await this.load();
+    },
+
+    // Network of the current target (null when unknown).
+    _netId() {
+        const d = this.draft, t = this.targets;
+        if (d.scope === 'network') return d.media_network_id;
+        if (d.scope === 'pair') { const x = t.pairs.find(x => x.node_id == d.node_id && x.pair_group == d.pair_group); return x ? x.media_network_id : null; }
+        const x = t.interfaces.find(x => x.node_id == d.node_id && x.ifname === d.ifname);
+        return x ? x.media_network_id : null;
+    },
+
+    _applyDefaultRule() {
+        if (this.editId) return;
+        const net = this.targets.networks.find(n => n.id == this._netId());
+        const d = this.draft;
+        if (net && net.default_b_rule) {
+            d.b_rule = JSON.parse(JSON.stringify(net.default_b_rule)); d._ruleChosen = true; d._ruleFromNet = true;
+        } else if (d._ruleFromNet) {
+            // The rule came from the PREVIOUS target's network, not from the operator: on a network
+            // without a saved rule, the operator's own choice comes back, or the rule is to choose.
+            d.b_rule = d._ruleOwn ? JSON.parse(JSON.stringify(d._ruleOwn)) : {mode: 'none'};
+            d._ruleChosen = !!d._ruleOwn; d._ruleFromNet = false;
+        }
+    },
+    // A new plan on a two-fabric target whose network has no saved rule: the rule is still to be
+    // chosen (the button says so). Until then no line pretends B is typed by hand or derived.
+    _rulePending() {
+        return !this.editId && !!this.draft && !this.draft._ruleChosen && this._paired();
+    },
+
+    // {a:{color,ifname}, b:{color,ifname}|null}: colours come from the API, A is never assumed red.
+    _fabrics() {
+        const d = this.draft, t = this.targets;
+        if (d.scope === 'pair') {
+            const x = t.pairs.find(x => x.node_id == d.node_id && x.pair_group == d.pair_group);
+            if (x) return {a: x.a, b: x.b};
+        } else if (d.scope === 'interface') {
+            return {a: {color: null, ifname: d.ifname}, b: null};
+        } else {
+            const n = t.networks.find(n => n.id == d.media_network_id);
+            const fa = (n && n.first_fabric) || 'red';
+            return {a: {color: fa, ifname: null}, b: {color: fa === 'red' ? 'blue' : 'red', ifname: null}};
+        }
+        return d.fabrics || {a: {color: 'red', ifname: null}, b: {color: 'blue', ifname: null}};
+    },
+
+    _paired() { return !!this._fabrics().b; },
+
+    _fabBox(letter, f) {
+        const col = this.COLORS[f && f.color] || 'var(--text-muted)';
+        const cname = f && f.color ? T('settings.mcast.color_' + f.color) : '';
+        const ifn = f && f.ifname ? escapeHtml(f.ifname) : T('settings.mcast.fab_any_if');
+        return `<div class="mp-fab" style="--fab:${col}">
+            <div class="mp-fab-head"><span class="mp-fab-letter" aria-hidden="true">${letter}</span>
+              <span>${T('settings.mcast.fabric')} ${letter}</span><span class="mp-fab-col">${escapeHtml(cname)}</span></div>
+            <div class="${f && f.ifname ? 'mp-fab-if' : 'meta'}">${ifn}</div></div>`;
+    },
+
+    _targetSelect() {
+        const d = this.draft, t = this.targets;
+        if (d.scope === 'network') {
+            return `<select class="ctl-input" id="mp_target" onchange="McastPlans.setTarget(this.value)">${t.networks.map(n =>
+                `<option value="${n.id}"${n.id == d.media_network_id ? ' selected' : ''}>${escapeHtml(n.name)}</option>`).join('')}</select>`;
+        }
+        if (d.scope === 'pair') {
+            return `<select class="ctl-input" id="mp_target" onchange="McastPlans.setTarget(this.value)">${t.pairs.map((x, i) =>
+                `<option value="${i}"${(x.node_id == d.node_id && x.pair_group == d.pair_group) ? ' selected' : ''}>${escapeHtml(x.node_name)} — ${T('settings.mcast.pair_n')} ${x.pair_group} (${escapeHtml(x.a.ifname)} + ${escapeHtml(x.b.ifname)})</option>`).join('')}</select>`;
+        }
+        return `<select class="ctl-input" id="mp_target" onchange="McastPlans.setTarget(this.value)">${t.interfaces.map((x, i) =>
+            `<option value="${i}"${(x.node_id == d.node_id && x.ifname === d.ifname) ? ' selected' : ''}>${escapeHtml(x.node_name)} — ${escapeHtml(x.ifname)}</option>`).join('')}</select>`;
+    },
+
+    setScope(scope) {
+        const d = this.draft, t = this.targets;
+        d.scope = scope;
+        if (scope === 'network') { d.media_network_id = t.networks.length ? t.networks[0].id : null; d.node_id = d.pair_group = d.ifname = null; }
+        else if (scope === 'pair') { const x = t.pairs[0]; d.node_id = x ? x.node_id : null; d.pair_group = x ? x.pair_group : null; d.media_network_id = x ? x.media_network_id : null; d.ifname = null; }
+        else { const x = t.interfaces[0]; d.node_id = x ? x.node_id : null; d.ifname = x ? x.ifname : null; d.media_network_id = x ? x.media_network_id : null; d.pair_group = null; }
+        this._applyDefaultRule();
+        if (!this._paired()) this.draft.lines.forEach(l => { l.b_manual = 0; l.cidr_b = ''; });
+        this.render(); this.schedulePreview();
+    },
+
+    setTarget(v) {
+        const d = this.draft, t = this.targets;
+        if (d.scope === 'network') d.media_network_id = parseInt(v, 10);
+        else if (d.scope === 'pair') { const x = t.pairs[parseInt(v, 10)]; if (x) { d.node_id = x.node_id; d.pair_group = x.pair_group; d.media_network_id = x.media_network_id; } }
+        else { const x = t.interfaces[parseInt(v, 10)]; if (x) { d.node_id = x.node_id; d.ifname = x.ifname; d.media_network_id = x.media_network_id; } }
+        this._applyDefaultRule();
+        this.render(); this.schedulePreview();
+    },
+
+    set(k, v) { this.draft[k] = v; if (k !== 'label') { this.render(); } this.schedulePreview(); },
+    setLine(i, k, v) { this.draft.lines[i][k] = v; this.refreshRanges(); this.schedulePreview(); },
+    // A line's range is typed as "address/prefix" (default) or as "first-last" (both ends usable).
+    _isSpan(l) { return l._explicit != null ? !!l._explicit : /\d\s*[-\u2013]\s*\d/.test(l.cidr_a || ''); },
+    _spanParts(v) { const m = /^\s*([\d.]*)\s*[-\u2013]\s*([\d.]*)\s*$/.exec(v || ''); return m ? [m[1], m[2]] : ['', '']; },
+    _ipNum(t) {
+        const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec((t || '').trim());
+        if (!m || m.slice(1).some(x => Number(x) > 255)) return null;
+        return ((Number(m[1]) << 24) | (Number(m[2]) << 16) | (Number(m[3]) << 8) | Number(m[4])) >>> 0;
+    },
+    setSpan(i) {
+        const a = document.getElementById('mp_a1_' + i).value.trim(), b = document.getElementById('mp_a2_' + i).value.trim();
+        this.setLine(i, 'cidr_a', (a || b) ? `${a}-${b}` : '');
+    },
+    toggleSpan(i) {
+        const l = this.draft.lines[i], was = this._isSpan(l);
+        l._explicit = !was;
+        // Nothing typed is lost. Toggling back without editing restores what was typed in that
+        // notation; after an edit the value is converted when both notations describe the same
+        // addresses, otherwise what was last typed in the other notation comes back.
+        const cur = l.cidr_a || '', conv = was ? this._spanToCidr(cur) : this._cidrToSpan(cur);
+        const prev = was ? l._cidrPrev : l._spanPrev;
+        if (was) l._spanPrev = cur; else l._cidrPrev = cur;
+        // No exact equivalent (a bare address, an unfinished entry, a free range): the address
+        // typed is carried over as the start of the other notation, never dropped.
+        const head = (/^\s*(\d[\d.]*)/.exec(cur) || [])[1] || '';
+        const carry = head ? (was ? head : head + '-') : '';
+        l.cidr_a = (prev && cur === l._shown) ? prev : (conv || prev || carry || '');
+        l._shown = l.cidr_a;
+        if (!(l.b_manual || this.draft.b_rule.mode === 'none')) l.cidr_b = '';
+        this.render(); this.schedulePreview();
+    },
+    _ipStr(n) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.'); },
+    // "a.b.c.d/p" -> the addresses that block really hands out, as "first-last" ('' if not a block).
+    _cidrToSpan(v) {
+        const m = /^\s*([\d.]+)\/(\d{1,2})\s*$/.exec(v || ''), ip = m ? this._ipNum(m[1]) : null, p = m ? Number(m[2]) : 99;
+        if (ip == null || p > 32) return '';
+        const size = Math.pow(2, 32 - p), net = Math.floor(ip / size) * size;
+        const first = net + 1, last = net + size - 1 - (this.draft.reserve_last ? 1 : 0);
+        return last >= first ? `${this._ipStr(first)}-${this._ipStr(last)}` : '';
+    },
+    // "first-last" -> the block that hands out exactly those addresses, when there is one.
+    _spanToCidr(v) {
+        const [a, b] = this._spanParts(v), x = this._ipNum(a), y = this._ipNum(b);
+        if (x == null || y == null || y < x) return '';
+        for (let p = 30; p >= 4; p--) {
+            const cidr = `${this._ipStr(x - 1)}/${p}`;
+            if ((x - 1) % Math.pow(2, 32 - p) === 0 && this._cidrToSpan(cidr) === `${a}-${b}`) return cidr;
+        }
+        return '';
+    },
+    // What a typed "address/prefix" really covers: the allocatable span and its size. The first
+    // address of a block is never allocated; the last one is not either when the plan reserves it.
+    // A typed address that is not the block's base shows the block it falls in.
+    _rangeInfo(cidr) {
+        if (/\d\s*[-\u2013]\s*\d/.test(cidr || '') || /^\s*[\d.]*\s*[-\u2013]\s*[\d.]*\s*$/.test(cidr || '') && /[-\u2013]/.test(cidr || '')) {
+            const [a, b] = this._spanParts(cidr), x = this._ipNum(a), y = this._ipNum(b);
+            if (x == null || y == null) return (a && b) ? T('settings.mcast.range_bad') : '';
+            if (y < x) return T('settings.mcast.range_bad');
+            return T('settings.mcast.range_info').replace('{first}', a).replace('{last}', b).replace('{n}', y - x + 1);
+        }
+        const m = /^\s*(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})\s*$/.exec(cidr || '');
+        if (!m) return (cidr || '').trim() ? T('settings.mcast.range_bad') : '';
+        const o = m.slice(1, 5).map(Number), p = Number(m[5]);
+        if (o.some(x => x > 255) || p > 32) return T('settings.mcast.range_bad');
+        const ip = ((o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3]) >>> 0;
+        const size = Math.pow(2, 32 - p), net = (Math.floor(ip / size) * size) >>> 0;
+        const str = n => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+        const first = net + 1, last = net + size - 1 - (this.draft && this.draft.reserve_last ? 1 : 0);
+        const n = Math.max(0, last - first + 1);
+        const span = n ? T('settings.mcast.range_info').replace('{first}', str(first)).replace('{last}', str(last)).replace('{n}', n)
+                       : T('settings.mcast.range_none');
+        return (ip !== net ? T('settings.mcast.range_block').replace('{net}', `${str(net)}/${p}`) + ' · ' : '') + span;
+    },
+    // Read-out under B: the span it covers, or why there is none yet.
+    _bInfo(l) { return this._rulePending() ? T('settings.mcast.b_rule_pending') : this._rangeInfo(l.cidr_b); },
+    refreshRanges() {
+        if (!this.draft) return;
+        this.draft.lines.forEach((l, i) => {
+            const a = document.getElementById('mp_ai_' + i), b = document.getElementById('mp_bi_' + i);
+            if (a) a.textContent = this._rangeInfo(l.cidr_a);
+            if (b) { b.textContent = this._bInfo(l); b.classList.toggle('mp-warn', this._rulePending()); }
+        });
+    },
+    setLinePort(i, k, v) {
+        this.draft.lines[i][k] = v === '' ? null : parseInt(v, 10);
+        // A port typed clears its own error in place (re-rendering would drop the focus).
+        const ess = k.startsWith('port_') ? k.slice(5) : null;
+        if (ess && v !== '' && this._portErr[i + ':' + ess]) {
+            delete this._portErr[i + ':' + ess];
+            const el = document.getElementById(`mp_${ess}_${i}`), err = document.getElementById(`mp_${ess}_err_${i}`);
+            if (el) { el.classList.remove('is-invalid'); el.setAttribute('aria-invalid', 'false'); el.removeAttribute('aria-describedby'); }
+            if (err) err.remove();
+            if (!Object.keys(this._portErr).length) { this._msg = ''; const m = document.getElementById('mp-save-msg'); if (m) m.textContent = ''; }
+        }
+        this.schedulePreview();
+    },
+    // Essences a line covers: its class's, or all three for an "all essences" line.
+    _lineEssences(l) {
+        const c = this.classes.find(c => c.key === l.flow_class);
+        return c ? [c.essence] : ['video', 'audio', 'anc'];
+    },
+    // Fixed ports: every essence a filled line covers needs its port (the server refuses otherwise).
+    _missingPorts() {
+        const d = this.draft, out = {};
+        if (d.port_mode !== 'fixed') return out;
+        d.lines.forEach((l, i) => {
+            if (!l.cidr_a) return;
+            this._lineEssences(l).forEach(k => { if (l['port_' + k] == null || l['port_' + k] === '') out[i + ':' + k] = true; });
+        });
+        return out;
+    },
+    setClass(i, v) { this.draft.lines[i].flow_class = v || null; this.render(); this.schedulePreview(); },
+    // Flow type is chosen in two steps: the essence, then one of its formats. "All formats" is the
+    // essence's catch-all class (empty match); an essence with a single class (ANC) has no second step.
+    _isAll(c) { return !c.match || !Object.keys(c.match).length; },
+    _essences() { return ['video', 'audio', 'anc'].filter(e => this.classes.some(c => c.essence === e)); },
+    _clsLabel(c) {
+        return (this._isAll(c) && c.essence !== 'anc')
+            ? `${T('settings.mcast.essence_' + c.essence)} · ${T('settings.mcast.fmt_all')}` : c.label;
+    },
+    setEssence(i, e) {
+        const own = this.classes.filter(c => c.essence === e);
+        const pick = own.find(c => this._isAll(c)) || own[0];
+        this.draft.lines[i].flow_class = pick ? pick.key : null;
+        this.render(); this.schedulePreview();
+    },
+
+    toggleManual(i) {
+        const l = this.draft.lines[i];
+        if (this.draft.b_rule.mode === 'none' || this._rulePending()) return;
+        l.b_manual = l.b_manual ? 0 : 1;
+        this.render(); this.schedulePreview();
+    },
+
+    addLine() { this.draft.lines.push(this._newLine()); this.render(); },
+    removeLine(i) {
+        this.draft.lines.splice(i, 1);
+        if (!this.draft.lines.length) this.draft.lines.push(this._newLine());
+        this.render(); this.schedulePreview();
+    },
+
+    _lineHtml(l, i) {
+        const d = this.draft, paired = this._paired();
+        const cls = this.classes.find(c => c.key === l.flow_class);
+        const ess = cls ? cls.essence : null;
+        const fmts = ess ? this.classes.filter(c => c.essence === ess) : [];
+        const explicit = this._isSpan(l);
+        const span = explicit ? this._spanParts(l.cidr_a) : ['', ''];
+        const pending = this._rulePending();
+        const manual = paired && !pending && (l.b_manual || d.b_rule.mode === 'none');
+        const pv = this._pvLine(i);
+        const cap = pv ? `${T('settings.mcast.free_of').replace('{free}', Math.max(0, (pv.capacity || 0) - (pv.used || 0))).replace('{cap}', pv.capacity || 0)}`
+                       : (l.capacity != null ? T('settings.mcast.free_of').replace('{free}', Math.max(0, l.capacity - (l.used || 0))).replace('{cap}', l.capacity) : '—');
+        // No placeholder: a greyed 5000 looked like a value the plan would apply. A port the plan
+        // needs and lacks (fixed mode, on save) is said under the field itself.
+        const port = (k, lab) => {
+            const err = d.port_mode === 'fixed' && this._portErr[i + ':' + k];
+            return `<div class="mp-fieldcol"><label for="mp_${k}_${i}">${lab}</label>
+            <input id="mp_${k}_${i}" class="ctl-input mp-port no-stepper${err ? ' is-invalid' : ''}" type="number" min="1" max="65535"
+              inputmode="numeric" aria-invalid="${err ? 'true' : 'false'}"${err ? ` aria-describedby="mp_${k}_err_${i}"` : ''}
+              value="${l['port_' + k] == null ? '' : l['port_' + k]}" oninput="McastPlans.setLinePort(${i}, 'port_${k}', this.value)">
+            ${err ? `<span class="meta mp-range-info mp-err" id="mp_${k}_err_${i}" role="alert">${T('settings.mcast.port_required')}</span>` : ''}</div>`;
+        };
+        const off = (k, lab, ph) => `<div class="mp-fieldcol"><label for="mp_off_${k}_${i}">${lab}</label>
+            <input id="mp_off_${k}_${i}" class="ctl-input mp-port" type="number" min="0" max="65535" placeholder="${ph}"
+              value="${l[k] == null ? '' : l[k]}" oninput="McastPlans.setLinePort(${i}, '${k}', this.value)"></div>`;
+        const slotAll = d.rank_mode === 'slot' && !l.flow_class;
+        // An audio line ranked by output number needs its audio step: audio k of output n lands
+        // at rank n + k × step, and the default step (100) leaves a small line at the 2nd audio.
+        const slotAudio = d.rank_mode === 'slot' && ess === 'audio';
+        const outside = this._outsideOn(i);
+        return `<div class="mp-line" data-i="${i}">
+          <div class="mp-line-main"><div class="mp-grp">
+            <div class="mp-fieldcol"><label for="mp_ess_${i}">${T('settings.mcast.col_class')}</label>
+              <select class="ctl-input" id="mp_ess_${i}" onchange="McastPlans.setEssence(${i}, this.value)">
+                <option value="">${T('settings.mcast.essence_all')}</option>
+                ${this._essences().map(e => `<option value="${e}"${e === ess ? ' selected' : ''}>${T('settings.mcast.essence_' + e)}</option>`).join('')}
+              </select></div>
+            ${fmts.length > 1 ? `<div class="mp-fieldcol"><label for="mp_cls_${i}">${T('settings.mcast.f_format')}</label>
+              <select class="ctl-input" id="mp_cls_${i}" onchange="McastPlans.setClass(${i}, this.value)">
+                ${fmts.map(c => `<option value="${escapeHtml(c.key)}"${c.key === l.flow_class ? ' selected' : ''}>${this._isAll(c) ? T('settings.mcast.fmt_all') : escapeHtml(c.label)}</option>`).join('')}
+              </select></div>` : ''}
+            </div><div class="mp-grp">
+            <div class="mp-fieldcol"><label for="${explicit ? 'mp_a1_' : 'mp_a_'}${i}">${T('settings.mcast.range_a')}</label>
+              ${explicit ? `<div class="mp-span">
+                <input id="mp_a1_${i}" class="ctl-input mp-ip" type="text" placeholder="239.20.1.101" aria-label="${escapeHtml(T('settings.mcast.f_first'))}"
+                  value="${escapeHtml(span[0])}" oninput="McastPlans.setSpan(${i})">
+                <span class="meta">–</span>
+                <input id="mp_a2_${i}" class="ctl-input mp-ip" type="text" placeholder="239.20.1.200" aria-label="${escapeHtml(T('settings.mcast.f_last'))}"
+                  value="${escapeHtml(span[1])}" oninput="McastPlans.setSpan(${i})"></div>`
+              : `<input id="mp_a_${i}" class="ctl-input mp-cidr" type="text" placeholder="239.20.1.0/28" value="${escapeHtml(l.cidr_a || '')}"
+                oninput="McastPlans.setLine(${i}, 'cidr_a', this.value.trim())">`}
+              <span class="meta mp-range-info" id="mp_ai_${i}">${escapeHtml(this._rangeInfo(l.cidr_a))}</span></div>
+            <div class="mp-fieldcol"><label>&nbsp;</label>
+              <button type="button" class="btn mp-span-btn" onclick="McastPlans.toggleSpan(${i})"
+                title="${escapeHtml(T('settings.mcast.span_tip'))}">${explicit ? T('settings.mcast.span_mode_cidr') : T('settings.mcast.span_mode_range')}</button></div>
+            </div>
+            ${paired ? `<div class="mp-grp"><div class="mp-fieldcol">
+              <label>&nbsp;</label>
+              <button type="button" class="btn mp-follow${manual ? ' is-manual' : ''}" aria-pressed="${manual ? 'true' : 'false'}"
+                ${(pending || d.b_rule.mode === 'none') ? 'disabled' : ''} onclick="McastPlans.toggleManual(${i})"
+                title="${escapeHtml(T('settings.mcast.follow_tip'))}">${manual ? T('settings.mcast.by_hand') : T('settings.mcast.per_rule')}</button></div>
+            <div class="mp-fieldcol"><label for="mp_b_${i}">${T('settings.mcast.range_b')}</label>
+              <input id="mp_b_${i}" class="ctl-input mp-cidr${explicit ? ' mp-cidr-wide' : ''}${manual ? '' : ' mp-b-ro'}" type="text" placeholder="${manual ? '239.120.1.0/28' : ''}"
+                value="${escapeHtml(l.cidr_b || '')}" ${manual ? '' : 'readonly'}
+                oninput="McastPlans.setLine(${i}, 'cidr_b', this.value.trim())">
+              <span class="meta mp-range-info${pending ? ' mp-warn' : ''}" id="mp_bi_${i}">${escapeHtml(this._bInfo(l))}</span></div></div>` : ''}
+            <div class="mp-grp mp-line-tail">
+            ${this._lineEssences(l).map(k => port(k, T('settings.mcast.f_port_' + k))).join('')}
+            <div class="mp-fieldcol"><label>${T('settings.mcast.col_free')}</label><span id="mp_cap_${i}" class="mp-cap">${escapeHtml(cap)}</span></div>
+          </div></div>
+          <div class="mp-fieldcol"><label>&nbsp;</label>
+            <button type="button" class="btn mp-x" aria-label="${escapeHtml(T('settings.mcast.line_remove'))}"
+              title="${escapeHtml(T('settings.mcast.line_remove'))}" onclick="McastPlans.removeLine(${i})">✕</button></div>
+          ${slotAll ? `<details class="mp-offsets-d" style="margin-top:var(--space-2)"><summary class="meta">${T('settings.mcast.offsets_title')}</summary>
+            <div class="meta">${T('settings.mcast.offsets_help')}</div>
+            <div class="mp-offsets">${off('ip_offset_video', T('settings.mcast.f_off_video'), '0')}${off('ip_offset_anc', T('settings.mcast.f_off_anc'), '50')}
+              ${off('ip_offset_audio', T('settings.mcast.f_off_audio'), '100')}${off('ip_step_audio', T('settings.mcast.f_step_audio'), '100')}</div></details>` : ''}
+          ${slotAudio ? `<details class="mp-offsets-d mp-step-d" style="margin-top:var(--space-2)"${outside ? ' open' : ''}><summary class="meta">${T('settings.mcast.step_title')}</summary>
+            <div class="meta">${T('settings.mcast.step_help')}</div>
+            <div class="mp-offsets">${off('ip_step_audio', T('settings.mcast.f_step_audio'), '100')}</div></details>` : ''}
+        </div>`;
+    },
+
+    // Number of flows the last preview puts outside line i (rank mode "slot").
+    _outsideOn(i) {
+        if (!this._pv || !this._pv.flows) return 0;
+        const k = this._pvMap.indexOf(i);
+        return k < 0 ? 0 : this._pv.flows.filter(f => f.line === k && f.state === 'outside').length;
+    },
+
+    _pvLine(i) {
+        if (!this._pv || !this._pv.lines) return null;
+        const k = this._pvMap.indexOf(i);
+        if (k < 0) return null;
+        return this._pv.lines.find(x => x.index === k) || null;
+    },
+
+    render() {
+        const d = this.draft, ed = document.getElementById('mp-editor');
+        if (!d) return;
+        const fab = this._fabrics(), paired = !!fab.b;
+        const sel = (id, k, opts) => `<select class="ctl-input" id="${id}" onchange="McastPlans.set('${k}', this.value)">${opts.map(([v, lab]) =>
+            `<option value="${v}"${String(d[k]) === String(v) ? ' selected' : ''}>${lab}</option>`).join('')}</select>`;
+        ed.hidden = false;
+        ed.innerHTML = `
+          <div class="mp-row">
+            <div class="mp-fieldcol"><label for="mp_scope">${T('settings.mcast.f_target_type')}</label>
+              <select class="ctl-input" id="mp_scope" onchange="McastPlans.setScope(this.value)">
+                <option value="network"${d.scope === 'network' ? ' selected' : ''}>${T('settings.mcast.scope_network')}</option>
+                <option value="pair"${d.scope === 'pair' ? ' selected' : ''}>${T('settings.mcast.scope_pair')}</option>
+                <option value="interface"${d.scope === 'interface' ? ' selected' : ''}>${T('settings.mcast.scope_iface_nopair')}</option>
+              </select></div>
+            <div class="mp-fieldcol"><label for="mp_target">${T('settings.mcast.f_target')}</label>${this._targetSelect()}</div>
+            <div class="mp-fieldcol"><label for="mp_rank">${T('settings.mcast.f_addr_range')}</label>
+              ${sel('mp_rank', 'rank_mode', [['counter', T('settings.mcast.rank_counter')], ['slot', T('settings.mcast.rank_slot')]])}</div>
+            <div class="mp-fieldcol"><label for="mp_ports">${T('settings.mcast.f_ports')}</label>
+              ${sel('mp_ports', 'port_mode', [['fixed', T('settings.mcast.port_fixed')], ['increment', T('settings.mcast.port_increment')]])}</div>
+            <div class="mp-fieldcol"><label for="mp_reserve">${T('settings.mcast.f_reserve_last')}</label>
+              <input type="checkbox" class="ios-toggle" id="mp_reserve" ${d.reserve_last ? 'checked' : ''}
+                onchange="McastPlans.set('reserve_last', this.checked ? 1 : 0)"></div>
+            <div class="mp-fieldcol"><label for="mp_label">${T('settings.mcast.f_label')}</label>
+              <input class="ctl-input" id="mp_label" type="text" value="${escapeHtml(d.label || '')}" oninput="McastPlans.set('label', this.value)"></div>
+          </div>
+          <div class="mp-fabrics">
+            ${this._fabBox('A', fab.a)}
+            ${paired ? `<div class="mp-rule-mid">${this._rulePending()
+                ? `<button type="button" class="btn mp-rule-btn is-pending" onclick="McastPlans.openRule()">
+                <strong>${T('settings.mcast.rule_btn_choose')}</strong></button>`
+                : `<button type="button" class="btn mp-rule-btn" onclick="McastPlans.openRule()">
+                <span>${d.b_rule.mode === 'none' ? T('settings.mcast.rule_btn_none') : T('settings.mcast.rule_btn')}</span><br>
+                <strong>${escapeHtml(this._ruleText(d.b_rule))}</strong></button>`}
+                ${this._rulePending() ? '' : `<span class="meta">${T('settings.mcast.rule_change')}</span>`}</div>
+              ${this._fabBox('B', fab.b)}` : ''}
+          </div>
+          <div class="meta mp-ports-hint" id="mp-ports-hint">${T(d.port_mode === 'fixed' ? 'settings.mcast.ports_hint_fixed' : 'settings.mcast.ports_hint_increment')}</div>
+          <div id="mp-lines">${d.lines.map((l, i) => this._lineHtml(l, i)).join('')}</div>
+          <button type="button" class="btn" onclick="McastPlans.addLine()">+ ${T('settings.mcast.line_add')}</button>
+          <div class="mp-given"><h3 style="margin:0 0 var(--space-2)">${T('settings.mcast.given_title')}</h3><div id="mp-given"></div></div>
+          <div style="margin-top:var(--space-3); display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap">
+            <button type="button" class="btn btn-green" onclick="McastPlans.save()">${T('settings.mcast.plan_save')}</button>
+            <button type="button" class="btn" onclick="McastPlans.cancel()">${T('settings.mcast.cancel')}</button>
+            <span id="mp-save-msg" class="meta mp-err" role="alert">${escapeHtml(this._msg || '')}</span>
+          </div>`;
+        this._renderGiven();
+    },
+
+    // Rule chooser
+    openRule() {
+        const r = this.draft.b_rule || {mode: 'none'};
+        const first = !this.editId && !this.draft._ruleChosen;
+        document.querySelectorAll('input[name="mp_rule_mode"]').forEach(x => { x.checked = false; });
+        if (!first) document.getElementById('mp_rule_' + (r.mode === 'octet' || r.mode === 'same' ? r.mode : 'none')).checked = true;
+        document.getElementById('mp_rule_oct_n').value = r.octet || 2;
+        document.getElementById('mp_rule_delta').value = r.delta != null ? r.delta : (first ? '' : 100);
+        document.getElementById('mp-rule-err').textContent = '';
+        document.getElementById('mp-rule-dlg').showModal();
+    },
+    // The octet fields are never disabled: with no option chosen yet they could not be typed in.
+    // Touching them picks "shift an octet".
+    rulePickOctet() { document.getElementById('mp_rule_octet').checked = true; },
+    ruleDlgApply() {
+        const picked = document.querySelector('input[name="mp_rule_mode"]:checked');
+        if (!picked) { document.getElementById('mp-rule-err').textContent = T('settings.mcast.rule_choose'); return; }
+        const mode = picked.value || 'none';
+        let rule = {mode};
+        if (mode === 'octet') {
+            const delta = parseInt(document.getElementById('mp_rule_delta').value, 10);
+            if (!Number.isFinite(delta) || delta === 0) {
+                document.getElementById('mp-rule-err').textContent = T('settings.mcast.rule_delta_invalid');
+                return;
+            }
+            rule = {mode, octet: parseInt(document.getElementById('mp_rule_oct_n').value, 10), delta};
+        }
+        this.draft.b_rule = rule; this.draft._ruleChosen = true; this.draft._ruleFromNet = false;
+        this.draft._ruleOwn = JSON.parse(JSON.stringify(rule));
+        if (mode === 'none') this.draft.lines.forEach(l => { l.b_manual = 1; });
+        document.getElementById('mp-rule-dlg').close();
+        this.render(); this.schedulePreview();
+    },
+
+    // Payload (PLAN without ids on the plan; line ids kept so the server updates instead of recreating).
+    _payload(onlyFilled) {
+        const d = this.draft, paired = this._paired();
+        const n = v => (v === '' || v == null) ? null : v;
+        const idx = [];
+        const lines = [];
+        d.lines.forEach((l, i) => {
+            if (onlyFilled && !l.cidr_a) return;
+            idx.push(i);
+            const manual = paired && !this._rulePending() && (l.b_manual || d.b_rule.mode === 'none') ? 1 : 0;
+            const o = {flow_class: l.flow_class || null, label: l.label || '', cidr_a: l.cidr_a || '',
+                cidr_b: paired && !this._rulePending() ? (l.cidr_b || '') : '', b_manual: manual,
+                port_video: n(l.port_video), port_audio: n(l.port_audio), port_anc: n(l.port_anc),
+                ip_offset_video: n(l.ip_offset_video), ip_offset_anc: n(l.ip_offset_anc),
+                ip_offset_audio: n(l.ip_offset_audio), ip_step_audio: n(l.ip_step_audio)};
+            if (l.id != null) o.id = l.id;
+            lines.push(o);
+        });
+        const p = {scope: d.scope, media_network_id: d.scope === 'network' ? d.media_network_id : null,
+            node_id: d.scope === 'network' ? null : d.node_id,
+            pair_group: d.scope === 'pair' ? d.pair_group : null,
+            ifname: d.scope === 'interface' ? d.ifname : null,
+            label: d.label || '', b_rule: paired ? d.b_rule : {mode: 'none'},
+            rank_mode: d.rank_mode, port_mode: d.port_mode, reserve_last: d.reserve_last ? 1 : 0, lines};
+        return {plan: p, idx};
+    },
+
+    schedulePreview() {
+        clearTimeout(this._pvTimer);
+        this._pvTimer = setTimeout(() => this.preview(), 400);
+    },
+
+    async preview() {
+        if (!this.draft) return;
+        const {plan, idx} = this._payload(true);
+        // The plan being edited is named: otherwise the server takes it for ANOTHER plan on the
+        // same target and the preview answers "this target already has a plan".
+        if (this.editId != null) plan.id = this.editId;
+        const seq = ++this._pvSeq;
+        if (!plan.lines.length) { this._pv = null; this._pvMap = []; this._renderGiven(T('settings.mcast.given_need_range')); return; }
+        const r = await this._api('POST', '/api/mcast_plans/preview', plan);
+        if (seq !== this._pvSeq || !this.draft) return;      // a newer request supersedes this one
+        if (!r.ok) { this._pv = null; this._pvMap = []; this._renderGiven(r.error, true); return; }
+        this._pv = r; this._pvMap = idx;
+        // Derived B and capacity updated in place: re-rendering would drop the focus of the field being typed in.
+        (r.lines || []).forEach(pl => {
+            const i = idx[pl.index];
+            if (i == null) return;
+            const l = this.draft.lines[i];
+            if (!(l.b_manual || this.draft.b_rule.mode === 'none') && this._paired() && !this._rulePending()) {
+                l.cidr_b = pl.cidr_b || '';
+                const el = document.getElementById('mp_b_' + i);
+                if (el) el.value = l.cidr_b;
+            }
+            const cap = document.getElementById('mp_cap_' + i);
+            if (cap) cap.textContent = T('settings.mcast.free_of').replace('{free}', Math.max(0, (pl.capacity || 0) - (pl.used || 0))).replace('{cap}', pl.capacity || 0);
+        });
+        this.refreshRanges();
+        this.draft.lines.forEach((l, i) => {
+            const det = document.querySelector(`#mp-editor .mp-line[data-i="${i}"] .mp-step-d`);
+            if (det && this._outsideOn(i)) det.open = true;
+        });
+        this._renderGiven();
+    },
+
+    _addr(x) { return x ? `${escapeHtml(x.ip)}:${x.port}` : '—'; },
+
+    _renderGiven(msg, isErr) {
+        const box = document.getElementById('mp-given');
+        if (!box) return;
+        if (msg) { box.innerHTML = `<p class="meta${isErr ? ' mp-err' : ''}">${escapeHtml(msg)}</p>`; return; }
+        const r = this._pv;
+        if (!r) { box.innerHTML = `<p class="meta">${T('settings.mcast.given_need_range')}</p>`; return; }
+        const paired = this._paired();
+        const cap = r.capacity || {total: 0, free: 0};
+        const flows = r.flows || [];
+        // An engine provisions more outputs than it runs, and every provisioned slot carries
+        // addresses: the ACTIVE ones come first, the others are folded away (closed by default).
+        const act = flows.filter(f => f.active !== false), inact = flows.filter(f => f.active === false);
+        const outs = fl => new Set(fl.map(f => f.vmid + ':' + f.slot)).size;
+        const full = fl => fl.filter(f => f.state === 'full').length;
+        let head = T('settings.mcast.given_active').replace('{n}', act.length).replace('{o}', outs(act));
+        if (inact.length) head += ' · ' + T('settings.mcast.given_inactive').replace('{n}', inact.length).replace('{o}', outs(inact));
+        head += ' · ' + T('settings.mcast.given_free').replace('{free}', cap.free).replace('{total}', cap.total);
+        const ov = (r.overlaps || []).map(o => `<p class="meta mp-warn" role="alert">⚠ ${escapeHtml(T('settings.mcast.given_overlap')
+            .replace('{plan}', o.plan_label || '').replace('{first}', o.first).replace('{last}', o.last))}</p>`).join('');
+        // Not enough addresses: an error for the outputs on air, plain information for the others.
+        const shortA = full(act), shortI = full(inact);
+        const outA = act.filter(f => f.state === 'outside').length, outI = inact.filter(f => f.state === 'outside').length;
+        const short = (shortA ? `<p class="mp-short mp-err" role="alert">⚠ ${escapeHtml(T('settings.mcast.given_short_active').replace('{n}', shortA))}</p>` : '')
+            + (outA ? `<p class="mp-short mp-err" role="alert">⚠ ${escapeHtml(T('settings.mcast.given_outside_active').replace('{n}', outA))}</p>` : '')
+            + (shortI ? `<p class="meta mp-short-info">${escapeHtml(T('settings.mcast.given_short_inactive').replace('{n}', shortI))}</p>` : '')
+            + (outI ? `<p class="meta mp-short-info">${escapeHtml(T('settings.mcast.given_outside_inactive').replace('{n}', outI))}</p>` : '');
+        // A provisioned output left without address is information: never in the error colour.
+        const stl = (s, onAir) => `<span class="mp-st mp-st-${s}${!onAir && (s === 'full' || s === 'outside') ? ' is-info' : ''}">${T('settings.mcast.st_' + s)}</span>`;
+        const cls = k => { const c = this.classes.find(c => c.key === k); return c ? escapeHtml(this._clsLabel(c)) : `<span class="mp-err">—</span>`; };
+        const table = (fl, onAir) => `<table class="mp-table"><thead><tr><th>${T('settings.mcast.col_flow')}</th><th>${T('settings.mcast.col_class')}</th>
+              <th>A</th>${paired ? '<th>B</th>' : ''}<th>${T('settings.mcast.col_state')}</th></tr></thead><tbody>
+            ${fl.map(f => `<tr${(f.state === 'unmatched' || (onAir && (f.state === 'full' || f.state === 'outside'))) ? ' class="mp-row-unmatched"' : ''}>
+              <td>${escapeHtml(f.label || ((f.hostname || '') + ' ' + (f.essence || '')))}</td>
+              <td>${f.flow_class ? cls(f.flow_class) : '—'}</td>
+              <td style="font-family:var(--font-mono)">${this._addr(f.a)}</td>
+              ${paired ? `<td style="font-family:var(--font-mono)">${this._addr(f.b)}</td>` : ''}
+              <td>${stl(f.state, onAir)}</td></tr>`).join('')}</tbody></table>`;
+        const top = `<div class="meta mp-given-head" style="margin-bottom:var(--space-2)">${escapeHtml(head)}</div>${short}${ov}`;
+        if (!flows.length) { box.innerHTML = top; return; }
+        box.innerHTML = top + (act.length ? table(act, true) : `<p class="meta">${T('settings.mcast.given_no_active')}</p>`)
+            + (inact.length ? `<details class="mp-inactive-d"${this._inactOpen ? ' open' : ''} ontoggle="McastPlans._inactOpen = this.open">
+                <summary class="meta">${escapeHtml(T('settings.mcast.given_inactive_toggle').replace('{o}', outs(inact)).replace('{n}', inact.length))}</summary>
+                ${table(inact, false)}</details>` : '');
+    },
+
+    async save() {
+        const msg = document.getElementById('mp-save-msg');
+        const {plan} = this._payload(false);
+        if (plan.scope === 'network' ? plan.media_network_id == null : plan.node_id == null) { msg.textContent = T('settings.mcast.plan_need_target'); return; }
+        if (this._rulePending()) { msg.textContent = T('settings.mcast.rule_need_choice'); return; }
+        if (plan.lines.some(l => !l.cidr_a)) { msg.textContent = T('settings.mcast.cidr_required'); return; }
+        this._portErr = this._missingPorts();
+        const miss = Object.keys(this._portErr);
+        if (miss.length) {
+            this._msg = T('settings.mcast.port_required_save');
+            this.render();
+            const [i, k] = miss[0].split(':');
+            const el = document.getElementById(`mp_${k}_${i}`);
+            if (el) el.focus();
+            return;
+        }
+        msg.textContent = '…';
+        const r = this.editId ? await this._api('PUT', `/api/mcast_plans/${this.editId}`, plan)
+                              : await this._api('POST', '/api/mcast_plans', plan);
+        if (!r.ok) { this._msg = r.error; msg.textContent = r.error; return; }
+        this._msg = '';
+        this.cancel();
+        await this.load();
+    },
+};
+
+const McastRanges = {
+    _ranges: [], _networks: [], _nodes: [],
+
+    // Rules saved before plans existed. They still drive allocation where no plan applies, so they
+    // stay visible and removable here; there is no form to create or edit one any more.
+    async load() {
         const [rr, nr, nd] = await Promise.all([
             fetch('/api/mcast_ranges').then(r => r.json()).catch(() => ({ranges: []})),
             fetch('/api/media_networks').then(r => r.json()).catch(() => ({networks: []})),
@@ -4666,63 +5790,8 @@ const McastRanges = {
         this._ranges = rr.ranges || [];
         this._networks = nr.networks || [];
         this._nodes = nd.nodes || [];
-        document.getElementById('mc_network').innerHTML = this._networks.map(n =>
-            `<option value="${n.id}">${escapeHtml(n.name)} (d${n.domain})</option>`).join('');
-        document.getElementById('mc_node').innerHTML = this._nodes.map(n =>
-            `<option value="${n.id}">${escapeHtml(n.name)}</option>`).join('');
-        if (this._nodes.length) await this.onNodeChange();
-        this.onScopeChange();
-        this._renderTable();
-    },
-
-    async onNodeChange() {
-        const nodeId = document.getElementById('mc_node').value;
-        if (!nodeId) return;
-        if (!this._ifacesByNode[nodeId]) {
-            const res = await fetch(`/api/nodes/${nodeId}/interfaces`).then(r => r.json()).catch(() => ({interfaces: []}));
-            this._ifacesByNode[nodeId] = (res.interfaces || []).filter(i => i.role === 'media2110');
-        }
-        const ifaces = this._ifacesByNode[nodeId] || [];
-        document.getElementById('mc_iface').innerHTML = ifaces.map(i =>
-            `<option value="${i.ifname}">${escapeHtml(i.ifname)}${i.pair_role ? ' (' + i.pair_role + ')' : ''}</option>`).join('');
-    },
-
-    onScopeChange() {
-        const scope = document.getElementById('mc_scope').value;
-        document.getElementById('mc_network_field').style.display = scope === 'network' ? '' : 'none';
-        document.getElementById('mc_node_field').style.display   = scope === 'interface' ? '' : 'none';
-        document.getElementById('mc_iface_field').style.display  = scope === 'interface' ? '' : 'none';
-    },
-
-    onEssenceChange() {
-        const ess = document.getElementById('mc_essence').value;
-        document.getElementById('mc_fmt_video_row').style.display = ess === 'video' ? '' : 'none';
-        document.getElementById('mc_fmt_audio_row').style.display = ess === 'audio' ? '' : 'none';
-        // Port(s) par défaut : un seul champ pertinent si l'essence est précisée, les 3 sinon
-        // (une règle « Toutes » peut s'appliquer indifféremment à video/audio/anc).
-        document.getElementById('mc_port_video_field').style.display = (!ess || ess === 'video') ? '' : 'none';
-        document.getElementById('mc_port_audio_field').style.display = (!ess || ess === 'audio') ? '' : 'none';
-        document.getElementById('mc_port_anc_field').style.display   = (!ess || ess === 'anc')   ? '' : 'none';
-    },
-
-    onCidrChange() {
-        const cidr = document.getElementById('mc_cidr').value.trim();
-        const el = document.getElementById('mc_cidr_preview');
-        const m = cidr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
-        if (!m) { el.textContent = cidr ? T('settings.mcast.cidr_invalid') : ''; return; }
-        const octs = [1, 2, 3, 4].map(i => parseInt(m[i], 10));
-        const prefix = parseInt(m[5], 10);
-        if (octs.some(o => o > 255) || prefix > 32) { el.textContent = T('settings.mcast.cidr_invalid'); return; }
-        const base = ((octs[0] << 24) | (octs[1] << 16) | (octs[2] << 8) | octs[3]) >>> 0;
-        const hostBits = 32 - prefix;
-        const size = hostBits >= 31 ? Math.pow(2, hostBits) : (2 ** hostBits);
-        const mask = hostBits >= 32 ? 0 : (0xFFFFFFFF << hostBits) >>> 0;
-        const network = (base & mask) >>> 0;
-        const last = (network + size - 1) >>> 0;
-        const toIp = n => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
-        el.textContent = `${T('settings.mcast.cidr_first')} ${toIp(network)} — `
-            + `${T('settings.mcast.cidr_last')} ${toIp(last)} — `
-            + `${T('settings.mcast.cidr_count')} ${size}`;
+        document.getElementById('mcast-legacy').style.display = this._ranges.length ? '' : 'none';
+        if (this._ranges.length) this._renderTable();
     },
 
     _parseCrit(mj) {
@@ -4745,6 +5814,24 @@ const McastRanges = {
     _cidrLabel(r) {
         if (r.prefix_len != null) return `${escapeHtml(r.base_ip)}/${r.prefix_len}`;
         return `${escapeHtml(r.base_ip)} (+${r.size})`;
+    },
+
+    _rangeLabel(r) {
+        let t = `A ${this._cidrLabel(r)}`;
+        if (r.base_ip_b) t += ` · B ${escapeHtml(r.base_ip_b)}`;
+        return t;
+    },
+
+    _modeTags(r) {
+        const tags = [];
+        if (r.rank_mode === 'counter') tags.push(T('settings.mcast.tag_counter'));
+        if (r.port_mode === 'fixed') tags.push(T('settings.mcast.tag_port_fixed'));
+        return tags.map(x => ` <span class="badge">${x}</span>`).join('');
+    },
+
+    _usedLabel(r) {
+        const f = v => (v === undefined || v === null) ? '—' : v;
+        return `${f(r.used)} / ${f(r.capacity)}`;
     },
 
     _portsLabel(r) {
@@ -4779,6 +5866,7 @@ const McastRanges = {
                 <th style="text-align:left">${T('settings.mcast.col_match')}</th>
                 <th style="text-align:left">${T('settings.mcast.col_range')}</th>
                 <th style="text-align:left">${T('settings.mcast.col_ports')}</th>
+                <th style="text-align:left">${T('settings.mcast.col_used')}</th>
                 <th style="text-align:left">${T('settings.mcast.f_label')}</th>
                 <th></th>
             </tr>
@@ -4787,79 +5875,15 @@ const McastRanges = {
                 <td>${r.essence ? T('settings.mcast.essence_' + r.essence) : T('settings.mcast.essence_all')}</td>
                 <td>${(r.leg === null || r.leg === undefined) ? T('settings.mcast.leg_both') : r.leg}</td>
                 <td>${this._matchSummary(r.match_json, r.essence)}</td>
-                <td>${this._cidrLabel(r)}</td>
+                <td>${this._rangeLabel(r)}${this._modeTags(r)}</td>
                 <td>${this._portsLabel(r)}</td>
+                <td>${this._usedLabel(r)}</td>
                 <td>${escapeHtml(r.label || '')}</td>
                 <td style="white-space:nowrap">
-                    <button class="btn" style="padding:2px 8px" onclick="McastRanges.edit(${r.id})">${T('settings.mcast.edit')}</button>
                     <button class="btn" style="padding:2px 8px" onclick="McastRanges.remove(${r.id})">${T('settings.mcast.delete')}</button>
                 </td>
             </tr>`).join('')}
         </table>`;
-    },
-
-    async edit(id) {
-        const r = this._ranges.find(x => x.id === id);
-        if (!r) return;
-        this._editId = id;
-        document.getElementById('mc_scope').value = r.scope;
-        this.onScopeChange();
-        if (r.scope === 'network') {
-            document.getElementById('mc_network').value = r.media_network_id;
-        } else {
-            document.getElementById('mc_node').value = r.node_id;
-            await this.onNodeChange();
-            document.getElementById('mc_iface').value = r.ifname;
-        }
-        document.getElementById('mc_essence').value = r.essence || '';
-        this.onEssenceChange();
-        document.getElementById('mc_leg').value = (r.leg === null || r.leg === undefined) ? '' : r.leg;
-        const crit = this._parseCrit(r.match_json);
-        document.getElementById('mc_fmt_scan').value = crit.scan || '';
-        document.getElementById('mc_fmt_width').value = crit.width || '';
-        document.getElementById('mc_fmt_height').value = crit.height || '';
-        document.getElementById('mc_fmt_fps').value = crit.fps || '';
-        document.getElementById('mc_fmt_channels').value = crit.channels || '';
-        if (r.prefix_len != null) {
-            document.getElementById('mc_cidr').value = `${r.base_ip}/${r.prefix_len}`;
-            this.onCidrChange();
-        } else {
-            // Règle historique sans CIDR d'origine (base_ip/size arbitraires) : ne pas reconstituer
-            // un faux CIDR (fausserait la taille) — l'opérateur ressaisit un CIDR s'il veut éditer.
-            document.getElementById('mc_cidr').value = '';
-            document.getElementById('mc_cidr_preview').textContent =
-                `${T('settings.mcast.legacy_range')} : ${r.base_ip} (+${r.size})`;
-        }
-        document.getElementById('mc_port_video').value = r.port_default_video || '';
-        document.getElementById('mc_port_audio').value = r.port_default_audio || '';
-        document.getElementById('mc_port_anc').value   = r.port_default_anc   || '';
-        // Plan d'adressage (décalages) : '' = valeur par défaut du plan (cf. allocations.plan_decalages).
-        const _off = (id, v) => document.getElementById(id).value = (v === null || v === undefined) ? '' : v;
-        _off('mc_off_video', r.ip_offset_video); _off('mc_off_anc', r.ip_offset_anc);
-        _off('mc_off_audio', r.ip_offset_audio); _off('mc_step_audio', r.ip_step_audio);
-        document.getElementById('mc_label').value = r.label || '';
-        document.getElementById('mc_cancel_btn').style.display = '';
-        document.getElementById('mcast-form-title').textContent =
-            T('settings.mcast.edit') + ' — ' + (r.label || r.base_ip);
-    },
-
-    cancelEdit() {
-        this._editId = null;
-        document.getElementById('mc_cancel_btn').style.display = 'none';
-        document.getElementById('mcast-form-title').textContent = T('settings.mcast.add_rule');
-        document.getElementById('mc_cidr').value = '';
-        document.getElementById('mc_cidr_preview').textContent = '';
-        document.getElementById('mc_label').value = '';
-        document.getElementById('mc_port_video').value = '';
-        document.getElementById('mc_port_audio').value = '';
-        document.getElementById('mc_port_anc').value = '';
-        ['mc_off_video', 'mc_off_anc', 'mc_off_audio', 'mc_step_audio']
-            .forEach(id => document.getElementById(id).value = '');
-        document.getElementById('mc_essence').value = '';
-        document.getElementById('mc_leg').value = '';
-        ['mc_fmt_scan', 'mc_fmt_width', 'mc_fmt_height', 'mc_fmt_fps', 'mc_fmt_channels'].forEach(id =>
-            document.getElementById(id).value = '');
-        this.onEssenceChange();
     },
 
     async remove(id) {
@@ -4868,64 +5892,6 @@ const McastRanges = {
         await this.load();
     },
 
-    async submit() {
-        const scope = document.getElementById('mc_scope').value;
-        const essence = document.getElementById('mc_essence').value || null;
-        const leg = document.getElementById('mc_leg').value;
-        const match = {};
-        if (essence === 'video') {
-            const scan = document.getElementById('mc_fmt_scan').value;
-            const width = document.getElementById('mc_fmt_width').value;
-            const height = document.getElementById('mc_fmt_height').value;
-            const fps = document.getElementById('mc_fmt_fps').value;
-            if (scan) match.scan = scan;
-            if (width) match.width = parseInt(width, 10);
-            if (height) match.height = parseInt(height, 10);
-            if (fps) match.fps = parseFloat(fps);
-        } else if (essence === 'audio') {
-            const ch = document.getElementById('mc_fmt_channels').value;
-            if (ch) match.channels = parseInt(ch, 10);
-        }
-        const cidr = document.getElementById('mc_cidr').value.trim();
-        const resEl = document.getElementById('mcast-save-result');
-        if (!cidr && !this._editId) {
-            resEl.textContent = T('settings.mcast.cidr_required');
-            return;
-        }
-        const portVal = id => document.getElementById(id).value
-            ? parseInt(document.getElementById(id).value, 10) : null;
-        const body = {
-            scope, essence, leg: leg === '' ? null : parseInt(leg, 10),
-            match_json: Object.keys(match).length ? match : null,
-            port_default_video: portVal('mc_port_video'),
-            port_default_audio: portVal('mc_port_audio'),
-            port_default_anc: portVal('mc_port_anc'),
-            ip_offset_video: portVal('mc_off_video'),
-            ip_offset_anc: portVal('mc_off_anc'),
-            ip_offset_audio: portVal('mc_off_audio'),
-            ip_step_audio: portVal('mc_step_audio'),
-            label: document.getElementById('mc_label').value.trim() || null,
-        };
-        if (cidr) body.cidr = cidr;
-        if (scope === 'network') {
-            body.media_network_id = parseInt(document.getElementById('mc_network').value, 10);
-        } else {
-            body.node_id = parseInt(document.getElementById('mc_node').value, 10);
-            body.ifname = document.getElementById('mc_iface').value;
-        }
-        resEl.textContent = '…';
-        const method = this._editId ? 'PUT' : 'POST';
-        const url = this._editId ? `/api/mcast_ranges/${this._editId}` : '/api/mcast_ranges';
-        const res = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
-            .then(r => r.json()).catch(() => ({ok: false, error: 'réseau'}));
-        if (res.ok) {
-            resEl.textContent = '';
-            this.cancelEdit();
-            await this.load();
-        } else {
-            resEl.textContent = res.error || 'erreur';
-        }
-    },
 };
 
 function _initSetTabs() {
@@ -5364,8 +6330,9 @@ function switchSetTab(name) {
     if (name === 'mxl')       { updateMxlRamEstimate(); updateMxlHistoryDerived(); clearTimeout(_mxlChartTimer); rafraichirMxlCharts(); }
     else                      { clearTimeout(_mxlChartTimer); }
     if (name === 'database')  { rafraichirBackup(); }
+    if (name === 'mail') mailCharger();
     if (name === 'journalisation') { HostNode.load().then(() => jrnRefreshLogTab()); rafraichirLogInfo(); }
-    if (name === 'mcast')     McastRanges.load();
+    if (name === 'mcast')     { McastPlans.load(); McastRanges.load(); }
     if (name === 'files' && window.filesInit) filesInit();
     if (name === 'services')  rafraichirServices();
     if (name === 'alertes' && typeof alertingRefresh === 'function') alertingRefresh();
@@ -5632,7 +6599,7 @@ function switchDeployTab(name) {
         if (panel) panel.style.display = on ? '' : 'none';
         if (btn)   btn.classList.toggle('active', on);
     });
-    if (name === 'build')     { chargerBuildOptions(); chargerImageBuildNode(); rafraichirImages(); rafraichirNoeudsImages(); rafraichirStoragePrereq(); }
+    if (name === 'build')     { chargerBuildOptions(); chargerImageBuildNode(); rafraichirImages(); rafraichirNoeudsImages(); rafraichirStoragePrereq(); registreCharger(); }
     if (name === 'nodes')     { rafraichirNodes(); _nodesDotPoll = setInterval(majVoyantsNodes, 5000); }
     if (name === 'newserver') rafraichirDeploiement();
     if (name === 'fleet')     { actualiserPeers(); rafraichirNoeudsImages(); }   // re-ping orchestrateurs + état images nœuds
@@ -6228,6 +7195,8 @@ async function rafraichirNodes() {
               <div class="meta" id="ndagent_${n.id}" style="margin-top:4px">${_nodeAgentHtml(n, bundled)}</div>
               ${_hdLigneGpu(n)}
               ${_hdLigneDecklink(n)}
+              ${_hdLigneRt(n)}
+              ${_hdLigneIrq(n)}
               ${_capFixHtml(n)}
               ${(() => { const needsCfg = (!n.docker_network) || (n.mtl_capable && !n.mtl_iface);
                 return `<div style="margin-top:var(--space-2);display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
@@ -6439,6 +7408,7 @@ async function preparerNode() {
         name: document.getElementById('np_name').value.trim(),
         capabilities: caps,
         registry: document.getElementById('np_registry').value.trim(),
+        rt_kernel: document.getElementById('np_rt_kernel').value,   // auto | rt | normal
     };
     if (!body.name || !caps.length) {
         msg.style.color='var(--status-stopped-fg)'; msg.textContent=T('settings.js.need_name_cap'); return;
@@ -7735,6 +8705,24 @@ function _hdLigneDecklink(n) {
               ${_hdBoxHtml(n, 'blackmagic')}`;
 }
 
+// Noyau temps réel : offert sur TOUT nœud agent (pas de capacité qui le conditionne — une console audio
+// tourne sur un nœud « compute »). Le panneau dit lui-même s'il n'y a rien à faire.
+function _hdLigneRt(n) {
+    if (!n.agent_version) return '';                 // pas d'agent joignable : rien à piloter
+    return `<div class="meta" style="margin-top:4px">${T('settings.js.node_rt_kernel')}
+                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'rt_kernel')">${T('settings.hostdrv.rt_kernel.open')}</button></div>
+              ${_hdBoxHtml(n, 'rt_kernel')}`;
+}
+
+// Kernel-managed interrupts of disk controllers (host driver `irq_managed`): offered on every agent node,
+// like the kernel — the panel itself says when no controller is concerned.
+function _hdLigneIrq(n) {
+    if (!n.agent_version) return '';
+    return `<div class="meta" style="margin-top:4px">${T('settings.js.node_irq_managed')}
+                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'irq_managed')">${T('settings.hostdrv.irq_managed.open')}</button></div>
+              ${_hdBoxHtml(n, 'irq_managed')}`;
+}
+
 // Ligne « capacités » de la carte nœud : SEULEMENT celles qui sont présentes. Ce qui manque
 // n'encombre pas la ligne — il se découvre en ouvrant le menu du bouton « ＋ Ajouter ». Un nœud sans
 // agent n'est pas provisionnable (pas de /v1/host/exec) → on affiche l'état sans proposer d'ajout.
@@ -7928,6 +8916,10 @@ function hostDrvRender(id, kind, j) {
         const sid = (p0 && p0.id) ? p0.id : p0;
         return '<li>'+escapeHtml(_hdFmt(T(P+'step.'+sid), (p0 && p0.params) || plan.params))+'</li>';
     }).join('');
+    // Warnings sit ABOVE the plan and whatever its status: « all up to date » under a kernel
+    // the driver crashes on is exactly what an operator must not read alone (blackmagic 1.5.0).
+    const warns = (j.warnings || []).map(w => '<div style="margin:8px 0;padding:8px 10px;border:1px solid var(--status-warning-fg,#c80);border-radius:6px">'
+        +'<div class="meta" style="color:var(--status-warning-fg,#c80)">⚠ '+escapeHtml(_hdFmt(T(P+'warn.'+w.code), w.params || {}))+'</div></div>').join('');
     const pend = job.pending || (plan.status === 'pending_reboot' ? 'reboot' : '');
     const btnStyle = 'min-height:44px;padding:0 16px';
     let pendHtml = '';
@@ -7944,6 +8936,7 @@ function hostDrvRender(id, kind, j) {
         +'<span class="meta" id="hostdrv_up_'+kind+'_'+id+'"></span></div>' : '';
     box.innerHTML =
         '<div style="font-weight:700">'+escapeHtml(T(P+'title'))+' <span class="badge '+(bad?'stopped':(plan.status==='ok'?'ready':''))+'">'+escapeHtml(T(P+'status.'+plan.status))+'</span></div>'
+        +warns
         +'<table style="margin:6px 0;border-collapse:collapse">'+rows+'</table>'
         +'<div style="margin:6px 0;'+(bad?'color:var(--status-stopped-fg)':'')+'">'+escapeHtml(msg)+'</div>'
         +(steps && j.can_run ? '<div class="meta">'+escapeHtml(T('settings.hostdrv.steps'))+'</div><ol class="meta" style="margin:2px 0 8px 18px">'+steps+'</ol>' : '')
@@ -7951,7 +8944,7 @@ function hostDrvRender(id, kind, j) {
         +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
         +(j.can_run ? '<button type="button" class="btn btn-blue" style="'+btnStyle+'" '+(running?'disabled':'')+' onclick="hostDrvRun('+id+',\''+kind+'\')">'+escapeHtml(_hdRunLabel(P, plan.status))+'</button>' : '')
         +'<button type="button" class="btn" style="'+btnStyle+'" onclick="hostDrvLoad('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.refresh'))+'</button></div>'
-        +(j.can_run ? '<div class="meta" style="margin-top:4px">'+escapeHtml(T(P+'license'))+'</div>' : '')
+        +(j.can_run && T(P+'license') !== P+'license' ? '<div class="meta" style="margin-top:4px">'+escapeHtml(T(P+'license'))+'</div>' : '')
         +upload
         +'<div id="hostdrv_job_'+kind+'_'+id+'" style="margin-top:8px"></div>';
     if (running || job.status === 'done' || job.status === 'error') { _hd[id+'_'+kind] = {timer: null, offset: 0, log: ''}; hostDrvPoll(id, kind); }
@@ -8309,6 +9302,122 @@ async function chargerImageBuildNode() {
 async function enregistrerImageBuildNode(val) {
     try { await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({image_build_node: val})}); } catch (e) {}
 }
+// ─── Internal image registry (app/registry.py) ───
+function registreFormulaire() {
+    const k = document.getElementById('reg_kind').value;
+    document.querySelectorAll('.reg-s3').forEach(e => e.style.display = k === 's3' ? '' : 'none');
+    document.querySelectorAll('.reg-path').forEach(e => e.style.display = k === 's3' ? 'none' : '');
+    document.getElementById('reg-kind-help').textContent = T('settings.registry.kind_' + k + '_d');
+}
+function _regGo(n) { return n == null ? '?' : (n / 1e9).toFixed(1); }
+async function registreCharger() {
+    const z = document.getElementById('reg-status');
+    if (!z) return;
+    try {
+        const d = await (await fetch('/api/registry/status')).json();
+        const c = d.config || {};
+        document.getElementById('reg_enabled').checked = !!d.enabled;
+        document.getElementById('reg_kind').value = d.kind || 'dedicated';
+        document.getElementById('reg_path').value = d.path || '';
+        document.getElementById('reg_port').value = d.port || 5500;
+        document.getElementById('reg_host').value = c.registry_host || '';
+        ['endpoint', 'bucket', 'region', 'access_key'].forEach(f =>
+            document.getElementById('reg_s3_' + f).value = c['registry_s3_' + f] || '');
+        document.getElementById('reg_s3_secret').placeholder = c.registry_s3_secret_set ? '••••••' : '';
+        registreFormulaire();
+        const st = d.storage || {};
+        const parts = [];
+        parts.push(d.enabled ? (d.healthy ? '<span class="badge ready">' + T('settings.registry.st_ok') + '</span>'
+                                          : '<span class="badge stopped">' + escapeHtml(T('settings.registry.st_down').replace('{d}', d.detail || d.service || '')) + '</span>')
+                             : '<span class="badge">' + T('settings.registry.st_off') + '</span>');
+        parts.push('Zot ' + escapeHtml(d.version || ''));
+        if (d.address) parts.push('<code>' + escapeHtml(d.address) + '</code>');
+        if (d.kind !== 's3' && d.path) {
+            parts.push(st.ok ? escapeHtml(T('settings.registry.st_space').replace('{f}', _regGo(st.free)).replace('{t}', _regGo(st.total)).replace('{p}', st.pct))
+                             : '<span style="color:var(--status-stopped-fg)">' + escapeHtml(T('settings.registry.storage_' + st.code)) + '</span>');
+            if (st.same_disk_as_root && st.ok) parts.push('<span style="color:var(--status-warning-fg, var(--accent))">' + escapeHtml(T('settings.registry.same_disk')) + '</span>');
+        }
+        if (d.enabled && d.shared_storage === false) parts.push(T('settings.registry.ha_sync'));
+        z.innerHTML = parts.join(' · ');
+    } catch (e) { z.textContent = String(e); }
+}
+async function registreEnregistrer() {
+    const v = id => document.getElementById(id).value.trim();
+    const body = {registry_enabled: document.getElementById('reg_enabled').checked,
+                  registry_storage_kind: v('reg_kind'), registry_storage_path: v('reg_path'),
+                  registry_port: parseInt(v('reg_port') || '5500', 10), registry_host: v('reg_host'),
+                  registry_s3_endpoint: v('reg_s3_endpoint'), registry_s3_bucket: v('reg_s3_bucket'),
+                  registry_s3_region: v('reg_s3_region'), registry_s3_access_key: v('reg_s3_access_key')};
+    const sec = document.getElementById('reg_s3_secret').value;
+    if (sec) body.registry_s3_secret = sec;
+    habDire('reg-msg', T('settings.registry.applying'), true);
+    try {
+        const r = await fetch('/api/registry/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        const j = await r.json();
+        if (j.ok) habDire('reg-msg', T('settings.registry.applied'), true);
+        else habDire('reg-msg', j.code ? T('settings.registry.storage_' + j.code) : (j.msg || T('settings.js.error')), false);
+    } catch (e) { habDire('reg-msg', String(e), false); }
+    document.getElementById('reg_s3_secret').value = '';
+    registreCharger();
+}
+async function registreVersions() {
+    const z = document.getElementById('reg-versions');
+    z.textContent = T('settings.loading');
+    try {
+        const d = await (await fetch('/api/registry/versions')).json();
+        const ims = d.images || {};
+        const ws = Object.keys(ims);
+        if (!ws.length) { z.textContent = T('settings.registry.none_published'); return; }
+        z.innerHTML = '<div style="margin-bottom:var(--space-1)">' + escapeHtml(T('settings.registry.rollback_help')) + '</div>' + ws.map(w => {
+            const im = ims[w];
+            const opts = im.versions.map(v => '<option value="' + escapeHtml(v.tag) + '">' + escapeHtml(v.tag)
+                + (v.tag === im.current ? ' · ' + escapeHtml(T('settings.registry.current')) : '')
+                + (v.ts ? ' · ' + new Date(v.ts * 1000).toLocaleString() : '')
+                + ' · ' + escapeHtml((v.digest || '').replace('sha256:', '').slice(0, 12)) + '</option>').join('');
+            const rb = im.rollback ? ' <span class="badge ' + (im.rollback.status === 'ok' ? 'ready' : (im.rollback.status === 'error' ? 'stopped' : '')) + '">'
+                + escapeHtml(im.rollback.msg + ' : ' + im.rollback.status) + '</span>' : '';
+            return '<div class="row" style="align-items:center; gap:var(--space-2); margin-bottom:var(--space-1)"><strong>' + escapeHtml(im.label) + '</strong>'
+                + '<select id="reg-v-' + w + '" class="ctl-input">' + opts + '</select>'
+                + '<button class="btn" onclick="registreRevenir(\'' + w + '\')">' + T('settings.registry.rollback') + '</button>' + rb + '</div>';
+        }).join('');
+    } catch (e) { z.textContent = String(e); }
+}
+async function registreRevenir(w) {
+    const tag = document.getElementById('reg-v-' + w).value;
+    if (!await mxlConfirm({message: T('settings.registry.rollback_confirm').replace('{tag}', tag), confirmLabel: T('settings.registry.rollback')})) return;
+    const r = await fetch('/api/registry/rollback', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({which: w, tag})});
+    const j = await r.json();
+    habDire('reg-msg', j.ok ? T('settings.registry.rollback_started').replace('{tag}', tag) : (j.error || T('settings.js.error')), !!j.ok);
+    setTimeout(registreVersions, 3000);
+}
+async function registreEmpreintes() {
+    const z = document.getElementById('reg-digests');
+    z.textContent = T('settings.loading');
+    try {
+        const d = await (await fetch('/api/registry/digests')).json();
+        const tags = Object.keys(d.published || {}).sort();
+        if (!tags.length) { z.textContent = T('settings.registry.none_published'); return; }
+        const nodes = Object.keys(d.nodes || {}).sort();
+        const court = x => x ? x.replace('sha256:', '').slice(0, 12) : '—';
+        let h = '<table class="tbl"><thead><tr><th>' + T('settings.registry.col_image') + '</th><th>' + T('settings.registry.col_expected') + '</th>'
+              + nodes.map(n => '<th>' + escapeHtml(n) + ((d.archs || {})[n] ? ' <span class="meta">' + escapeHtml(d.archs[n]) + '</span>' : '') + '</th>').join('') + '</tr></thead><tbody>';
+        for (const t of tags) {
+            const plats = (d.published[t].platforms || []).map(p => p.split('/').slice(1).join('/')).join(', ');
+            h += '<tr><td><code>' + escapeHtml(t) + '</code></td><td><code title="' + escapeHtml(d.published[t].digest) + '">' + court(d.published[t].digest) + '</code>'
+               + (plats ? ' <span class="meta">' + escapeHtml(plats) + '</span>' : '') + '</td>';
+            for (const n of nodes) {
+                const c = ((d.nodes[n] || {})[t]) || {};
+                const badge = c.missing_arch ? 'stopped' : (c.match === true ? 'ready' : (c.match === false ? 'stopped' : ''));
+                const txt = c.missing_arch ? T('settings.registry.missing_arch').replace('{arch}', c.missing_arch)
+                          : (c.match === false ? T('settings.registry.mismatch') : (c.digest ? court(c.digest) : T('settings.registry.not_from_registry')));
+                h += '<td><span class="badge ' + badge + '" title="' + escapeHtml(c.digest || '') + '">' + escapeHtml(txt) + '</span></td>';
+            }
+            h += '</tr>';
+        }
+        z.innerHTML = h + '</tbody></table>';
+    } catch (e) { z.textContent = String(e); }
+}
+
 let _imgPoll = null;
 async function rafraichirImages() {
     const box = document.getElementById('images-list');
@@ -10615,6 +11724,32 @@ function _netModuleHtml(j) {
     }
     return idTable + domHtml;
 }
+// First fabric of a media network (which colour is Fabric A in the multicast plans). Saved at once, on the
+// network itself: it is not part of the interface form, so «Save» does not carry it.
+function _netFirstFabricSync() {
+    const id = parseInt(document.getElementById('nif_media_network').value, 10);
+    const net = ((_netViewData?.ptp?.networks) || []).find(x => x.id === id);
+    const sel = document.getElementById('nif_first_fabric');
+    sel.disabled = !net;
+    sel.value = net && net.first_fabric === 'blue' ? 'blue' : 'red';
+}
+async function _netFirstFabricSave() {
+    const id = parseInt(document.getElementById('nif_media_network').value, 10);
+    const msg = document.getElementById('nif_ff_msg');
+    if (!id) return;
+    const v = document.getElementById('nif_first_fabric').value;
+    msg.textContent = '…';
+    const r = await fetch('/api/media-networks/' + id, {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({first_fabric: v})}).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    if (r && r.ok && j.ok !== false) {
+        const net = ((_netViewData?.ptp?.networks) || []).find(x => x.id === id);
+        if (net) net.first_fabric = v;
+        msg.textContent = '✓';
+    } else {
+        msg.textContent = (j && j.error) || T('settings.js.error_label');
+    }
+}
 function _netIfaceEditForm(ifname) {
     const n = (_netViewData?.interfaces || []).find(x => x.ifname === ifname);
     if (!n) return `<div class="meta">${escapeHtml(ifname)} — ${T('settings.js.error_label')}</div>`;
@@ -10625,6 +11760,7 @@ function _netIfaceEditForm(ifname) {
     const netOptions = `<option value="">—</option>` + _nets.map(net =>
         `<option value="${net.id}"${n.media_network_id===net.id?' selected':''}>${escapeHtml(net.name)} (d${net.domain})</option>`).join('');
     _netModeDraftInit(n);
+    const _ff = ((_nets.find(x => x.id === n.media_network_id) || {}).first_fabric) === 'blue' ? 'blue' : 'red';
     return `
         <div style="font-weight:600; margin-bottom:var(--space-2)">${T('settings.js.net.edit_title')} <span style="font-family:var(--font-mono)">${escapeHtml(ifname)}</span></div>
         <div class="row" style="flex-wrap:wrap; align-items:flex-end; gap:var(--space-3)">
@@ -10690,7 +11826,13 @@ function _netIfaceEditForm(ifname) {
             </div>
           </fieldset>
           <div class="row" style="flex-wrap:wrap; align-items:flex-end; gap:var(--space-3)">
-            <div class="field"><label>${T('settings.js.net.f_network')}</label><select id="nif_media_network">${netOptions}</select></div>
+            <div class="field"><label for="nif_media_network">${T('settings.js.net.f_network')}</label><select id="nif_media_network" onchange="_netFirstFabricSync()">${netOptions}</select></div>
+            <div class="field"><label for="nif_first_fabric">${T('settings.js.net.f_first_fabric')}</label>
+              <select id="nif_first_fabric" onchange="_netFirstFabricSave()">
+                <option value="red"${_ff==='red'?' selected':''}>🔴 red</option>
+                <option value="blue"${_ff==='blue'?' selected':''}>🔵 blue</option>
+              </select></div>
+            <div class="field"><span class="meta">${T('settings.js.net.first_fabric_hint')}</span> <span class="meta" id="nif_ff_msg" role="status"></span></div>
             <div class="field"><span class="meta">${T('settings.js.net.network_hint')}</span></div>
           </div>
         </div>
@@ -11957,6 +13099,35 @@ async function rafraichirCpu(sig) {
     } catch(e) {
         mapEl.innerHTML = `<span style="color:var(--status-stopped-fg)">${T('settings.js.error_label')} ${escapeHtml(e.message)}</span>`;
     }
+    rafraichirMemoirePlugins(sig);
+}
+
+// Memory of each plugin over the fleet (app/memory_watch.py, 2026-11-23): the manifest limit
+// against the peak measured over 7 days. What a manifest is corrected with.
+async function rafraichirMemoirePlugins(sig) {
+    const el = document.getElementById('cpu_mem_plugins');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/resources/memory_by_type', sig ? {signal: sig} : {});
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const rows = (await r.json()).types || [];
+        if (!rows.length) { el.textContent = T('settings.cpu_mem.none'); return; }
+        const td = 'padding:var(--space-1) var(--space-2)';
+        el.innerHTML = `<table style="border-collapse:collapse">
+            <thead><tr style="color:var(--text-muted); text-align:left; border-bottom:1px solid var(--border-soft)">
+                <th style="${td}">${T('settings.cpu_mem.col_type')}</th>
+                <th style="${td}">${T('settings.cpu_mem.col_limit')}</th>
+                <th style="${td}">${T('settings.cpu_mem.col_peak')}</th>
+                <th style="${td}">${T('settings.cpu_mem.col_instances')}</th>
+            </tr></thead><tbody>${rows.map(x => `<tr${x.pct >= 70 ? ' style="color:var(--status-warning-fg)"' : ''}>
+                <td style="${td}"><b>${escapeHtml(x.type)}</b></td>
+                <td style="${td}">${x.manifest_mb ? x.manifest_mb + ' Mo' : T('settings.cpu_mem.no_limit')}</td>
+                <td style="${td}">${x.peak_mb} Mo${x.pct != null ? ' (' + Math.round(x.pct) + '\u00a0%)' : ''}</td>
+                <td style="${td}">${x.instances}</td></tr>`).join('')}</tbody></table>`;
+    } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        el.innerHTML = `<span style="color:var(--status-stopped-fg)">${T('settings.js.error_label')} ${escapeHtml(e.message)}</span>`;
+    }
 }
 
 // Bibliothèque de qualification des cartes (nic_profiles) — table + bouton « Qualifier le nœud ».
@@ -13028,7 +14199,8 @@ async function oublierPupitre(ip) {
 }
 
 setInterval(() => {
-    if (document.getElementById('set-tab-pupitres').style.display !== 'none') {
+    const _pup = document.getElementById('set-tab-pupitres');   // absent when the tab is not rendered
+    if (_pup && _pup.style.display !== 'none') {
         rafraichirAtem();
     }
 }, 3000);
@@ -13669,6 +14841,8 @@ async function appliquerSkaarhoj() {
 })();
 
 // ─── FIELDS (cluster + thème + réseau) ───────────────────────
+// The global multicast pool is edited and saved on the Multicast tab (McastPool), not with this list.
+const MCAST_POOL_FIELDS = ['mcast_pool_base', 'mcast_pool_size', 'mcast_port_default'];
 
 const FIELDS = [
     'ui_lang_default',
@@ -13676,7 +14850,6 @@ const FIELDS = [
     'vmid_start','vmid_end',
     'net_topology','mgmt_subnet','mgmt_vlan',
     'ha_standby_url','ha_replicate_interval_min',
-    'mcast_pool_base','mcast_pool_size','mcast_port_default',
     'net_mode',
     'ip_start','ip_end','netmask_bits','gateway',
     'theme',
@@ -13872,17 +15045,19 @@ async function chargerSettings() {
     const r = await fetch('/api/settings');
     const s = await r.json();
     // 1) Affichage IMMÉDIAT de tous les champs simples (texte/select locaux).
-    FIELDS.forEach(k => {
+    FIELDS.concat(MCAST_POOL_FIELDS).forEach(k => {
         const el = document.getElementById('s_' + k);
         if (!el || s[k] === undefined || s[k] === null) return;
         if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k];
     });
+    McastPool.refresh();
     renderVideoFormatRows();   // construit la table éditable depuis le store (textarea caché)
     rafraichirVideoFormatDefaultSelect(s.video_format_default || '');
     const lp = document.getElementById('logo-preview');
     if (lp) {
         majApercuLogo(s.brand_logo_url || '');
     }
+    chargerSplash(s);
     onNetModeChange();
     onNetTopologyChange();
     updateMxlRamEstimate();
@@ -14190,6 +15365,68 @@ async function applyHaRole() {
 }
 
 // ─── Personnalisation : sauvegarde des champs texte + upload/suppression du logo ──
+// ── Startup splash (cf. app/splash.py) ─────────────────────────────────────────────────────
+// The preview draws what the container renders (bobimxl.render_splash): same layout, same
+// proportions of the frame height, on a 16:9 frame. The name is an example.
+const SPLASH_KEYS = ['splash_bg', 'splash_logo_pct', 'splash_text', 'splash_text_custom',
+                     'splash_text_pct', 'splash_text_color'];
+let _splashLogo = null;
+function chargerSplash(s) {
+    const sw = document.getElementById('s_splash_enabled');
+    if (!sw) return;
+    sw.setAttribute('aria-pressed', s.splash_enabled === false ? 'false' : 'true');
+    SPLASH_KEYS.forEach(k => {
+        const el = document.getElementById('s_' + k);
+        if (el && s[k] !== undefined && s[k] !== null) el.value = (k.endsWith('_color') || k === 'splash_bg') ? String(s[k]).toLowerCase() : s[k];
+    });
+    _splashLogo = null;
+    if (s.brand_logo_url) {
+        const im = new Image();
+        im.onload = () => { _splashLogo = im; apercuSplash(); };
+        im.src = s.brand_logo_url;
+    }
+    apercuSplash();
+}
+function apercuSplash() {
+    const cv = document.getElementById('splash-preview');
+    if (!cv) return;
+    const v = id => document.getElementById(id).value;
+    const on = document.getElementById('s_splash_enabled').getAttribute('aria-pressed') === 'true';
+    const W = cv.width, H = cv.height, g = cv.getContext('2d');
+    g.fillStyle = on ? v('s_splash_bg') : '#000000';
+    g.fillRect(0, 0, W, H);
+    document.getElementById('s_splash_text_custom').style.display = v('s_splash_text') === 'custom' ? '' : 'none';
+    if (!on) return;
+    let lw = 0, lh = 0;
+    const lp = Math.max(0, Math.min(90, +v('s_splash_logo_pct') || 0));
+    if (_splashLogo && lp > 0) {
+        lh = H * lp / 100; lw = _splashLogo.width * lh / Math.max(1, _splashLogo.height);
+        if (lw > W * 0.9) { lw = W * 0.9; lh = _splashLogo.height * lw / Math.max(1, _splashLogo.width); }
+    }
+    const mode = v('s_splash_text');
+    const text = mode === 'name' ? T('settings.splash.example_name') : (mode === 'custom' ? v('s_splash_text_custom').trim() : '');
+    const size = Math.max(8, H * Math.max(1, Math.min(30, +v('s_splash_text_pct') || 5)) / 100);
+    g.font = 'bold ' + size + 'px "DejaVu Sans", sans-serif';
+    const gap = (lh && text) ? H * 0.04 : 0;
+    let y = (H - (lh + gap + (text ? size : 0))) / 2;
+    if (lh) { g.drawImage(_splashLogo, (W - lw) / 2, y, lw, lh); y += lh + gap; }
+    if (text) {
+        g.fillStyle = v('s_splash_text_color');
+        g.textAlign = 'center'; g.textBaseline = 'top';
+        g.fillText(text, W / 2, y);
+    }
+}
+async function enregistrerSplash() {
+    const payload = {splash_enabled: document.getElementById('s_splash_enabled').getAttribute('aria-pressed') === 'true'};
+    SPLASH_KEYS.forEach(k => { payload[k] = document.getElementById('s_' + k).value; });
+    const out = document.getElementById('save-splash-result');
+    const r = await fetch('/api/settings', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { out.style.color = 'var(--status-running-fg)'; out.textContent = T('settings.splash.saved'); }
+    else { out.style.color = 'var(--status-stopped-fg)'; out.textContent = '✕ ' + (d.error || T('settings.js.error')); }
+}
 async function enregistrerSettingsBranding() {
     const payload = {
         brand_system_name: document.getElementById('s_brand_system_name').value,
@@ -15435,11 +16672,12 @@ function _pluginDetailHtml(p) {
         const deployedCell = i.outdated
             ? `<span class="badge warn">v${_escp(i.deployed_version || '?')}</span>`
             : `<span class="meta">v${_escp(i.deployed_version || '?')}</span>`;
-        // Choix de la version à (re)déployer.
+        // Choix de la version à (re)déployer : la COURANTE d'office. Présélectionner la version déployée
+        // faisait de « Déployer » un redéploiement à l'identique — l'écart restait (testeur, 25/11).
         let deployCell;
         if (vers.length > 1) {
             const opts = vers.map(v =>
-                `<option value="${_escp(v)}"${v === i.deployed_version ? ' selected' : ''}>${_escp(v)}${v === p.version ? T('js.version_current') : ''}</option>`).join('');
+                `<option value="${_escp(v)}"${v === p.version ? ' selected' : ''}>${_escp(v)}${v === p.version ? T('js.version_current') : ''}</option>`).join('');
             deployCell = `<select id="cv-${i.vmid}" aria-label="${T('settings.js.version_for_aria').replace('{vmid}', i.vmid)}" style="font-size:0.85em">${opts}</select>`
                 + `<button class="btn btn-blue" style="margin-left:var(--space-1)" onclick="deployerContainerVersion(${i.vmid})">${setT('settings.st.deploy')}</button>`;
         } else {
@@ -15690,6 +16928,9 @@ async function updwSauver(corps) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     z.textContent = window.t('settings.updwatch.saved');
     catResume();
+    // Le réglage change l'HORLOGE : « prochain contrôle » et le champ Jour sont recalculés par le
+    // serveur. Les deviner ici donnerait deux vérités, dont une fausse quelques secondes.
+    updwCharger();
   } catch (e) {
     z.textContent = CAT_T('save_failed', 'Échec de l\'enregistrement : {e}').replace('{e}', e.message);
   }
@@ -15706,7 +16947,62 @@ function updwEtat(j) {
   else if (j.checked_at) parts.push((j.available || []).length
     ? window.t('settings.updwatch.found').replace('{n}', j.available.length)
     : window.t('settings.updwatch.none'));
+  const sc = j.schedule || {};
+  if (sc.next_at) parts.push(window.t('settings.updwatch.next')
+    .replace('{d}', new Date(sc.next_at * 1000).toLocaleString()));
+  const lm = (j.mail || {}).last || {};
+  // On n'affiche un envoi QUE s'il a eu lieu : « dernier envoi : jamais » sur une instance qui
+  // n'a tout simplement pas d'offre à annoncer serait lu comme une panne.
+  if (lm.error) parts.push(window.t('settings.updwatch.mail_last_failed').replace('{e}', lm.error));
+  else if (lm.at && lm.sent) parts.push(window.t('settings.updwatch.mail_last_ok')
+    .replace('{d}', new Date(lm.at * 1000).toLocaleString()));
   z.textContent = parts.join(' ');
+  updwMailEtat(j.mail || {});
+}
+// L'abonnement de CE compte : la case, son libellé (qui porte l'adresse), et pourquoi elle est
+// grisée le cas échéant. Une case inerte sans raison est indiscernable d'une panne.
+function updwMailEtat(m) {
+  const box = document.getElementById('s_update_notify_mail');
+  const lab = document.getElementById('updw-mail-lab');
+  const srv = document.getElementById('updw-mail-srv');
+  const essai = document.getElementById('updw-mail-essai');
+  if (!box || !lab) return;
+  const adr = (m.address || '').trim();
+  box.checked = !!m.subscribed;
+  box.disabled = !adr;
+  lab.textContent = adr
+    ? window.t('settings.updwatch.notify_mail').replace('{a}', adr)
+    : window.t('settings.updwatch.notify_mail_noaddr');
+  const sv = m.server || {};
+  let note = '';
+  if ((sv.missing || []).length) note = window.t('settings.updwatch.mail_srv_missing');
+  srv.textContent = note;
+  srv.style.display = note ? '' : 'none';
+  if (essai) essai.disabled = !adr || (sv.missing || []).length > 0;
+}
+async function updwAbonner(on) {
+  const z = document.getElementById('updw-etat');
+  try {
+    const r = await fetch('/api/update/watch/mail', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: !!on }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    z.textContent = window.t('settings.updwatch.saved');
+    updwMailEtat(j.mail || {});
+  } catch (e) {
+    z.textContent = CAT_T('save_failed', 'Échec de l\'enregistrement : {e}').replace('{e}', e.message);
+    updwCharger();        // la case retrouve l'état RÉEL, pas celui qu'on vient de cliquer
+  }
+}
+async function updwEssai() {
+  const z = document.getElementById('updw-etat');
+  z.textContent = window.t('settings.loading');
+  try {
+    const r = await fetch('/api/update/watch/mail/test', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status));
+    z.textContent = window.t('settings.updwatch.mail_sent').replace('{a}', j.to || '');
+  } catch (e) { z.textContent = e.message; }
 }
 async function updwCharger() {
   try {
@@ -15715,6 +17011,20 @@ async function updwCharger() {
     document.getElementById('s_update_check_enabled').checked = on(s.update_check_enabled ?? '1');
     document.getElementById('s_update_check_interval_h').value = String(s.update_check_interval_h || 24);
     document.getElementById('s_update_check_scope').value = s.update_check_scope || 'core';
+    const hSel = document.getElementById('s_update_check_hour');
+    if (hSel && !hSel.options.length)
+      for (let h = 0; h < 24; h++) {
+        const o = document.createElement('option');
+        o.value = String(h);
+        // Affichée dans le format de la LOCALE du navigateur (4 h / 4 AM), mais c'est bien
+        // l'heure locale du CONTRÔLEUR qui est réglée — l'aide sous le champ le dit.
+        o.textContent = new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: 'numeric' });
+        hSel.appendChild(o);
+      }
+    if (hSel) hSel.value = String(s.update_check_hour ?? 4);
+    document.getElementById('s_update_check_weekday').value = String(s.update_check_weekday ?? 0);
+    document.getElementById('updw-wd-champ').style.display =
+      (+(s.update_check_interval_h || 24) >= 168) ? '' : 'none';
     for (const [k, d] of [['alert', '1'], ['banner', '1'], ['popup', '0']])
       document.getElementById('s_update_notify_' + k).checked = on(s['update_notify_' + k] ?? d);
     updwEtat(await (await fetch('/api/update/watch', { cache: 'no-store' })).json());
@@ -15727,6 +17037,58 @@ async function updwVerifier() {
     const r = await fetch('/api/update/watch/check', { method: 'POST' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     updwEtat(await r.json());
+  } catch (e) { z.textContent = e.message; }
+}
+
+// ── Serveur d'envoi (Réglages → Système → E-mail, app/mail.py) ───────────────
+// ⚠ Le mot de passe n'est JAMAIS renvoyé par le serveur (expurgé de settings.public()) : le champ
+// reste donc vide, et un champ vide à l'enregistrement veut dire « garder celui qui est posé ».
+// L'envoyer vide l'EFFACERAIT, et le canal des alertes tomberait avec.
+async function mailCharger() {
+  const z = document.getElementById('mail-etat');
+  try {
+    const j = await (await fetch('/api/mail/config', { cache: 'no-store' })).json();
+    const v = (id, val) => { const e = document.getElementById(id); if (e) e.value = val; };
+    v('s_mail_host', j.host || '');
+    v('s_mail_port', j.port || 587);
+    v('s_mail_security', j.security || 'starttls');
+    v('s_mail_username', j.username || '');
+    v('s_mail_from', j.from || '');
+    v('s_mail_timeout_s', j.timeout_s || 15);
+    v('s_mail_password', '');
+    const pwd = document.getElementById('mail-pwd-note');
+    if (pwd) pwd.style.display = j.password_set ? '' : 'none';
+    if (z) z.textContent = (j.missing || []).length
+      ? window.t('settings.mail.missing').replace('{k}', (j.missing || []).join(', ')) : '';
+  } catch (e) { if (z) z.textContent = e.message; }
+}
+async function mailEnregistrer() {
+  const z = document.getElementById('mail-etat');
+  const g = id => (document.getElementById(id)?.value ?? '');
+  const corps = { mail_host: g('s_mail_host').trim(), mail_port: +g('s_mail_port') || 587,
+                  mail_security: g('s_mail_security'), mail_username: g('s_mail_username').trim(),
+                  mail_from: g('s_mail_from').trim(), mail_timeout_s: +g('s_mail_timeout_s') || 15 };
+  const pwd = g('s_mail_password');
+  if (pwd) corps.mail_password = pwd;      // vide = on conserve celui qui est enregistré
+  try {
+    const r = await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    z.textContent = window.t('settings.mail.saved');
+    mailCharger();
+  } catch (e) { z.textContent = e.message; }
+}
+async function mailEssai() {
+  const z = document.getElementById('mail-etat');
+  z.textContent = window.t('settings.loading');
+  try {
+    const to = (document.getElementById('mail-test-to')?.value || '').trim();
+    const r = await fetch('/api/mail/test', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || j.error || ('HTTP ' + r.status));
+    z.textContent = window.t('settings.mail.test_sent').replace('{a}', (j.to || []).join(', '));
   } catch (e) { z.textContent = e.message; }
 }
 
@@ -16601,6 +17963,12 @@ async function _maxAlertId() {
 }
 
 let _pluginFollowTimer = null;
+// Alertes qui CLOSENT le déploiement d'un conteneur (app/deploy.py, deployer_script) : réussite,
+// script non démarré ou mort aussitôt, version non appliquée, erreur.
+const _DEPLOY_END_KEYS = new Set(['alert.deploy.script_deploie_redemarre', 'alert.deploy.script_reconfigure_a_chaud',
+    'alert.deploy.script_deploie_non_demarre', 'alert.deploy.script_non_relance', 'alert.deploy.script_start_code',
+    'alert.deploy.script_start_echoue', 'alert.deploy.script_died_after_start', 'alert.deploy.version_non_appliquee',
+    'alert.deploy.version_unconfirmed', 'alert.deploy.erreur', 'alert.deploy.type_inconnu']);
 
 async function _followDeploy(sinceId, vmids, expected) {
     clearTimeout(_pluginFollowTimer);
@@ -16618,10 +17986,11 @@ async function _followDeploy(sinceId, vmids, expected) {
         try {
             const r = await fetch('/api/alerts?limit=120');
             const all = await r.json();
-            // alertes de ce redéploiement : id > baseline, mentionnant un vmid concerné
-            const mine = all.filter(a => a.id > sinceId &&
+            // alertes de ce redéploiement : id > baseline, d'un vmid concerné — par la COLONNE vmid
+            // (le texte, rendu dans la langue du lecteur, n'est qu'un repli pour les lignes sans elle).
+            const mine = all.filter(a => a.id > sinceId && (a.vmid != null ? vmidSet.has(String(a.vmid)) :
                 [...vmidSet].some(v => (a.message || '').includes('container ' + v) ||
-                                       (a.message || '').includes('#' + v)))
+                                       (a.message || '').includes('#' + v))))
                 .sort((a, b) => a.id - b.id);
             if (mine.length) {
                 logEl.innerHTML = mine.map(a => {
@@ -16632,8 +18001,11 @@ async function _followDeploy(sinceId, vmids, expected) {
                 }).join('\n');
                 logEl.scrollTop = logEl.scrollHeight;
             }
-            terminal = mine.filter(a =>
-                /déployé et redémarré|mais \/start|Erreur déploiement|IP introuvable|Type de script inconnu/.test(a.message || '')).length;
+            // Fin d'un déploiement : reconnue par la CLÉ du message (le texte change avec la langue),
+            // la phrase française ne servant qu'aux lignes d'avant les clés.
+            terminal = new Set(mine.filter(a => a.msg_key ? _DEPLOY_END_KEYS.has(a.msg_key) :
+                /déployé et redémarré|mais \/start|Erreur déploiement|IP introuvable|Type de script inconnu/.test(a.message || ''))
+                .map(a => String(a.vmid != null ? a.vmid : a.id))).size;
         } catch(e) { /* on retentera */ }
         const elapsed = Date.now() - t0;
         done = (expected && terminal >= expected) || elapsed > 120000;

@@ -1,7 +1,24 @@
 {
-  "version": "0.81.0",
-  "date": "2026-11-01",
+  "version": "0.85.0",
+  "date": "2026-11-28",
   "changes": {
+    "Keyers à découpe du mélangeur en C (0.85.0)": [
+      "libbobi_mvk ABI 8 : mvk_kchroma_y/c et mvk_klin_y/c (u8 et u16). Keyer chroma et keyer linear/luma du mélangeur : la lecture de table et le composite sur le PGM en une passe par plan, l'alpha n'est plus matérialisé. Résultat identique octet pour octet au calcul numpy (garde tests/verif_mixer_chroma_noyau.py). Mixer >= 0.23.73 les utilise ; sur une image plus ancienne il garde numpy et le dit (/state mvk_key false, refus comptés dans loop_timing)."
+    ],
+    "libmxl release/v1.1 a45b647 + mxl-fabrics-demo-options (0.84.1)": [
+      "libmxl passe de v1.1.0 à la branche de maintenance release/v1.1, épinglée sur le commit a45b647 du 26/11 (90 commits après v1.1.0) : file de complétion de l'initiateur réglable (#736), vidange et arrêt des files RC/RDM, correctifs de tranches.",
+      "mxl-fabrics-demo accepte `--fabrics-options '<json>'` (cqDepth) côté émetteur et récepteur : sans lui, un flux audio de plus de 31 canaux débordait la file de complétion de l'initiateur, même avec #736."
+    ],
+    "Décodeur HEIC/HEIF pour le plugin Images fixes (0.84.0)": [
+      "Paquet Debian libheif-examples (`heif-dec`) : les photos d'iPhone (HEIC/HEIF) passent à l'antenne. Images fixes >= 0.19.25 l'utilise ; absent, le plugin refuse le fichier en disant pourquoi. Environ 10 Mo (libheif, libde265, libaom).",
+      "Le noyau C du plugin Images fixes (libbobi_stills, 0.82-0.83) est bien dans cette image : le Dockerfile de travail était revenu à sa version 1.0.3 le 2026-11-19 (zip extrait par le bouton de mise à jour) et a été remis à celle du dépôt avant l'ajout."
+    ],
+    "Fondu tramé du plugin Images fixes (0.83.0)": [
+      "libbobi_stills ABI 2 : bobi_stills_mixd_u8/u16, mélange de fondu avec un seuil fixe par pixel avant la troncature. Supprime les à-coups d'un fondu en 8 bits entre deux images proches. Images fixes >= 0.19.21 l'utilise ; absent, le fondu reste celui d'avant."
+    ],
+    "Noyau C du plugin Images fixes (0.82.0)": [
+      "libbobi_stills.so (+ variante AVX2) : conversion RGBA vers trame planar Fill + Key du plugin Images fixes (BT.709 plage studio, chrominance moyennee), en une passe OpenMP. Mesure en 1080p : 12 a 15 ms au lieu de 105 a 150 ms de numpy, dans le processus qui publie la sortie ; resultat identique octet pour octet en 4:2:2. Images fixes >= 0.19.20 le charge par bobimxl.charger_noyau ; absent, il garde son calcul numpy."
+    ],
     "Le chemin DeckLink sort du socle partage ; les en-tetes MXL y restent (0.81.0)": [
       "★★ LE SOCLE NE SE CONSTRUISAIT PAS SANS UN PLUGIN OPTIONNEL. Les quatre binaires DeckLink (decklink_mxl, decklink_tx, decklink_probe, decklink_profile) etaient compiles ICI, dans l'image de base de TOUS les plugins non-2110. Deux consequences : un noeud sans carte les portait quand meme, et surtout cette image exigeait les sources de plugins/decklink_io pour etre mise en contexte (`_stage_tar` leve des que un seul chemin manque). Signale par un utilisateur exterieur le 2026-09-23 : le depot public publie cette recette mais pas le plugin (sous-module prive), donc AUCUNE image ne se construisait et le produit ne faisait rien. L'etage part dans plugins/decklink_io/image/Dockerfile — image bobi-decklink, fine couche FROM bobi-compute, node_only, capacite « decklink », comme bobi-gui et bobi-compute-gpu.",
       "★ LES EN-TETES MXL RESTENT dans l'image livree (COPY de /opt/mxl-install/include/). Des .h, aucun code executable : c'est ce qui permet a une couche fine de compiler contre le bus depuis un etage builder `FROM bobi-compute`. Sans eux, bobi-decklink devrait recloner et recompiler le SDK MXL sur le noeud pour quelques centaines de kilo-octets d'en-tetes.",
@@ -307,5 +324,5 @@
     ],
     "Bugs connus": []
   },
-  "image_tag": "bobi-compute:0.81"
+  "image_tag": "bobi-compute:0.85.0"
 }

@@ -1801,15 +1801,38 @@ def _vfio_executer(plan_fn, node, bdf, run=None, timeout=60):
     return True, (m.group(1).strip() if m else "ok"), checks
 
 
+def _ptp4l_follow(node, bdf, bound):
+    """The node's single-interface ptp4l follows the port: stopped once it is on vfio-pci (no
+    netdev, no PHC — it looped on « No such device », dl-360-1 2026-11-23), started again when the
+    port is back on its kernel driver (cf. app/pmd_switch.py). Best effort: the bind itself is done."""
+    try:
+        from . import pmd_switch
+        iface, _rows = _iface_pour_bdf(node, _normaliser_bdf(bdf))
+        ifname = ((iface or {}).get("ifname") or "").strip()
+        if not ifname:
+            return
+        host = (node or {}).get("host")
+        (pmd_switch.park_ptp4l if bound else pmd_switch.restore_ptp4l)(node, ifname, host)
+    except Exception as e:
+        log.warning("vfio: ptp4l of %s not %s after the PMD change: %s",
+                    bdf, "stopped" if bound else "restarted", e)
+
+
 def vfio_bind_apply(node, bdf, run=None):
     """Applique `vfio_bind_plan` sur le nœud (runner injectable, défaut agent-nœud).
     Renvoie (ok, msg, checks). Propage GardeFouVfio (refus AVANT toute exécution)."""
-    return _vfio_executer(vfio_bind_plan, node, bdf, run=run)
+    ok, msg, checks = _vfio_executer(vfio_bind_plan, node, bdf, run=run)
+    if ok and run is None:                     # an injected runner is a dry run or a test
+        _ptp4l_follow(node, bdf, bound=True)
+    return ok, msg, checks
 
 
 def vfio_unbind_apply(node, bdf, run=None):
     """Applique `vfio_unbind_plan` (rollback, Lot G). Renvoie (ok, msg, checks)."""
-    return _vfio_executer(vfio_unbind_plan, node, bdf, run=run)
+    ok, msg, checks = _vfio_executer(vfio_unbind_plan, node, bdf, run=run)
+    if ok and run is None:
+        _ptp4l_follow(node, bdf, bound=False)
+    return ok, msg, checks
 
 
 # ─── SR-IOV : PF kernel-PTP + VF DPDK-narrow (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) ─────
@@ -1940,33 +1963,50 @@ def sriov_vf_apply(node, pf_bdf, run=None, timeout=60):
 # ça couperait tous les ports E810 + ptp4l + irdma). ⚠ irdma ne recharge pas contre l'ice 2.6.6
 # (symboles rdma) → au boot, irdma peut rester déchargé (bénin si pas de RDMA ; documenté SRIOV_IMPL).
 INSTALL_PATCHED_ICE = r"""set -e
+# Built for EVERY installed kernel that has its headers, not only the running one: a node about to boot
+# the PREEMPT_RT kernel (host driver `rt_kernel`) would otherwise come up on the stock ice. The source
+# tree of kernel K is /lib/modules/K/source: the first `*-common` directory was the wrong one for an RT
+# kernel (its headers live in `*-common-rt`).
 K=$(uname -r)
-if modinfo ice 2>/dev/null | grep -q "Kahawai_2.6.6"; then echo "@@SKIP ice deja Kahawai_2.6.6 charge"; exit 0; fi
-if [ -e "/lib/modules/$K/updates/ice.ko" ] && modinfo "/lib/modules/$K/updates/ice.ko" 2>/dev/null | grep -q "Kahawai_2.6.6"; then
+TODO=""
+for d in /lib/modules/*/; do
+  k=$(basename "$d")
+  [ -e "/boot/vmlinuz-$k" ] || continue
+  if modinfo -k "$k" ice 2>/dev/null | grep -q "Kahawai_2.6.6"; then echo ">>> $k : ice Kahawai deja present"; continue; fi
+  [ "$k" = "$K" ] || [ -e "$d/build" ] || { echo ">>> $k : pas d'en-tetes, ignore"; continue; }
+  TODO="$TODO $k"
+done
+if [ -z "$TODO" ]; then
+  if modinfo ice 2>/dev/null | grep -q "Kahawai_2.6.6" && grep -q "Kahawai_2.6.6" /sys/module/ice/version 2>/dev/null; then
+    echo "@@SKIP ice deja Kahawai_2.6.6 charge"; exit 0
+  fi
   echo "@@SKIP ice Kahawai installe (updates/) — reboot pour activer"; exit 0
 fi
-echo ">>> deps build + headers noyau ($K)"
+echo ">>> deps build + headers noyau ($TODO)"
 command -v make >/dev/null 2>&1 && command -v gcc >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential
 dpkg -s "linux-headers-$K" >/dev/null 2>&1 || { apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y "linux-headers-$K"; }
-KSRC=$(ls -d /usr/src/linux-headers-*-common 2>/dev/null | head -1)
-[ -n "$KSRC" ] || KSRC="/usr/src/linux-headers-$K"
 SRC=/tmp/bobi-ice-build; rm -rf "$SRC"; mkdir -p "$SRC"; cd "$SRC"
 echo ">>> clone MTL (patches ice_drv) + ice v2.6.6"
 git clone --depth 1 https://github.com/OpenVisualCloud/Media-Transport-Library MTL
 git clone --depth 1 -b v2.6.6 https://github.com/intel/ethernet-linux-ice ice
 cd ice
 for p in ../MTL/patches/ice_drv/2.6.6/*.patch; do echo ">>> $p"; patch -p1 --fuzz=3 < "$p"; done
-echo ">>> build (KSRC=$KSRC KOBJ=/lib/modules/$K/build)"
 cd src
-make -j"$(nproc)" KSRC="$KSRC" KOBJ="/lib/modules/$K/build"
-[ -e ice.ko ] || { echo "@@ERR ice.ko non produit"; exit 2; }
-modinfo ./ice.ko 2>/dev/null | grep -q "Kahawai_2.6.6" || { echo "@@ERR ice.ko produit mais pas Kahawai"; exit 3; }
-echo ">>> install updates/ + depmod"
-mkdir -p "/lib/modules/$K/updates"
-cp ice.ko "/lib/modules/$K/updates/ice.ko"
-depmod "$K"
+for k in $TODO; do
+  KSRC=$(readlink -f "/lib/modules/$k/source" 2>/dev/null || true)
+  [ -d "$KSRC" ] || KSRC="/usr/src/linux-headers-$k"
+  echo ">>> build $k (KSRC=$KSRC KOBJ=/lib/modules/$k/build)"
+  make clean >/dev/null 2>&1 || true
+  make -j"$(nproc)" KSRC="$KSRC" KOBJ="/lib/modules/$k/build"
+  [ -e ice.ko ] || { echo "@@ERR ice.ko non produit pour $k"; exit 2; }
+  modinfo ./ice.ko 2>/dev/null | grep -q "Kahawai_2.6.6" || { echo "@@ERR ice.ko produit mais pas Kahawai ($k)"; exit 3; }
+  echo ">>> install /lib/modules/$k/updates + depmod"
+  mkdir -p "/lib/modules/$k/updates"
+  cp ice.ko "/lib/modules/$k/updates/ice.ko"
+  depmod "$k"
+done
 cd /tmp && rm -rf "$SRC"
-echo "@@OK ice Kahawai_2.6.6 installe (/lib/modules/$K/updates) — reboot pour activer"
+echo "@@OK ice Kahawai_2.6.6 installe pour :$TODO — reboot pour activer"
 """
 
 

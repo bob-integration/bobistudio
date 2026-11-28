@@ -36,7 +36,7 @@ from ..auth import require_login, require_perm, has_global_access
 from .. import media_registry as mr
 from .. import media_sharing as ms
 
-_job = {"kind": "", "running": False, "started": 0.0, "ended": 0.0, "result": None, "error": "", "progress": None, "uid": None}
+_job = {"kind": "", "running": False, "started": 0.0, "ended": 0.0, "result": None, "error": "", "progress": None, "uid": None, "cancel": False}
 _job_lock = threading.Lock()
 
 
@@ -49,7 +49,8 @@ def _start(kind, fn):
             uid = (current_user() or {}).get("id")
         except RuntimeError:                     # hors requête
             uid = None
-        _job.update(kind=kind, running=True, started=time.time(), ended=0.0, result=None, error="", progress=None, uid=uid)
+        _job.update(kind=kind, running=True, started=time.time(), ended=0.0, result=None, error="", progress=None, uid=uid,
+                    cancel=False)
 
     def run():
         try:
@@ -67,10 +68,16 @@ def _start(kind, fn):
     return True
 
 
-def _progress(done, total, name):
-    """Avancement d'une tâche longue (copie d'un bin), lu par GET /api/media/scan."""
+def _progress(done, total, name, phase=None):
+    """Avancement d'une tâche longue (copie d'un bin), lu par GET /api/media/scan. `phase` : étape
+    nommée d'une tâche en plusieurs temps (« scan » : relevé du volume après un import en lot)."""
     with _job_lock:
-        _job["progress"] = {"done": done, "total": total, "name": name}
+        _job["progress"] = {"done": done, "total": total, "name": name, "phase": phase}
+
+
+def _cancelled():
+    with _job_lock:
+        return bool(_job.get("cancel"))
 
 
 def _int(v):
@@ -430,6 +437,40 @@ def registry_asset_update(aid):
     return (jsonify(a), 200) if a else (jsonify({"error": "média inconnu"}), 404)
 
 
+@bp.route("/api/media/assets/meta_bulk", methods=["POST"])
+@require_perm("media.manage")
+def registry_asset_meta_bulk():
+    """{asset_ids, set: {field: value}, kw_add: [...], kw_remove: [...]} — the same fields and keywords
+    on a selection (2026-11-22). Media the user may not edit (shared to them for use only, or out of
+    their scope) are skipped and counted: {ok, changed, skipped}."""
+    body = request.get_json(silent=True) or {}
+    ids = [x for x in (body.get("asset_ids") or []) if isinstance(x, str)]
+    if not ids:
+        return jsonify({"ok": False, "error": "aucun média"}), 400
+    if len(ids) > mr.BULK_MAX:
+        return jsonify({"ok": False, "error": "trop de médias (%d, au plus %d)" % (len(ids), mr.BULK_MAX)}), 400
+    words = lambda v: [str(x) for x in v] if isinstance(v, list) else ([str(v)] if v else [])
+    scope = _scope()
+    ok_ids = [a for a in ids if _hidden(a, scope, need="edit") is None]
+    changed = mr.update_meta_bulk(ok_ids, body.get("set") if isinstance(body.get("set"), dict) else {},
+                                  words(body.get("kw_add")), words(body.get("kw_remove")))
+    return jsonify({"ok": True, "changed": changed, "skipped": len(ids) - len(ok_ids)})
+
+
+@bp.route("/api/media/keywords")
+@require_login
+def registry_keywords():
+    """Keywords in use, one by one, most used first: {values: [{value, count}]} (suggestions, filters)."""
+    return jsonify({"values": mr.keyword_values(_int(request.args.get("limit")) or 500, scope=_scope())})
+
+
+@bp.route("/api/media/stamp")
+@require_login
+def registry_stamp():
+    """{stamp}: changes when media, copies, bins or project links change (library auto-refresh)."""
+    return jsonify({"stamp": mr.change_stamp()})
+
+
 @bp.route("/api/media/assets/<aid>/thumb")
 @require_login
 def registry_asset_thumb(aid):
@@ -593,6 +634,109 @@ def registry_playlist_import():
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True, "id": aid, "report": rep})
+
+
+# ─── Grilles (2026-11-14) : fiches de type « grille » du panneau Images fixes (cf. mr.grid_*) ────────
+# Mêmes droits que les playlists : la préparer est un geste d'exploitation, l'importer de gestion.
+@bp.route("/api/media/grids/<aid>")
+@require_login
+def registry_grid(aid):
+    """?vmid= : chaque case dit en plus la copie que ce conteneur voit (`local_path`)."""
+    vmid = _int(request.args.get("vmid"))
+    if vmid is not None:
+        from ..auth import check_vmid_access
+        err = check_vmid_access(vmid, "viewer")
+        if err:
+            return err
+    g = mr.grid_get(aid, scope=_scope(), vmid=vmid)
+    return (jsonify(g), 200) if g else (jsonify({"error": "grille inconnue"}), 404)
+
+
+@bp.route("/api/media/grids", methods=["POST"])
+@require_login
+def registry_grid_create():
+    """{name, doc?, project_id?, bin_id?, vmid?} → {ok, id}. `vmid` : rangée dans le projet du conteneur."""
+    err = _may_write_playlist()
+    if err:
+        return err
+    b = request.get_json(silent=True) or {}
+    pid, bid, err = _playlist_target(b)
+    if err:
+        return err
+    try:
+        aid = mr.grid_create(b.get("name"), b.get("doc") or {}, project_id=pid, bin_id=bid)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid})
+
+
+@bp.route("/api/media/grids/<aid>", methods=["PUT"])
+@require_login
+def registry_grid_save(aid):
+    """{doc, name?} : remplace le contenu de la grille."""
+    err = _may_write_playlist() or _hidden(aid, need="edit")
+    if err:
+        return err
+    b = request.get_json(silent=True) or {}
+    try:
+        mr.grid_save(aid, b.get("doc") or {}, name=b.get("name"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid})
+
+
+@bp.route("/api/media/grids/<aid>/export")
+@require_login
+def registry_grid_export(aid):
+    d = mr.grid_export(aid, scope=_scope())
+    if not d:
+        return jsonify({"error": "grille inconnue"}), 404
+    import json as _json
+    import re as _re
+    fn = (_re.sub(r'[\\/:*?"<>|]+', "_", d["name"]).strip() or "grille") + ".grid.json"
+    return Response(_json.dumps(d, ensure_ascii=False, indent=1), mimetype="application/json",
+                    headers={"Content-Disposition": "attachment; filename*=UTF-8''%s" % _quote(fn)})
+
+
+@bp.route("/api/media/grids/import", methods=["POST"])
+@require_perm("media.manage")
+def registry_grid_import():
+    """{data, name?, project_id?, bin_id?, vmid?} — `data` : un export (bobi-grid). → {ok, id, report}."""
+    b = request.get_json(silent=True) or {}
+    pid, bid, err = _playlist_target(b)
+    if err:
+        return err
+    try:
+        aid, rep = mr.grid_import(b.get("data"), name=b.get("name"), project_id=pid, bin_id=bid)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid, "report": rep})
+
+
+@bp.route("/api/media/grids/open", methods=["GET", "PUT"])
+@require_login
+def registry_grids_open():
+    """?vmid= — les grilles que CET utilisateur a ouvertes sur ce panneau : {open: [ids], active}.
+    PUT {vmid, open, active} les retient (une par utilisateur, d'un poste à l'autre)."""
+    from ..auth import check_vmid_access, current_user
+    b = request.get_json(silent=True) or {} if request.method == "PUT" else {}
+    vmid = _int(b.get("vmid") if request.method == "PUT" else request.args.get("vmid"))
+    if vmid is None:
+        return jsonify({"error": "vmid requis"}), 400
+    err = check_vmid_access(vmid, "viewer")
+    if err:
+        return err
+    uid = (current_user() or {}).get("id")
+    if uid is None:
+        return jsonify({"open": [], "active": None})
+    allp = dict(mr.user_pref(uid, "stills_grids"))
+    if request.method == "PUT":
+        ids = [str(x) for x in (b.get("open") or []) if isinstance(x, str) and x][:40]
+        act = b.get("active") if b.get("active") in ids else (ids[0] if ids else None)
+        allp[str(vmid)] = {"open": ids, "active": act}
+        mr.set_user_pref(uid, "stills_grids", allp)
+    cur = allp.get(str(vmid)) or {}
+    return jsonify({"open": cur.get("open") or [], "active": cur.get("active")})
 
 
 def _quote(s):
@@ -773,6 +917,17 @@ def registry_import_share():
     vmid, nid, path = _int(body.get("vmid")), _int(body.get("node_id")), (body.get("path") or "").strip()
     if (vmid is None and nid is None) or not path:
         return jsonify({"ok": False, "error": "vmid ou node_id, et path requis"}), 400
+    err = _share_import_denied(vmid)
+    if err:
+        return err
+    if not _start("import_share", lambda: mr.import_from_share(vmid, path, node_id=nid)):
+        return jsonify({"ok": False, "error": "une opération est déjà en cours"}), 409
+    return jsonify({"ok": True, "background": True})
+
+
+def _share_import_denied(vmid):
+    """Who may import from a network share: for a container, its operators (and the container must
+    belong to a project when the user is project-scoped); towards a node, the global manager only."""
     if vmid is not None:
         from ..auth import check_vmid_access
         err = check_vmid_access(vmid, "operator")
@@ -781,13 +936,66 @@ def registry_import_share():
         if _scope() is not None and not mr.container_context(vmid).get("project_id"):
             # Le média entre dans le projet du CONTENEUR : sans projet, il serait invisible.
             return jsonify({"ok": False, "error": "ce conteneur n'est rattaché à aucun projet"}), 403
+        return None
+    return _global_only()                        # vers un nœud, portée réseau globale : Gestionnaire
+
+
+SHARE_BATCH_MAX = 1000
+
+
+@bp.route("/api/media/import_share_batch", methods=["POST"])
+@require_perm("media.manage")
+def registry_import_share_batch():
+    """Several network-share files in ONE background task (2026-11-22): {vmid | node_id, paths: [...]}
+    or {vmid | node_id, folder, kinds, subfolders}: the files of that folder of those kinds (image,
+    video, audio; all of them when absent), and with `subfolders` those of its subfolders too (down to
+    SHARE_DEPTH_MAX levels). Progress and result ({items, imported, failed}) on GET /api/media/scan;
+    sorting them into a bin or a grid is the caller's next step, with the usual endpoints."""
+    from .. import media_upload
+    body = request.get_json(silent=True) or {}
+    vmid, nid = _int(body.get("vmid")), _int(body.get("node_id"))
+    if vmid is None and nid is None:
+        return jsonify({"ok": False, "error": "vmid ou node_id requis"}), 400
+    err = _share_import_denied(vmid)
+    if err:
+        return err
+    if body.get("folder") is not None:
+        kinds = [k for k in (body.get("kinds") or list(media_upload.KIND_EXTS)) if isinstance(k, str)]
+        bad = [k for k in kinds if k not in media_upload.KIND_EXTS]
+        if bad or not kinds:
+            return jsonify({"ok": False, "error": "type inconnu : %s" % ", ".join(bad)}), 400
+        try:
+            exts = [e for k in kinds for e in media_upload.KIND_EXTS[k]]
+            paths = mr.share_folder_files(vmid, str(body.get("folder") or ""), exts,
+                                          mr.SHARE_DEPTH_MAX if body.get("subfolders") else 0)
+        except (ValueError, OSError) as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
     else:
-        err = _global_only()                     # vers un nœud, portée réseau globale : Gestionnaire
-        if err:
-            return err
-    if not _start("import_share", lambda: mr.import_from_share(vmid, path, node_id=nid)):
+        paths = [p.strip() for p in (body.get("paths") or []) if isinstance(p, str) and p.strip()]
+    paths = list(dict.fromkeys(paths))
+    if not paths:
+        return jsonify({"ok": False, "error": "aucun fichier à importer"}), 400
+    if len(paths) > SHARE_BATCH_MAX:
+        return jsonify({"ok": False, "error": "trop de fichiers (%d, au plus %d)" % (len(paths), SHARE_BATCH_MAX)}), 400
+    if not _start("import_share", lambda: mr.import_share_batch(vmid, paths, node_id=nid, progress=_progress, cancel=_cancelled)):
         return jsonify({"ok": False, "error": "une opération est déjà en cours"}), 409
-    return jsonify({"ok": True, "background": True})
+    return jsonify({"ok": True, "background": True, "total": len(paths)})
+
+
+@bp.route("/api/media/scan/cancel", methods=["POST"])
+@require_perm("media.manage")
+def registry_job_cancel():
+    """Asks the running background task to stop (2026-11-22). Only a share import in a batch listens:
+    it copies no further file, registers what it copied and ends with `cancelled`. Only the user who
+    started it may cancel it."""
+    from ..auth import current_user
+    with _job_lock:
+        if not _job.get("running") or _job.get("kind") != "import_share":
+            return jsonify({"ok": False, "error": "aucun import en cours"}), 409
+        if _job.get("uid") is not None and _job.get("uid") != (current_user() or {}).get("id"):
+            return jsonify({"ok": False, "error": "import lancé par un autre utilisateur"}), 403
+        _job["cancel"] = True
+    return jsonify({"ok": True})
 
 
 @bp.route("/api/media/browse_share")
@@ -835,6 +1043,20 @@ def registry_copy():
     if not _start("copy", run):
         return jsonify({"ok": False, "error": "une opération est déjà en cours"}), 409
     return jsonify({"ok": True, "background": True})
+
+
+@bp.route("/api/containers/<int:vmid>/media_mount", methods=["GET"])
+@require_login
+def container_media_mount(vmid):
+    """Does this container see its media volume? Asked by a panel when a file is « introuvable »:
+    a container started before a storage volume was mounted keeps the old, empty folder
+    (app/media_mounts.py). `sees_volume` false → restart the container; null → cannot tell."""
+    from ..auth import check_vmid_access
+    from .. import media_mounts
+    err = check_vmid_access(vmid, "viewer")
+    if err:
+        return err
+    return jsonify(media_mounts.check_container(vmid))
 
 
 @bp.route("/api/media/fetch", methods=["POST"])

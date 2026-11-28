@@ -6,19 +6,39 @@
     const t = (k) => window.t(k);
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+    // The notice is a REMINDER, never a gate: an answer slower than this lets the gesture through
+    // instead of freezing it (no timeout = a button that does nothing while the server hangs).
+    const NOTICE_TIMEOUT_MS = 5000;
+
     async function notice(url) {
+        const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+        const timer = ctl ? setTimeout(() => ctl.abort(), NOTICE_TIMEOUT_MS) : null;
         try {
-            const r = await fetch(url);
+            const r = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
             return r.ok ? (await r.json()).notice : null;
         } catch (e) { return null; }
+        finally { if (timer) clearTimeout(timer); }
     }
 
-    function ask(n, projectName) {
+    // The app's own dialog (window.mxlConfirm, layout.html), NOT the browser's confirm().
+    // Measured on 2026-11-27 (tester, Chrome): confirm() can return false WITHOUT showing anything —
+    // once « prevent this page from creating additional dialogs » has been ticked (until reload),
+    // or when the tab is in the background. Every caller then stopped silently: « Add to list »
+    // did nothing and the creation could not be launched. The native box stays as a fallback
+    // only for a page that lacks layout.html.
+    async function ask(n, projectName) {
         if (!n) return true;
         const msg = t('projects.env_notice_' + n.scope).replace('{label}', n.label);
-        return confirm(msg + '\n\n' + (projectName
+        const question = projectName
             ? t('projects.env_notice_question').replace('{project}', projectName)
-            : t('projects.env_notice_question_this')));
+            : t('projects.env_notice_question_this');
+        if (typeof window.mxlConfirm !== 'function') return confirm(msg + '\n\n' + question);
+        return !!(await window.mxlConfirm({
+            title: n.label,
+            html: '<p style="margin:0 0 var(--space-2)">' + esc(msg) + '</p><p style="margin:0">' + esc(question) + '</p>',
+            confirmLabel: t('projects.env_notice_confirm'),
+            cancelLabel: t('projects.env_notice_cancel'),
+        }));
     }
 
     async function confirmType(type, projectName) {

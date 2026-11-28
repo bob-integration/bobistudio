@@ -11,7 +11,9 @@ __init__.py : ce sont des hooks globaux attachés directement au blueprint `bp`
 (before_request / context_processor), pas des routes — ils doivent être visibles
 dès l'exécution du module racine, indépendamment de l'ordre d'import des domaines."""
 
+import errno
 import logging
+import threading
 
 from flask import jsonify, request
 
@@ -76,11 +78,27 @@ def ha_replicate():
     raw = request.get_data(cache=False)
     if not raw:
         return jsonify({"ok": False, "error": "corps vide"}), 400
+    from .. import node_health
     try:
         meta = ha.store_replica(raw, source=request.remote_addr or "?")
+    except OSError as e:
+        # The disk report rides on the refusal too: a standby that cannot store the replica is
+        # exactly the one whose disk the active controller must hear about.
+        err = ("no space left on the standby controller's disk" if e.errno == errno.ENOSPC
+               else str(e))
+        full = e.errno == errno.ENOSPC
+        return jsonify({"ok": False, "error": err, "code": "no_space" if full else None,
+                        "disk": node_health.local_disk_report()}), 507 if full else 400
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-    return jsonify({"ok": True, "bytes": meta.get("bytes"), "at": meta.get("at")})
+        return jsonify({"ok": False, "error": str(e), "disk": node_health.local_disk_report()}), 400
+    # The registry follows the ACTIVE controller's settings, which this replica carries: reconcile
+    # in the background (no-op when nothing changed; Zot may take tens of seconds to start).
+    if ha.is_standby():
+        from .. import registry
+        threading.Thread(target=registry.reconcile, daemon=True, name="registry-reconcile").start()
+    # The standby's disk, judged by the ACTIVE controller (cf. node_health.check_standby_disk).
+    return jsonify({"ok": True, "bytes": meta.get("bytes"), "at": meta.get("at"),
+                    "disk": node_health.local_disk_report()})
 
 
 @bp.route("/api/ha/replicate_lv2", methods=["POST"])
@@ -201,7 +219,7 @@ def ha_pairing_join():
 def ha_replicate_now():
     """Déclenche un push immédiat (côté actif)."""
     from .. import ha
-    ok, msg = ha.push_replica()
+    ok, msg = ha.push_and_alert()
     return jsonify({"ok": bool(ok), "msg": msg}), (200 if ok else 400)
 
 

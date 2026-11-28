@@ -7,6 +7,8 @@
    plugin (control.html/js/css servis par /api/plugins/<type>/ui). Un seul template pour
    toutes les rubriques ; les types sont injectés via `plugins`. #}
 {% set has_mv = plugins | selectattr('type', 'equalto', 'multiview') | list %}
+{# Murs (fabric step 4): a tab right after Multiview, wherever the multiview plugin is. #}
+{% set walls_tab = has_mv | length > 0 %}
 {% set is_medias = (page == 'medias') %}
 
 {% block head %}
@@ -23,6 +25,8 @@
 .ps-deck #medias-mode .tab.active { background:var(--bg-selected); color:var(--accent); }
 .ps-deck.ps-deck-other > :not(#medias-mode):not(.subnav-deck-notch) { display:none; }
 .ps-deck.ps-deck-other #medias-mode { margin-left:auto; }
+/* Murs tab: the type tabs stay (they are the way back), the instance tools go. */
+.ps-deck.ps-deck-walls > :not(.tab):not(.subnav-deck-notch) { display:none; }
 
 /* Liste des instances REPLIÉE par défaut : la zone du plugin prend toute la largeur (iPad paysage :
    la colonne fixe en mangeait 270 px sur 1194). Repliée, elle n'est plus qu'un FILET dans la marge
@@ -46,6 +50,20 @@
 .tp-side-head h3 { flex:1; min-width:0; margin:0 0 0 4px; font-size:0.95em; }
 .tp-cols.pinned #tp-side-close { display:none; }
 #tp-pin[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--bg-selected); }
+/* Sort order of the instance list (Composition). A menu IN the flow, under the head — not an overlay:
+   the drawer scrolls (`overflow-y:auto`) and would clip a popover when only two walls are listed.
+   A sort other than deployment order lights the icon, so a reordered list never looks unexplained. */
+#tp-sort.sorted { border-color:var(--accent); color:var(--accent); }
+.tp-sort-menu { display:flex; flex-direction:column; gap:4px; margin:0 0 8px; padding:6px;
+    border:1px solid var(--border-soft); border-radius:var(--radius-small); }
+.tp-sort-menu[hidden] { display:none; }
+.tp-sort-menu .ctl-push[aria-checked="true"] { border-color:var(--accent); color:var(--accent); background:var(--bg-selected); }
+/* Drop-down groups (sort by project / by capacity): the HEADER is the shared `ctl-disclose`
+   control (controls.css) — a disclosure header is not special to this page. Only the nesting of
+   the instances under it is ours. */
+.tp-group + .tp-group { margin-top:4px; }
+.tp-group-list { margin:2px 0 0 12px; padding-left:6px; border-left:1px solid var(--border-soft); }
+.tp-group-list[hidden] { display:none; }
 /* Le filet : trait visible de 6 px dans la marge. Décoratif pour les lecteurs d'écran : l'étiquette
    d'instance est le vrai bouton, accessible au clavier.
    Zone active : la MARGE seule (16 px) à la souris — à 44 px, elle mordait de 28 px sur le plugin, sur
@@ -224,11 +242,24 @@
     <nav class="tp-side" id="tp-side" aria-label="{{ _('section.instances_aria') }}" inert>
         <div class="tp-side-head">
             <h3 id="ps-side-title">{{ _('section.deployed') }}</h3>
+            {% if page == 'composition' %}
+            <button type="button" class="tp-settings-btn" id="tp-sort" aria-haspopup="true" aria-expanded="false"
+                    aria-controls="tp-sort-menu"
+                    title="{{ _('section.sort.title') }}" aria-label="{{ _('section.sort.title') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 4v16M4 8l4-4 4 4"/><path d="M16 20V4M12 16l4 4 4-4"/></svg></button>
+            {% endif %}
             <button type="button" class="tp-settings-btn" id="tp-pin" aria-pressed="false"
                     title="{{ _('section.instances_pin') }}" aria-label="{{ _('section.instances_pin') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></svg></button>
             <button type="button" class="tp-settings-btn" id="tp-side-close"
                     title="{{ _('section.instances_close') }}" aria-label="{{ _('section.instances_close') }}"><span aria-hidden="true">✕</span></button>
         </div>
+        {% if page == 'composition' %}
+        <div class="tp-sort-menu" id="tp-sort-menu" role="menu" aria-label="{{ _('section.sort.title') }}" hidden>
+          {% for k in ('deploy', 'alpha', 'project', 'inputs') %}
+          <button type="button" class="ctl-push ctl-push--wide" role="menuitemradio" aria-checked="false"
+                  data-sort="{{ k }}">{{ _('section.sort.' ~ k) }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
         <ul class="tp-list" id="tp-list"><li class="meta">{{ _('section.loading') }}</li></ul>
     </nav>
     <section class="tp-main">
@@ -243,6 +274,13 @@
 <div class="toast-host" id="toast-host" role="status" aria-live="polite"></div>
 
 </div><!-- /medias-plugins-view -->
+{# Murs (fabric step 4): every wall and the fabric's proposals. A tab right after Multiview, not a
+   page mode: it is about the multiviews only, not the rest of Composition. #}
+{% if walls_tab %}
+<div id="ps-walls-view" hidden>
+{% include 'walls_embed.html' %}
+</div>
+{% endif %}
 {% if medias_modes %}
 {% if has_perm('media.manage') %}
 {% if has_manager %}
@@ -469,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // champs scope "user" n'y sont pas rendus — l'UI de contrôle du plugin les couvre.
 const PS_SCHEMAS    = {{ plugin_config_schemas | tojson }};
 const PS_CAN_DEPLOY = {{ has_perm('containers.deploy') | tojson }};
+const PS_WALLS_TAB = {{ walls_tab | tojson }};   // « Murs » tab after Multiview
 const EXTRA_TABS = {{ extra_tabs | default([]) | tojson }};   // onglets custom (non-plugin), ex. 2110
 const PS_SECTION = {{ section_id | tojson }};   // id de la rubrique (traitements, medias, …)
 const PS_LAST_TAB_KEY = 'ps-last-tab:' + PS_SECTION;   // dernier onglet visité (par rubrique)
@@ -615,6 +654,9 @@ function tpSelectInstance(vmid){
     const list=document.getElementById('tp-list');
     tpSelectedVmid=it.vmid;
     list.querySelectorAll('.tp-inst').forEach(b=>b.classList.toggle('active', +b.dataset.vmid===it.vmid));
+    // A collapsed group still says it holds the instance being driven.
+    list.querySelectorAll('.tp-group').forEach(g => g.querySelector('.ctl-disclose')
+        .classList.toggle('ctl-disclose--active', !!g.querySelector('.tp-inst.active')));
     tpPublicMaj(it);
     // Pas de scrollIntoView quand le tiroir est fermé : sur un élément invisible, il fait défiler
     // la PAGE.
@@ -638,6 +680,7 @@ async function tpLoadInstances(){
     try { items = await (await fetch('/api/plugins/instances?type='+type)).json(); }
     catch(e){ items=[]; }
     if(type!==TP_TYPE) return;   // l'utilisateur a changé d'onglet entre-temps
+    if(Array.isArray(items)) items = tpSortItems(items);
     await tpEnsureAsset(type,'css',null,null); await tpEnsureAsset(type,'js',null,null);
     if(type!==TP_TYPE) return;
     const preview = (window.MXLPlugins[type] || {}).listPreview;
@@ -653,7 +696,7 @@ async function tpLoadInstances(){
         mountEl.className='tp-mount empty'; mountEl.innerHTML='<div>'+psEsc(none)+'</div>';
         tpSelectedVmid=null; tpWantVmid=null; tpRenderSettings(null); return;
     }
-    items.forEach(it=>{
+    const renderItem = (it, parent) => {
         const li=document.createElement('li');
         const btn=document.createElement('button'); btn.type='button'; btn.className='tp-inst'; btn.dataset.vmid=it.vmid;
         if(it.vmid===tpSelectedVmid) btn.classList.add('active');
@@ -669,7 +712,30 @@ async function tpLoadInstances(){
             li.appendChild(cv);
             requestAnimationFrame(()=>{ try{ preview(cv, it); }catch(_){} });
         }
-        list.appendChild(li);
+        parent.appendChild(li);
+    };
+    // Sorted by project or by capacity → one DROP-DOWN group per value (asked by the tester on
+    // 2026-11-27, after seeing the flat sort). Other sorts → the flat list, as before.
+    tpGroups(items).forEach(g => {
+        if(g.key == null){ g.items.forEach(it => renderItem(it, list)); return; }
+        const li = document.createElement('li'); li.className = 'tp-group';
+        const open = !tpCollapsed.has(g.key);
+        const head = document.createElement('button');
+        head.type = 'button'; head.className = 'ctl-disclose';
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.classList.toggle('ctl-disclose--active', g.items.some(x => x.vmid === tpSelectedVmid));
+        head.innerHTML = '<span class="ctl-disclose-caret" aria-hidden="true">▸</span>' +
+            '<span class="ctl-disclose-lab">' + psEsc(g.label) + '</span>' +
+            '<span class="ctl-disclose-count">' + g.items.length + '</span>';
+        const ul = document.createElement('ul'); ul.className = 'tp-list tp-group-list'; ul.hidden = !open;
+        head.onclick = () => {
+            const now = ul.hidden;   // hidden → opening
+            ul.hidden = !now; head.setAttribute('aria-expanded', now ? 'true' : 'false');
+            if(now) tpCollapsed.delete(g.key); else tpCollapsed.add(g.key);
+            try { localStorage.setItem(TP_COLLAPSED_KEY, JSON.stringify([...tpCollapsed])); } catch(_){}
+        };
+        li.appendChild(head); li.appendChild(ul); list.appendChild(li);
+        g.items.forEach(it => renderItem(it, ul));
     });
     // Deep-link : le vmid demandé gagne, une seule fois (consommé ici — un rechargement de liste
     // ultérieur, p.ex. après déploiement, ne doit pas re-sauter dessus). Vmid inconnu (conteneur
@@ -720,6 +786,81 @@ const TP_PIN_KEY = 'ps-instances-pinned';
 let tpPinned = true;
 try { tpPinned = localStorage.getItem(TP_PIN_KEY) !== '0'; } catch(_){}
 let tpHoverOpened = false, tpOpenTimer = null, tpCloseTimer = null;
+
+// Sort order of the instance list, asked by the tester on 2026-11-27 for Composition. Sorting by
+// project or by capacity also GROUPS (`tpGroups`, drop-down headers); the two other sorts stay flat. Remembered per browser and shared by every tab of the rubrique.
+// 'deploy' = server order (deployment order), the historical one and the default.
+const TP_SORT_KEY = 'ps-instances-sort';
+const TP_SORTS = ['deploy', 'alpha', 'project', 'inputs'];
+let tpSort = 'deploy';
+try { const s = localStorage.getItem(TP_SORT_KEY); if(TP_SORTS.includes(s)) tpSort = s; } catch(_){}
+const tpCollator = new Intl.Collator(document.documentElement.lang || undefined, {numeric: true, sensitivity: 'base'});
+function tpByName(a, b){
+    return tpCollator.compare(a.hostname || '', b.hostname || '') || (+a.vmid - +b.vmid);
+}
+function tpSortItems(items){
+    if(!document.getElementById('tp-sort') || tpSort === 'deploy') return items;
+    const out = items.slice();
+    if(tpSort === 'alpha') out.sort(tpByName);
+    else if(tpSort === 'project') out.sort((a, b) => {
+        // No project last: an instance outside any project is not « before A ».
+        const pa = a.project && a.project.name, pb = b.project && b.project.name;
+        if(!pa !== !pb) return pa ? -1 : 1;
+        return (pa ? tpCollator.compare(pa, pb) : 0) || tpByName(a, b);
+    });
+    else if(tpSort === 'inputs') out.sort((a, b) => {
+        // Largest capacity first; unknown (wiring not resolvable) last.
+        const na = Number.isFinite(a.n_inputs) ? a.n_inputs : -1;
+        const nb = Number.isFinite(b.n_inputs) ? b.n_inputs : -1;
+        return (nb - na) || tpByName(a, b);
+    });
+    return out;
+}
+// Groups of the SORTED list: [{key, label, items}] in list order. Flat sorts (and pages without the
+// control) give a single group with key null — rendered without a header. Collapsed groups are
+// remembered per browser; the key carries the sort, so « Atelier » and « 16 inputs » never collide.
+const TP_COLLAPSED_KEY = 'ps-instances-collapsed';
+let tpCollapsed = new Set();
+try { const c = JSON.parse(localStorage.getItem(TP_COLLAPSED_KEY) || '[]'); if(Array.isArray(c)) tpCollapsed = new Set(c); } catch(_){}
+function tpGroupOf(it){
+    const tr = k => (typeof window !== 'undefined' && window.t) ? window.t(k) : k;
+    if(tpSort === 'project'){
+        const n = it.project && it.project.name;
+        return {key: 'project:' + (n || ''), label: n || tr('section.sort.group_no_project')};
+    }
+    if(tpSort === 'inputs'){
+        const n = Number.isFinite(it.n_inputs) ? it.n_inputs : null;
+        if(n == null) return {key: 'inputs:', label: tr('section.sort.group_inputs_unknown')};
+        return {key: 'inputs:' + n,
+                label: tr(n === 1 ? 'section.sort.group_inputs_one' : 'section.sort.group_inputs_other').replace('{n}', n)};
+    }
+    return null;
+}
+function tpGroups(items){
+    if(!document.getElementById('tp-sort') || (tpSort !== 'project' && tpSort !== 'inputs'))
+        return [{key: null, label: '', items: items}];
+    const out = [], byKey = {};
+    items.forEach(it => {
+        const g = tpGroupOf(it);
+        if(!byKey[g.key]){ byKey[g.key] = {key: g.key, label: g.label, items: []}; out.push(byKey[g.key]); }
+        byKey[g.key].items.push(it);
+    });
+    return out;
+}
+function tpSortRender(){
+    const btn = document.getElementById('tp-sort');
+    if(!btn) return;
+    btn.classList.toggle('sorted', tpSort !== 'deploy');
+    document.querySelectorAll('#tp-sort-menu [data-sort]').forEach(b =>
+        b.setAttribute('aria-checked', b.dataset.sort === tpSort ? 'true' : 'false'));
+}
+function tpSortMenuOpen(open){
+    const btn = document.getElementById('tp-sort'), menu = document.getElementById('tp-sort-menu');
+    if(!btn || !menu) return;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open){ const cur = menu.querySelector('[aria-checked="true"]'); if(cur) cur.focus(); }
+}
 const TP_HOVER_OPEN_MS = 400;   // arrêt de la souris sur le filet avant ouverture
 
 // En marche / arrêté / autre : la classe porte la FORME et la couleur du repère (cf. `.tp-dot`).
@@ -833,6 +974,24 @@ document.addEventListener('DOMContentLoaded', () => {
         tpRenderIdent();
         if(!tpPinned) tpSideOpen(false);
     });
+    const sortBtn = document.getElementById('tp-sort');
+    if(sortBtn){
+        tpSortRender();
+        sortBtn.addEventListener('click', () => tpSortMenuOpen(document.getElementById('tp-sort-menu').hidden));
+        document.getElementById('tp-sort-menu').addEventListener('click', e => {
+            const b = e.target.closest('[data-sort]');
+            if(!b) return;
+            tpSort = b.dataset.sort;
+            try { localStorage.setItem(TP_SORT_KEY, tpSort); } catch(_){}
+            tpSortRender();
+            tpSortMenuOpen(false);
+            sortBtn.focus();
+            if(tpItems.length) tpLoadInstances();   // re-renders the list (and the edge marks) in the new order
+        });
+        document.getElementById('tp-sort-menu').addEventListener('keydown', e => {
+            if(e.key === 'Escape'){ e.stopPropagation(); tpSortMenuOpen(false); sortBtn.focus(); }
+        });
+    }
     // Toucher ou clic hors du tiroir : il se referme (sans avaler le geste).
     document.addEventListener('pointerdown', e => {
         if(!side.classList.contains('open')) return;
@@ -985,12 +1144,35 @@ function psBuildTabs(){
     // On ne retire que les onglets et on réinsère avant lui.
     tabs.querySelectorAll(':scope > .tab').forEach(b => b.remove());
     tabs.insertAdjacentHTML('afterbegin', plug + extra);
-    tabs.querySelectorAll(':scope > .tab').forEach(b => b.onclick=()=>activateTab(b.dataset.type));
+    tabs.querySelectorAll(':scope > .tab').forEach(b => b.onclick=()=>{ psWalls(false); activateTab(b.dataset.type); });
+    if(PS_WALLS_TAB){
+        const mv = tabs.querySelector(':scope > .tab[data-type="multiview"]');
+        const w = '<button type="button" class="tab" id="ps-tab-walls">'+psEsc(window.t('section.walls.mode'))+'</button>';
+        if(mv) mv.insertAdjacentHTML('afterend', w); else tabs.insertAdjacentHTML('afterbegin', w);
+        document.getElementById('ps-tab-walls').onclick=()=>psWalls(true);
+    }
+}
+
+// Murs: shown in place of the plugin view; the type tabs bring the plugins back.
+function psWalls(on){
+    const v=document.getElementById('ps-walls-view');
+    if(!v || on===!v.hidden) return;
+    v.hidden=!on;
+    document.getElementById('tp-cols').hidden=on;
+    document.getElementById('ps-tabs').classList.toggle('ps-deck-walls', on);
+    document.querySelectorAll('#ps-tabs > .tab').forEach(t=>t.classList.toggle('active', on ? t.id==='ps-tab-walls' : t.dataset.type===TP_TYPE));
+    if(on){ if(window.wallsLoad) wallsLoad(); try{ history.replaceState(null, '', '#walls'); }catch(e){} }
+    else if(window.wallsStop) wallsStop();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     psBuildTabs();
     const {type:h, vmid} = _psParseHash(location.hash);
+    if(PS_WALLS_TAB && location.hash==='#walls'){
+        let last=''; try { last=localStorage.getItem(PS_LAST_TAB_KEY)||''; } catch(_){}
+        activateTab(_psTabValid(last) ? last : ((SECTION_PLUGINS[0]||{}).type || (EXTRA_TABS[0]||{}).id)).then(()=>psWalls(true));
+        return;
+    }
     // Priorité : #hash explicite (lien direct) → dernier onglet mémorisé → 1er onglet.
     let last=''; try { last=localStorage.getItem(PS_LAST_TAB_KEY)||''; } catch(_){}
     const ok = _psTabValid(h);
@@ -1002,7 +1184,8 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('hashchange', () => {
     const {type:h, vmid} = _psParseHash(location.hash);
     // Réagit aussi quand SEUL le vmid change (même onglet) : activateTab gère ce cas.
-    if(h) activateTab(h, vmid);
+    if(PS_WALLS_TAB && location.hash==='#walls'){ psWalls(true); return; }
+    if(h){ psWalls(false); activateTab(h, vmid); }
 });
 
 // ── Widget compact du moniteur de ressources CPU (window.MXLRessources, static/ressources.js) ──

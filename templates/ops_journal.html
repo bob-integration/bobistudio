@@ -97,6 +97,7 @@
 <div class="opsj-empty" id="opsj-empty" hidden>{{ _('monitoring.opsj_empty') }}</div>
 <div class="opsj-more"><button type="button" class="btn" id="opsj-more" hidden onclick="opsjLoad(false)">{{ _('monitoring.opsj_more') }}</button></div>
 
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 <script>
 const OPSJ_TXT = {
     retention: {{ _('monitoring.opsj_retention') | tojson }},

@@ -370,6 +370,17 @@ def _try_hot_input(to_vmid, target, t, params, body, want_dims, cur_dims, adapts
         pass
     return True, 200, {"to_vmid": to_vmid, "type": t, "hot_wired": True}
 
+def _hot_list_body(ikey, idx, shm, kind, entry, name_field):
+    """Body of a hot `/input` for an entry of a geometry list (multiview `flux_config`).
+
+    Carries the entry NAME when the list declares a `name_field`: the name computed above (source
+    hostname or flow name, per `label_source`) is otherwise only persisted, and a hot-wired tile
+    showed an empty label until the next redeploy (tester report 2026-11-27, multiview-3)."""
+    body = {ikey: idx, "shm": shm, "essence": kind}
+    if name_field:
+        body["name"] = str(entry.get(name_field) or "")
+    return body
+
 def _try_unwire_hot(to_vmid, target, t, params, body):
     """Détache une source à chaud via :8082/input {shm:""} (pas de contrainte de
     résolution). Persiste params sans redeploy. Retourne (ok,status,payload) ou None
@@ -938,7 +949,7 @@ def _wire_now(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force
             # ajoute un aller-retour voué à échouer et une erreur trompeuse dans le journal.
             # On respecte ce que le manifeste annonce plutôt que de l'éprouver.
             res = (_try_hot_input(to_vmid, target, t, params,
-                                  {ikey: idx, "shm": shm, "essence": kind}, want, cur,
+                                  _hot_list_body(ikey, idx, shm, kind, entry, nf), want, cur,
                                   adapts=_adapts)
                    if w["mode"] == "hot-wire" else None)
             if res:

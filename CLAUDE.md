@@ -59,6 +59,8 @@ app/                  ← module Python principal (liste non-exhaustive)
   plugins.py          ← registre des plugins (scan, render, wiring, coerce_config, hooks)
   deploy.py           ← déploiement via agent
   allocations.py      ← VMIDs/IPs libres
+  mcast_plans.py      ← plans d'adressage multicast (cible, lignes par type de flux, fabric A/B, aperçu) ;
+                        l'allocation elle-même est dans `allocations.py`
   routes/             ← API REST Flask, PAQUET d'une cinquantaine de modules (`ls app/routes/` fait foi ;
                         il n'y a PLUS de `routes.py` unique).
                         `routes/__init__.py` enregistre le Blueprint ; chaque module porte
@@ -234,6 +236,10 @@ Depuis 2026-05, **chaque type de container est un plugin** dans `plugins/<type>/
   sinon la courante (`render_script`), et un conteneur peut tourner sur une version qui n'est plus
   la courante (dérive affichée). `requires.core_min` du manifeste est vérifié à l'installation
   (`version_core_min`). Journal des versions : `meta.json` du plugin.
+  **Un numéro par modification FINIE, pas par étape** (décidé le 2026-11-28, après stills
+  0.19.33 → 0.19.39 : sept versions pour un seul travail d'interface). Pendant qu'on itère, on
+  redéploie sans committer ni monter la version ; une fois la modification validée par
+  l'utilisateur, UN commit et le dernier chiffre avance. Un autre sujet = un autre numéro.
 - **Mode tranche (OBLIGATOIRE pour tout NOUVEAU plugin)** : lire l'entrée par tranches
   (`head_index` + `get_slice`, repli `get_latest` si la source n'est pas tranchée) et publier la
   sortie en commit progressif (`slice_height` au flowDef + `commit(gi, valid_slices=k)`). Contrat :
@@ -526,8 +532,9 @@ en direct, l'agent ne gère que le lifecycle) ; (3) **contrôle** (IP statique d
 `net_mode` (`dhcp`/`static`, Réglages) pilote l'allocation d'IP macvlan (`allocations.py`). La
 passerelle macvlan est auto-dérivée de la route par défaut du nœud (≠ l'IP de l'hôte parent).
 Le pool SR-IOV (`nic_pool.py`) a été **retiré** : le moteur `2110_io` tourne sur la PF en AF-XDP.
-L'allocation **multicast** est centralisée (tables `mcast_ranges`/`mcast_allocations`, réservation
-atomique dans `allocations.py`). Aucune valeur de site n'est codée en dur (cf. `config_local.py`).
+L'allocation **multicast** est centralisée (tables `mcast_plans`/`mcast_ranges`/`mcast_allocations`,
+réservation atomique dans `allocations.py` ; les PLANS d'adressage par réseau, paire 2022-7 ou interface
+vivent dans `app/mcast_plans.py` — cf. `docs/reference/MULTICAST.md`). Aucune valeur de site n'est codée en dur (cf. `config_local.py`).
 
 ## Piège des scripts de plugin `str.format`
 

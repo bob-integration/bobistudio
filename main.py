@@ -338,10 +338,11 @@ def inject_plugins():
             "plugin_runtimes": {t: (m.get("runtime") or "docker")
                                 for t, m in plugins.REGISTRY.items()},
             "plugin_image_kinds": {t: plugins.image_kind(t) for t in plugins.REGISTRY},
-            # Type MÉDIA (image bobi-media ou volume média) : créable seulement sur un nœud à
-            # capacité `media` — la palette grise les autres, l'API les refuse (routes.creer).
-            "plugin_needs_media": {t: plugins.image_variant(t) == "media" or plugins.wants_media_volume(t)
-                                   for t in plugins.REGISTRY},
+            # Capacité de nœud qu'exige le type ('' = aucune) : la palette grise les nœuds qui ne
+            # l'ont pas, l'API les refuse (routes.creer). UNE règle, `plugins.required_capability`
+            # — la palette en avait sa propre copie (média, gui) et ignorait decklink.
+            "plugin_required_caps": {t: plugins.required_capability(t) or ""
+                                     for t in plugins.REGISTRY},
             # Profil de ressources DÉCLARÉ (resources.cores/memory/pin/gpu…) : c'est ce que
             # `docker_compute` appliquera au `docker run`. Exposé à la palette de création pour
             # annoncer le coût AVANT de créer. Un type sans bloc `resources` renvoie {} — l'UI doit
@@ -1020,6 +1021,13 @@ if __name__ == "__main__":
     _tz_applied = _settings_tz.apply_timezone()
     if _tz_applied:
         log.info("Fuseau horaire du système : %s (réglage `timezone`).", _tz_applied)
+    # One SMTP server for the whole product (app/mail.py): the alerting service's former server
+    # is copied into the core settings once, when those are empty.
+    try:
+        from app import mail as _mail
+        _mail.migrate_from_alerting()
+    except Exception as e:
+        log.error("mail: server migration from the alerting service failed: %s", e)
     # B3-2a : rôle de contrôle (paire HA). Seul un contrôleur `active` PILOTE (surveillance des
     # nœuds, services NMOS/Ember+/ATEM/TSL/Skaarhoj, sampler PTP, backup quotidien). Un `standby`
     # boote passif — uniquement l'app Flask (UI lecture seule) — pour éviter le split-brain (deux
@@ -1098,6 +1106,18 @@ if __name__ == "__main__":
             except Exception as e:
                 log.error("plugin auto-install at boot: %s", e)
         threading.Thread(target=_boot_plugin_autoinstall, daemon=True, name="plugin-autoinstall-boot").start()
+        # Internal image registry (app/registry.py): reconciled at boot — this is also how a promoted
+        # standby takes over (promotion restarts the orchestrator). Then its storage is watched like
+        # a node's disks. The standby reconciles too, in its branch below.
+        def _boot_registry():
+            try:
+                from app import registry as _reg
+                ok, msg = _reg.reconcile(force=True)
+                (log.info if ok else log.error)("image registry at boot: %s", msg)
+                _reg.watch_storage()
+            except Exception as e:
+                log.error("image registry at boot: %s", e)
+        threading.Thread(target=_boot_registry, daemon=True, name="registry-boot").start()
         from app import monitor as _monitor
         _monitor.start_reaper()
         # On-air state of the running projects that asked for a periodic capture (off by default).
@@ -1191,8 +1211,19 @@ if __name__ == "__main__":
         log.warning("Contrôleur en STANDBY : pilotage désactivé (pas de surveillance, services "
                     "NMOS/Ember+/ATEM/TSL ni sampler PTP) — UI en lecture seule, en attente de bascule.")
         # Chien de garde : le standby ne bascule pas tout seul, mais il ne se tait plus quand
-        # l'actif tombe (alarme + bandeau). Seul thread de fond autorisé en veille.
+        # l'actif tombe (alarme + bandeau).
         _ha.start_watchdog()
+        # Image registry: a standby syncs from the active one (local storage) or stays stopped
+        # (shared storage). Without this, a demoted controller kept serving with its active
+        # config and, on NFS, held the lock the promoted one needed (2026-11-28, VMs).
+        def _boot_registry_standby():
+            try:
+                from app import registry as _reg
+                ok, msg = _reg.reconcile(force=True)
+                (log.info if ok else log.error)("image registry at boot (standby): %s", msg)
+            except Exception as e:
+                log.error("image registry at boot (standby): %s", e)
+        threading.Thread(target=_boot_registry_standby, daemon=True, name="registry-boot").start()
     # VIP de management (keepalived) : la priorité VRRP est dérivée du rôle, or le rôle peut avoir
     # été changé À LA MAIN puis suivi d'un simple redémarrage (chemin documenté dans HA.md) — sans
     # ce re-rendu au boot, l'adresse resterait sur l'ancien actif. No-op si la VIP est désactivée.

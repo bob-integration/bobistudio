@@ -432,6 +432,8 @@
                     P.deploy ? push(T('containers.card.recreate'), () => recreate(), { 'data-cp': 'recreate' }) : null]));
             }
         }
+        if (rv.realtime) kids.push(realtimeLine(rv.realtime));
+        if (rv.deadline) kids.push(deadlineLine(rv.deadline));
         // Links: the node's cores window, and each project's Resources view.
         const links = h('div', { class: 'cpanel-links' });
         if (rv.node && window.BobiCores) {
@@ -445,6 +447,25 @@
             text: fmt('containers.panel.res_project_link', { name: p.name || ('#' + p.id) }) })));
         kids.push(links, status);
         B.replaceChildren(...kids);
+    }
+
+    function realtimeLine(rt) {
+        // What the script OBTAINED (:8080), never the ask alone (app/realtime.py).
+        if (rt.applied) return line(fmt('containers.panel.res_rt_applied', { prio: rt.applied }), 'rt');
+        if (rt.error) return h('div', { class: 'cpanel-warn', role: 'alert', 'data-cp': 'rt' }, [
+            h('span', { text: fmt('containers.panel.res_rt_refused', { prio: rt.asked || '—', error: rt.error }) })]);
+        if (rt.applied === 0) return line(fmt('containers.panel.res_rt_not_applied', { prio: rt.asked || '—' }), 'rt');
+        return line(fmt('containers.panel.res_rt_unknown', { prio: rt.asked || '—' }), 'rt');
+    }
+
+    function deadlineLine(d) {
+        // Deadline witness read by the controller (app/deadlines.py): 24 h decide the guarantee.
+        const ms = (v) => (typeof v === 'number' ? v.toFixed(1) : '—');
+        if (!d.missed_24h) return line(fmt('containers.panel.res_deadline_ok',
+            { margin: ms(typeof d.late_p999_ms === 'number' ? -d.late_p999_ms : null) }), 'deadline');
+        return h('div', { class: 'cpanel-warn', role: 'alert', 'data-cp': 'deadline' }, [
+            h('span', { text: fmt('containers.panel.res_deadline_missed',
+                { n: d.missed_24h, window: d.missed || 0, s: d.window_s || 60, late: ms(d.late_max_ms) }) })]);
     }
 
     function dedicatedCores(rv, P) {
@@ -462,7 +483,29 @@
         ])];
         out.push(line(fmt('containers.panel.res_reserved', { cores: rv.reserved || '—' }), 'reserved'));
         out.push(line(T('containers.panel.res_cores_hot'), 'cores-hint', 'meta cpanel-hint'));
+        // Cores missing at deployment: refused by default, or « au mieux » on the shared pool.
+        const fb = h('div', { class: 'cpanel-level', 'data-cp': 'fallback' });
+        out.push(h('div', { class: 'palette-field' }, [h('label', { text: T('containers.panel.res_fallback') }), fb]));
+        if (window.BobiControls) {
+            const ctl = window.BobiControls.create('buttons', fb, {
+                options: [{ value: 'refuse', label: T('containers.panel.res_fallback_refuse') },
+                          { value: 'best', label: T('containers.panel.res_fallback_best') }],
+                value: rv.dedicated_fallback ? 'best' : 'refuse', showLabel: false,
+                label: T('containers.panel.res_fallback'), disabled: !P.deploy });
+            ctl.on('change', (v) => setFallback(v === 'best', ctl));
+        } else fb.textContent = T(rv.dedicated_fallback ? 'containers.panel.res_fallback_best' : 'containers.panel.res_fallback_refuse');
+        out.push(line(T(rv.dedicated_fallback ? 'containers.panel.res_fallback_best_hint'
+                                              : 'containers.panel.res_fallback_refuse_hint'), 'fallback-hint', 'meta cpanel-hint'));
         return out;
+    }
+
+    async function setFallback(best, ctl) {
+        const s = st;
+        const r = await patchResources({ dedicated_fallback: best });
+        if (s !== st) return;
+        if (!r.ok) { ctl.set(best ? 'refuse' : 'best'); say(s.resStatus, '✕ ' + refusal(r, 'containers.panel.res_cores_no_room'), 'err'); return; }
+        await loadResources();
+        say(st && st.resStatus, T('containers.panel.res_fallback_saved'), 'ok');
     }
 
     function cpuCap(rv, P) {
@@ -502,20 +545,37 @@
                 setRecreating({ memory: v });
             }, { 'data-cp': 'mem-apply' })]));
         }
+        // Measured peak over 24 h against the limit (app/memory_watch.py). Past 70 %, direct
+        // reclaim can already slow the threads: said as a warning, not as a plain line.
+        const pk = rv.memory_peak;
+        if (pk && pk.limit_mb) {
+            const txt = fmt('containers.panel.res_mem_peak', { peak: pk.peak_mb, limit: pk.limit_mb, pct: Math.round(pk.pct) });
+            out.push(pk.pct >= 70 ? h('div', { class: 'cpanel-warn', role: 'alert', 'data-cp': 'mem-peak' }, [h('span', { text: txt })])
+                                  : line(txt, 'mem-peak'));
+        } else if (pk) out.push(line(fmt('containers.panel.res_mem_peak_nolimit', { peak: pk.peak_mb }), 'mem-peak'));
+        else out.push(line(T('containers.panel.res_mem_peak_none'), 'mem-peak', 'meta cpanel-hint'));
         return out;
     }
 
     const patchResources = (body) => call('/api/containers/' + st.vmid + '/resources', 'PATCH', body);
     function refusal(r, noRoomKey) {
         if (r.j && r.j.error === 'no_room') return fmt(noRoomKey, r.j);
+        if (r.j && r.j.error === 'rt_shared_full') return r.j.message;
+        if (r.j && r.j.error === 'memory_node_full') return r.j.message;
         return fmt('containers.panel.res_failed', { error: (r.j && (r.j.error || r.j.detail)) || ('HTTP ' + r.code) });
     }
 
     async function setLevel(v, ctl) {
         const s = st, prev = s.rv.level;
         if (v === prev) return;
-        const r = await patchResources({ cpu_weight: v });
+        let r = await patchResources({ cpu_weight: v });
         if (s !== st) return;
+        // The shared pool's real-time budget (2026-11-23): refused unless the user chooses.
+        if (!r.ok && r.j && r.j.error === 'rt_shared_full'
+            && window.confirm(r.j.message + '\n\n' + T('containers.panel.rt_confirm'))) {
+            r = await patchResources({ cpu_weight: v, confirme_rt: true });
+            if (s !== st) return;
+        }
         if (!r.ok) {
             // The level stays as it was (the server changed nothing): the control says so too.
             ctl.set(prev);
@@ -542,8 +602,14 @@
     async function setRecreating(body) {
         const s = st;
         if (!window.confirm(fmt('containers.panel.res_confirm_recreate', { name: s.name }))) return;
-        const r = await patchResources(body);
+        let r = await patchResources(body);
         if (s !== st) return;
+        // The node's RAM (2026-11-23): a sum of limits past it is refused unless the user chooses.
+        if (!r.ok && r.j && r.j.error === 'memory_node_full'
+            && window.confirm(r.j.message + '\n\n' + T('containers.panel.mem_confirm'))) {
+            r = await patchResources({ ...body, confirme_memoire: true });
+            if (s !== st) return;
+        }
         if (!r.ok) { say(s.resStatus, '✕ ' + refusal(r, 'containers.panel.res_cores_no_room'), 'err'); return; }
         say(s.resStatus, T(r.j.status === 'differe_prochain_demarrage' ? 'containers.panel.res_deferred'
                            : (r.j.status === 'inchange' ? 'containers.panel.res_unchanged' : 'containers.panel.res_recreating')), 'ok');

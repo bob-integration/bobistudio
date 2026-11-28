@@ -51,6 +51,8 @@
         let besoin = VARIETE[VARIETE.length - 1][1];
         for (const [seuil, n] of VARIETE) { if (pwd.length < seuil) { besoin = n; break; } }
         if (pwd.length >= lmin && classes(pwd) < besoin) fautes.push("variete");
+        // Profile « aucune »: the three checks below are off too (auth.py, `controles`).
+        if (ex.controles === false) return fautes;
 
         const n = noyau(pwd);
         if (INTERDITS.has(n)) fautes.push("courant");

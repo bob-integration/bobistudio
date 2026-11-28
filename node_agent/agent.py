@@ -26,7 +26,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.32.4"  # 0.32.4 : `machine.memory_qos` — ce que le processeur offre pour protéger la mémoire d'un cœur dédié (réservation de cache CAT, plafonnement MBA, mesure), en lecture seule ; 0.32.3 : sondage MCE du noyau (340 µs par cœur toutes les 5 min, seule cause des retards d'une console en 16/16) coupé quand le contrôleur le demande (`mce_off`) ET qu'un cœur est isolé, valeur d'origine gardée sur disque et rendue ; état dans `isolation.mce` ; 0.32.2 : interruptions de périphériques écartées des cœurs isolés (l'affectation est seulement RÉTRÉCIE, rendue à la libération ; les IRQ gérées par le noyau sont signalées dans `isolation.irq_unmovable`) ; 0.32.1 : les cœurs réservés qu'aucun conteneur n'utilise (jumeau HT d'une console) sont gardés dans une partition vide `system.slice/bobi-reserved` — un jumeau chargé ralentissait la console de 63 à 100 % ; 0.32.0 : cœurs dédiés ISOLÉS par le noyau — partition cpuset (cgroup v2) par conteneur dédié, poussée par le contrôleur (/v1/host/isolation, `isolation` dans /v1/health) ; plus rien d'autre ne peut s'y poser, conteneur jetable et udev compris ; 0.31.1 : cœurs de service étendus à docker.service et containerd.service (runc lancé par dockerd et les shims tombait sur les cœurs dédiés) ; version de Docker relue toutes les 10 min au lieu de chaque relevé (chaque `docker version` faisait lancer `runc --version` à dockerd) ; 0.31.0 : chien de garde — sonde par `nsenter -n` (espace réseau seul) au lieu de `docker exec`, qui faisait tourner runc sur les cœurs du conteneur ; cœurs de service (/v1/host/housekeeping, `housekeeping` dans /v1/health) — l'agent et tout ce qu'il lance restent hors des cœurs dédiés ; 0.30.2 : `machine` dans /v1/health et /v1/capabilities — modèle du serveur (DMI), cœurs physiques, sockets, noms des GPU (fiche de nœud) ; 0.30.1 : l'inventaire des cartes ignore les interfaces posées par l'orchestrateur (`bobi-*`) — ce n'est pas du matériel du nœud ; 0.30.0 : réseau des conteneurs au CHOIX — publication de ports (`ports` dans la spec de conteneur → -p, refus d'une entrée mal formée), /v1/host/networks/ensure prend `driver` (macvlan « réseau du site » | bridge « réseau interne », nom de pont hôte stable, 409 si le réseau existe sous un autre pilote) et l'inventaire ne filtre plus par pilote (exclusion des réseaux intégrés) ; 0.29.2 : disques — refus porteurs du disque (série RÉELLE au journal, plus la série saisie), fstab d'avant Bobi gardé une fois pour toutes (.bobi-orig) ; 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
+VERSION = "0.32.9"  # 0.32.9 : ce que l'agent retire de l'affectation des IRQ pour écarter un cœur partitionné est gardé sur disque (lié au démarrage) et rendu à la libération même après un redémarrage de l'agent — en mémoire seule, une mise à jour de l'agent laissait les IRQ rétrécies pour toujours ; 0.32.8 : un conteneur GPU redémarre après un reboot du nœud — ses nœuds /dev/nvidia* absents (nvidia-modeset n'apparaît qu'au premier usage) sont créés par nvidia-modprobe avant `docker start`, qui sinon refusait (« no such file ») : les 4 conteneurs GPU de dell-1 restaient arrêtés après un redémarrage ; 0.32.7 : une partition que le noyau refuse est rendue AUSSITÔT à `member` (puis retentée toutes les 5 min) au lieu de rester `invalid` — sur un DL360 Gen10 en 6.12.117, une partition laissée invalide puis réécrite par systemd a fait avertir le noyau (cpuset.c update_parent_effective_cpumask, partition_xcpus_del) et le nœud s'est figé à la destruction suivante ; la partition d'un conteneur est défaite AVANT son arrêt ou sa destruction ; 0.32.6 : un conteneur GPU reçoit AUSSI ses périphériques NVIDIA en `--device` — par `--gpus` seul, systemd les ignorait et les retirait au moindre daemon-reload ou set-property (NVML « Unknown Error » dans 7 conteneurs de dell-1) ; 0.32.5 : une partition trouvée invalide est repassée par `member` puis reposée (le noyau ne la revalide jamais seul : 9 sur 10 sont restées invalides 36 h sur dell-1) ; un voisin allégé de ses cœurs l'est AUSSI dans systemd (`set-property --runtime AllowedCPUs`), qui sinon réécrit son ancienne liste au prochain daemon-reload et invalide les partitions ; 0.32.4 : `machine.memory_qos` — ce que le processeur offre pour protéger la mémoire d'un cœur dédié (réservation de cache CAT, plafonnement MBA, mesure), en lecture seule ; 0.32.3 : sondage MCE du noyau (340 µs par cœur toutes les 5 min, seule cause des retards d'une console en 16/16) coupé quand le contrôleur le demande (`mce_off`) ET qu'un cœur est isolé, valeur d'origine gardée sur disque et rendue ; état dans `isolation.mce` ; 0.32.2 : interruptions de périphériques écartées des cœurs isolés (l'affectation est seulement RÉTRÉCIE, rendue à la libération ; les IRQ gérées par le noyau sont signalées dans `isolation.irq_unmovable`) ; 0.32.1 : les cœurs réservés qu'aucun conteneur n'utilise (jumeau HT d'une console) sont gardés dans une partition vide `system.slice/bobi-reserved` — un jumeau chargé ralentissait la console de 63 à 100 % ; 0.32.0 : cœurs dédiés ISOLÉS par le noyau — partition cpuset (cgroup v2) par conteneur dédié, poussée par le contrôleur (/v1/host/isolation, `isolation` dans /v1/health) ; plus rien d'autre ne peut s'y poser, conteneur jetable et udev compris ; 0.31.1 : cœurs de service étendus à docker.service et containerd.service (runc lancé par dockerd et les shims tombait sur les cœurs dédiés) ; version de Docker relue toutes les 10 min au lieu de chaque relevé (chaque `docker version` faisait lancer `runc --version` à dockerd) ; 0.31.0 : chien de garde — sonde par `nsenter -n` (espace réseau seul) au lieu de `docker exec`, qui faisait tourner runc sur les cœurs du conteneur ; cœurs de service (/v1/host/housekeeping, `housekeeping` dans /v1/health) — l'agent et tout ce qu'il lance restent hors des cœurs dédiés ; 0.30.2 : `machine` dans /v1/health et /v1/capabilities — modèle du serveur (DMI), cœurs physiques, sockets, noms des GPU (fiche de nœud) ; 0.30.1 : l'inventaire des cartes ignore les interfaces posées par l'orchestrateur (`bobi-*`) — ce n'est pas du matériel du nœud ; 0.30.0 : réseau des conteneurs au CHOIX — publication de ports (`ports` dans la spec de conteneur → -p, refus d'une entrée mal formée), /v1/host/networks/ensure prend `driver` (macvlan « réseau du site » | bridge « réseau interne », nom de pont hôte stable, 409 si le réseau existe sous un autre pilote) et l'inventaire ne filtre plus par pilote (exclusion des réseaux intégrés) ; 0.29.2 : disques — refus porteurs du disque (série RÉELLE au journal, plus la série saisie), fstab d'avant Bobi gardé une fois pour toutes (.bobi-orig) ; 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
 # 0.21.0 : chien de garde — sonde par docker exec (macvlan isole l hote)
 #                     ciblé sur le bon domaine/uds, et remontée de gm.ClockClass / utcOffsetValid
 # 0.18.0 : /v1/host/clock — les horloges du nœud en 2 appels système, estampillé
@@ -462,6 +462,14 @@ ISO_PERIOD_S = 10                          # a recreated container gets a new sc
 _ISO = {"wanted": {}, "state": {}, "error": None, "mce_off": False}
 _ISO_LOCK = threading.Lock()
 ISO_GUARD = "bobi-reserved"              # empty partition holding reserved CPUs no container uses
+# A partition the kernel refuses goes back to `member` at once and is retried after ISO_RETRY_S. Left
+# `invalid`, it is the one state the kernel handles badly: on an HPE DL360 Gen10 (6.12.117, 2026-11-15)
+# systemd rewrote such a scope's AllowedCPUs, the kernel warned (cpuset.c update_parent_effective_cpumask,
+# then partition_xcpus_del: exclusive-CPU accounting corrupted) and froze outright at the next cgroup
+# removal, iLO reset required. The agent used to leave it invalid and re-try it every 10 s.
+ISO_RETRY_S = 300
+_ISO_REFUSED = {}                          # cgroup dir -> (cpus, kernel's reason, retry at)
+_ISO_DRAINING = set()                      # containers being stopped/removed: never re-partitioned meanwhile
 _ISO_NAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -497,6 +505,48 @@ def _cg_of_pid(pid):
     return None
 
 
+def _iso_revalidate(d, mode, want):
+    """The partition's current state; an invalid one is first sent back through `member`. The kernel
+    never re-validates a partition on its own, and writing the same mode again is a no-op: dell-1
+    (2026-11-09 → 11) kept 9 of 10 partitions invalid for 36 h after a sibling briefly listed their
+    CPUs, long after the agent had taken them back."""
+    part = _cg_read(d + "/cpuset.cpus.partition") or ""
+    if not part.startswith(mode + " invalid"):
+        return part
+    _cg_write(d + "/cpuset.cpus.partition", "member")
+    _cg_write(d + "/cpuset.cpus.exclusive", "")
+    _cg_write(d + "/cpuset.cpus.exclusive", want)
+    return "member"
+
+
+def _iso_to_member(d):
+    _cg_write(d + "/cpuset.cpus.partition", "member")
+    _cg_write(d + "/cpuset.cpus.exclusive", "")
+
+
+def _iso_drain(name):
+    """Undoes the container's partition BEFORE docker stops or removes it: the kernel then removes a
+    plain member cgroup, never a partition. Pair with `_iso_undrain` once docker is done."""
+    with _ISO_LOCK:
+        _ISO_DRAINING.add(name)
+        if name not in _ISO["wanted"]:
+            return
+        pid = _wd_pids([name]).get(name)
+        rel = _cg_of_pid(pid) if pid else None
+        if rel and not (_cg_read(CG_ROOT + rel + "/cpuset.cpus.partition") or "member").startswith("member"):
+            _iso_to_member(CG_ROOT + rel)
+            print("[bobi-node-agent] isolation: %s released before stop" % name, flush=True)
+
+
+def _iso_undrain(name):
+    with _ISO_LOCK:
+        _ISO_DRAINING.discard(name)
+
+
+def _sd_run(argv, timeout=20):
+    return run(argv, timeout=timeout)       # replaced by the tests: never the host's systemd
+
+
 def _iso_free_siblings(parent, keep, cpus, freed, blockers):
     """Strips `cpus` from the explicit cpuset.cpus of every MEMBER child of `parent` but `keep`."""
     try:
@@ -521,14 +571,62 @@ def _iso_free_siblings(parent, keep, cpus, freed, blockers):
         err = _cg_write(d + "/cpuset.cpus", _fmt_cpulist(rest)) if rest else "would have no CPU left"
         if err:
             blockers.append("%s (%s): %s" % (rel, raw, err))
-        else:
-            freed.append("%s: %s -> %s" % (rel, raw, _fmt_cpulist(rest)))
+            continue
+        freed.append("%s: %s -> %s" % (rel, raw, _fmt_cpulist(rest)))
+        # systemd keeps its own copy (AllowedCPUs) and writes it back at the next daemon-reload,
+        # which invalidated every partition but one on dell-1 (2026-11-09, a hand-started container
+        # with `--cpuset-cpus 0-12,14-87`). Its copy must say the same thing.
+        if child.endswith((".scope", ".service", ".slice")):
+            rc, out, e2 = _sd_run(["systemctl", "set-property", "--runtime", child,
+                                   "AllowedCPUs=" + _fmt_cpulist(rest)], timeout=20)
+            if rc != 0:
+                blockers.append("%s: systemd AllowedCPUs not updated: %s" % (rel, (e2 or out).strip()[:120]))
 
 
 # A partition stops TASKS, not device interrupts. Measured on dell-1 (2026-11-09, 60 s, no irqbalance):
 # CPU 13 (console) got none, but the guard got eno3 (16/s) and mlx4 (0.5/s), a mixer's CPU 42 ahci (1/s).
 PROC_IRQ = os.environ.get("BOBI_PROC_IRQ", "/proc/irq")
 _IRQ_TAKEN = {}                            # irq ("default" = IRQs set up later) -> [CPUs taken out, fallback CPUs added]
+# What was taken out is kept on disk (0.32.9): held in memory only, an agent restart between the narrowing
+# and the release (an agent update, typically) left every IRQ narrowed for good. Tied to the boot: a
+# reboot resets /proc/irq, so a file from another boot is dropped, never replayed.
+BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id"
+
+
+def _irq_saved_path():
+    return os.path.join(os.path.dirname(ISO_PATH), "irq_taken.json")   # beside the map (tests move it)
+
+
+def _irq_taken_state():
+    return {k: (frozenset(t), frozenset(a)) for k, (t, a) in _IRQ_TAKEN.items()}
+
+
+def _irq_taken_save():
+    path = _irq_saved_path()
+    data = {"boot_id": _cg_read(BOOT_ID_PATH) or "",
+            "taken": {k: [sorted(t), sorted(a)] for k, (t, a) in _IRQ_TAKEN.items()}}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w") as f:
+            json.dump(data, f)
+        os.replace(path + ".tmp", path)
+    except OSError as e:
+        print("[bobi-node-agent] isolation: irq state not saved: %s" % e, flush=True)
+
+
+def _irq_taken_load():
+    try:
+        with open(_irq_saved_path()) as f:
+            data = json.load(f) or {}
+    except (OSError, ValueError):
+        return
+    if data.get("boot_id") != (_cg_read(BOOT_ID_PATH) or ""):
+        return                             # another boot: the kernel has reset every affinity
+    try:
+        for k, (t, a) in (data.get("taken") or {}).items():
+            _IRQ_TAKEN[str(k)] = [set(int(x) for x in t), set(int(x) for x in a)]
+    except (TypeError, ValueError):
+        pass
 
 
 def _irq_get(key):
@@ -561,6 +659,7 @@ def _iso_irqs(lent, _online=None, _isolated=None):
     refuse the write: listed, not an error — they fire for I/O issued from that very CPU.
     Returns (moved lines, unmovable lines)."""
     moved, unmovable = [], []
+    before = _irq_taken_state()
     for key, (taken, added) in list(_IRQ_TAKEN.items()):
         back = taken - lent
         if not back:
@@ -578,6 +677,8 @@ def _iso_irqs(lent, _online=None, _isolated=None):
             if not taken:
                 del _IRQ_TAKEN[key]
     if not lent:
+        if _irq_taken_state() != before:
+            _irq_taken_save()
         return moved, unmovable
     online = _online if _online is not None else _online_cpus()
     if _isolated is None:
@@ -608,6 +709,8 @@ def _iso_irqs(lent, _online=None, _isolated=None):
             except OSError:
                 names = []
             unmovable.append("%s %s on %s" % (key, ",".join(names) or "?", _fmt_cpulist(cur & lent)))
+    if _irq_taken_state() != before:
+        _irq_taken_save()
     return moved, unmovable
 
 
@@ -668,8 +771,11 @@ def _iso_reconcile(_pids=None):
         pids = (_pids or _wd_pids)(sorted(wanted)) if wanted else {}
         state, targets, guard = {}, {}, set()
         guard_dir = slice_dir + "/" + ISO_GUARD
+        now = time.time()
+        for d in [d for d in _ISO_REFUSED if not os.path.isdir(d)]:
+            del _ISO_REFUSED[d]
         for name, spec in sorted(wanted.items()):
-            pid = pids.get(name)
+            pid = pids.get(name) if name not in _ISO_DRAINING else None
             rel = _cg_of_pid(pid) if pid else None
             if not rel:
                 state[name] = {"status": "not_running"}
@@ -682,6 +788,11 @@ def _iso_reconcile(_pids=None):
                 cpus, reserved = set(), set()
             if os.path.dirname(d) != slice_dir or not cpus or not cpus <= reserved:
                 state[name] = {"status": "cpuset_mismatch", "cpuset": raw, "reserved": spec, "cgroup": rel}
+                continue
+            ref = _ISO_REFUSED.get(d)
+            if ref and ref[0] == _fmt_cpulist(cpus) and now < ref[2]:
+                state[name] = {"status": "invalid", "cpus": ref[0], "partition": ref[1], "cgroup": rel,
+                               "retry_in_s": int(ref[2] - now)}
                 continue
             targets[d] = (name, cpus)
             guard |= reserved - cpus
@@ -713,6 +824,11 @@ def _iso_reconcile(_pids=None):
                 _cg_rmdir(guard_dir)
             except OSError as e:
                 errors.append("guard release: %s" % e)
+        gref = _ISO_REFUSED.get(guard_dir)
+        if guard and gref and gref[0] == _fmt_cpulist(guard) and now < gref[2]:
+            state[ISO_GUARD] = {"status": "invalid", "cpus": gref[0], "partition": gref[1],
+                                "cgroup": guard_dir[len(CG_ROOT):], "retry_in_s": int(gref[2] - now)}
+            guard = set()
         if guard:
             try:
                 os.makedirs(guard_dir, exist_ok=True)
@@ -739,13 +855,21 @@ def _iso_reconcile(_pids=None):
                 err = _cg_write(d + "/cpuset.cpus.exclusive", want)
                 if err:
                     errors.append("%s exclusive %s: %s" % (name, want, err))
-            if _cg_read(d + "/cpuset.cpus.partition") != mode:
+            part = _iso_revalidate(d, mode, want)
+            if part != mode:
                 _cg_write(d + "/cpuset.cpus.partition", mode)
             part = _cg_read(d + "/cpuset.cpus.partition") or ""
             state[name] = {"status": mode if part == mode else "invalid", "cpus": want,
                            "partition": part, "cgroup": d[len(CG_ROOT):]}
             if part != mode:
                 state[name]["blockers"] = blockers
+                _iso_to_member(d)          # never left invalid (see ISO_RETRY_S)
+                _ISO_REFUSED[d] = (want, part, now + ISO_RETRY_S)
+                state[name]["retry_in_s"] = ISO_RETRY_S
+                print("[bobi-node-agent] isolation: kernel refused %s on %s: %s; back to member, retry in %d s"
+                      % (name, want, part, ISO_RETRY_S), flush=True)
+            else:
+                _ISO_REFUSED.pop(d, None)
         # 5. device interrupts off the lent CPUs (given back when released)
         irq_moved, irq_unmovable = _iso_irqs(lent)
         # 6. machine-check polling (setting, only while something is partitioned)
@@ -803,6 +927,7 @@ def _iso_load():
         _ISO["mce_off"] = bool(saved.get("mce_off"))
     except (OSError, ValueError, TypeError, AttributeError):
         pass
+    _irq_taken_load()
 
 
 def _iso_loop():
@@ -1552,6 +1677,87 @@ def _list_containers():
     return out
 
 
+PROC_NVIDIA = "/proc/driver/nvidia/gpus"   # replaced by the tests
+_dev_exists = os.path.exists                # idem
+_NVIDIA_CTL_NODES = ("/dev/nvidiactl", "/dev/nvidia-uvm", "/dev/nvidia-uvm-tools", "/dev/nvidia-modeset")
+
+
+def _nvidia_minor(index):
+    """Device minor (/dev/nvidia<minor>) of the GPU nvidia-smi numbers `index`; the index itself
+    when the driver does not tell (single-GPU nodes, where both are 0)."""
+    rc, out, _ = run(["nvidia-smi", "-i", str(index), "--query-gpu=pci.bus_id",
+                      "--format=csv,noheader"], timeout=10)
+    bus = out.strip().lower() if rc == 0 else ""
+    if bus.startswith("0000") and len(bus) > 12:
+        bus = bus[4:]                                   # 00000000:3b:00.0 → 0000:3b:00.0
+    try:
+        with open("%s/%s/information" % (PROC_NVIDIA, bus)) as f:
+            for line in f:
+                if line.startswith("Device Minor:"):
+                    return int(line.split(":", 1)[1])
+    except (OSError, ValueError):
+        pass
+    return int(index)
+
+
+# nvidia-modprobe flags creating each control node; /dev/nvidia<N> takes `-c N`.
+_NV_MODPROBE = {"/dev/nvidiactl": ["-c", "0"], "/dev/nvidia-uvm": ["-u"], "/dev/nvidia-uvm-tools": ["-u"],
+                "/dev/nvidia-modeset": ["-m"]}
+
+
+def _nvidia_nodes_ensure(paths):
+    """Creates the missing /dev/nvidia* nodes among `paths`; returns those still missing.
+    A GPU container's `--device` list is fixed when it is created, but after a reboot the driver
+    creates some nodes only on first use: on dell-1 (2026-11-15) /dev/nvidia-modeset appeared 3 min
+    after boot, and `docker start` refused all 4 GPU containers meanwhile ("no such file")."""
+    missing = [p for p in paths if p.startswith("/dev/nvidia") and not _dev_exists(p)]
+    groups = []
+    for p in missing:
+        m = re.match(r"^/dev/nvidia(\d+)$", p)
+        g = ["-c", m.group(1)] if m else _NV_MODPROBE.get(p)
+        if g and g not in groups:
+            groups.append(g)
+    flags = [x for g in groups for x in g]
+    if flags:
+        run(["nvidia-modprobe"] + flags, timeout=20)
+    return [p for p in missing if not _dev_exists(p)]
+
+
+def _start_container(name):
+    """`docker start`, after making sure the device nodes it was created with exist."""
+    rc, o, _ = docker("inspect", "-f", "{{json .HostConfig.Devices}}", name, timeout=10)
+    try:
+        paths = [d.get("PathOnHost") or "" for d in (json.loads(o) or [])] if rc == 0 else []
+    except ValueError:
+        paths = []
+    left = _nvidia_nodes_ensure(paths)
+    if left:
+        print("[bobi-node-agent] %s: device nodes still missing before start: %s" % (name, ", ".join(left)),
+              flush=True)
+    return docker("start", name, timeout=30)
+
+
+def _nvidia_device_nodes(sel):
+    """Device nodes behind a `--gpus` selector ("all" or "device=0,1"). A selector by UUID only
+    gets the control nodes: guessing the card would hand out another container's GPU."""
+    nodes = [d for d in _NVIDIA_CTL_NODES if _dev_exists(d)]
+    sel = sel.strip().strip('"')
+    if sel == "all":
+        idx = [g["index"] for g in _gpus()]
+    elif sel.startswith("device="):
+        try:
+            idx = [int(x) for x in sel[len("device="):].split(",")]
+        except ValueError:
+            idx = []
+    else:
+        idx = []
+    for i in idx:
+        dev = "/dev/nvidia%d" % _nvidia_minor(i)
+        if _dev_exists(dev):
+            nodes.append(dev)
+    return nodes
+
+
 def _gpus():
     """GPU NVIDIA présents (via nvidia-smi). [] si pas de GPU / pilote absent. Bonus : l'orchestrateur
     sait aussi détecter par SSH ; ce champ évite ce round-trip. Cf. NODE_AGENT.md §4.4 (chantier GPU)."""
@@ -1715,6 +1921,12 @@ def _build_run_argv(spec):
     gpus = spec.get("gpus")
     if isinstance(gpus, str) and gpus.strip():
         argv += ["--gpus", gpus.strip()]
+        # The device nodes are ALSO passed explicitly: `--gpus` grants them through the nvidia hook,
+        # behind systemd's back, so the scope's DeviceAllow never lists them and any re-realisation
+        # of the scope (daemon-reload, set-property) revokes them — "Failed to initialize NVML:
+        # Unknown Error" in 7 containers of dell-1 (2026-11-12). With --device, runc declares them.
+        for dev in _nvidia_device_nodes(gpus.strip()):
+            argv += ["--device", dev]
 
     for mnt in (spec.get("mounts") or []):
         # `options` (agent ≥ 0.22.0) : liste blanche de drapeaux de bind Docker. `rslave` est ce
@@ -1826,8 +2038,12 @@ def create_container(spec):
         argv = _build_run_argv(spec)                      # AVANT le rm : une spec refusée ne
     except ValueError as e:                               # doit pas coûter le conteneur en place
         return False, str(e)
-    docker("rm", "-f", name, timeout=30)                  # réconciliation : repart propre
-    rc, out, err = run(argv, timeout=90)
+    _iso_drain(name)
+    try:
+        docker("rm", "-f", name, timeout=30)              # réconciliation : repart propre
+        rc, out, err = run(argv, timeout=90)
+    finally:
+        _iso_undrain(name)
     if rc != 0:
         return False, f"docker run échoué : {(err or out).strip()[:300]}"
     _spec_save(spec)
@@ -2731,12 +2947,20 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             name, action = m.group(1), m.group(2)
             if action == "start":
-                rc, o, e = docker("start", name, timeout=30)
+                rc, o, e = _start_container(name)
             elif action == "stop":
-                rc, o, e = docker("stop", "-t", str(int(body.get("timeout_s") or 10)), name, timeout=40)
+                _iso_drain(name)
+                try:
+                    rc, o, e = docker("stop", "-t", str(int(body.get("timeout_s") or 10)), name, timeout=40)
+                finally:
+                    _iso_undrain(name)
                 _spec_forget(name)      # intention = arrêté (cf. _spec_forget)
             else:  # destroy
-                rc, o, e = docker("rm", "-f", name, timeout=30)
+                _iso_drain(name)
+                try:
+                    rc, o, e = docker("rm", "-f", name, timeout=30)
+                finally:
+                    _iso_undrain(name)
                 _spec_forget(name)
             return self._send(200 if rc == 0 else 500,
                               {"ok": rc == 0, "error": (e or o).strip()[:300] if rc else None})

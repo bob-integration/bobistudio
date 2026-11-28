@@ -319,11 +319,15 @@ _TX_MCAST_FIELDS = ("multicast_ip", "dest_port", "anc_multicast_ip", "anc_dest_p
                     "multicast_ip_leg1", "dest_port_leg1",
                     "anc_multicast_ip_leg1", "anc_dest_port_leg1")
 _TX_MCAST_AUDIO_FIELDS = ("multicast_ip", "dest_port", "multicast_ip_leg1", "dest_port_leg1")
+# "Typed by an operator" markers (allocations.set_manual_dest): they describe the purged address,
+# so they go with it — the reallocated one comes from the plan.
+_TX_MCAST_MANUAL_FIELDS = tuple(f + "_manual" for f in _TX_MCAST_FIELDS if "multicast_ip" in f)
+_TX_MCAST_AUDIO_MANUAL_FIELDS = tuple(f + "_manual" for f in _TX_MCAST_AUDIO_FIELDS if "multicast_ip" in f)
 
 def _purge_tx_multicast(params):
-    """Retire les adresses/ports multicast TX des params (le hook before_deploy
-    réallouera au déploiement). Renvoie le nombre d'adresses purgées (= allocations
-    qui seront re-demandées, utilisé par le pré-vol de capacité)."""
+    """Remove the TX multicast addresses/ports (and their manual markers) from the params (the
+    before_deploy hook reallocates them at deployment). Returns the number of purged addresses
+    (= allocations that will be requested again, used by the capacity pre-flight)."""
     n = 0
     for t in (params.get("tx_slots") or []):
         if not isinstance(t, dict):
@@ -332,6 +336,8 @@ def _purge_tx_multicast(params):
             v = t.pop(f, None)
             if v is not None and f.startswith(("multicast", "anc_multicast")):
                 n += 1
+        for f in _TX_MCAST_MANUAL_FIELDS:
+            t.pop(f, None)
         for a in (t.get("audios") or []):
             if not isinstance(a, dict):
                 continue
@@ -339,6 +345,8 @@ def _purge_tx_multicast(params):
                 v = a.pop(f, None)
                 if v is not None and f.startswith("multicast"):
                     n += 1
+            for f in _TX_MCAST_AUDIO_MANUAL_FIELDS:
+                a.pop(f, None)
     return n
 
 
@@ -528,7 +536,7 @@ def verifier_capacite(snapshot):
         if need:
             used = {u.split(":")[0] for u in _used_multicasts()}
             free = 0
-            for r in db_get_mcast_ranges():
+            for r in db_get_mcast_ranges(include_plans=True):    # plan lines are ranges too
                 size = int(r.get("size") or 0)
                 if size <= 0:
                     continue

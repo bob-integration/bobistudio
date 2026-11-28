@@ -61,7 +61,7 @@ function verifie(ok, titre, detail) {
 // ─── Décor : la Z8 à l'échelle 1/6 — 8 cœurs logiques, 4 physiques (CORE = CPU mod 4) ────────
 const L = (o) => Object.assign({
     vmid: 0, hostname: '', statut: 'running', cpuset_applique: '', place: 'partage', plafond: null,
-    poids: { niveau: 'normal', valeur: 1024, source: 'default' }, poids_applique: 1024,
+    poids: { niveau: 'shared', valeur: 1024, source: 'default' }, poids_applique: 1024,
     poids_coherent: true, charge: null, charge_minorant: false, protection: 'non',
     protection_raison: {}, partage_avec: [], physiques: null,
 }, o);
@@ -80,7 +80,7 @@ const J = {
             partage_avec: [{ vmid: 105, hostname: 'transcodeur', via: 'cpuset' }] }),
         L({ vmid: 105, hostname: 'transcodeur', cpuset_applique: '3-7', temps_reel: false,
             place: 'partage_plafonne', plafond: 2, charge: 1.9, charge_minorant: true,
-            poids: { niveau: 'batch', valeur: 128, source: 'priority' },
+            poids: { niveau: 'background', valeur: 128, source: 'priority' },
             poids_applique: 1024, poids_coherent: false }),
     ],
     orphelins: [],
@@ -93,8 +93,8 @@ const J = {
         kind: p < 3 ? 'mixte' : 'partage', frere_partage: p < 3,
     })),
     synthese: { protege: 0, partie: 1, non: 2, inconnu: 0, poids_bas: 1, poids_haut: 1, poids_divergents: 1 },
-    poids_niveaux: [{ niveau: 'dedicated', valeur: 2048 }, { niveau: 'normal', valeur: 1024 },
-                    { niveau: 'background', valeur: 256 }, { niveau: 'batch', valeur: 128 }],
+    poids_niveaux: [{ niveau: 'dedicated', valeur: 2048 }, { niveau: 'shared', valeur: 1024 },
+                    { niveau: 'background', valeur: 128 }],
     partage: { cpuset: '3-7', cores: 5, conteneurs: 2, temps_reel: 1, physiques: 4,
                physiques_exclusifs: 1, freres_de_dedies: '4-6', bas: false, capacite_comptee: 1 },
     status: {},
@@ -108,13 +108,13 @@ verifie(I.parseCpuset('').length === 0 && I.parseCpuset(null).length === 0,
         '1b. vide et absent ne valent pas « cœur 0 »');
 
 console.log('\n2. ★ Le barème des poids vient du SERVEUR');
-verifie(I.seuilNormal(J) === 1024, '2a. le seuil « normal » est lu dans la réponse',
+verifie(I.seuilNormal(J) === 1024, '2a. le seuil « partagé » est lu dans la réponse',
         String(I.seuilNormal(J)));
-const J2 = Object.assign({}, J, { poids_niveaux: [{ niveau: 'normal', valeur: 4096 },
-                                                  { niveau: 'batch', valeur: 512 }] });
+const J2 = Object.assign({}, J, { poids_niveaux: [{ niveau: 'shared', valeur: 4096 },
+                                                  { niveau: 'background', valeur: 512 }] });
 verifie(I.poidsBas(J2, J.partages[1]) === true && I.poidsBas(J2, J.dedies[0]) === true,
         '2b. ★ si le serveur change le barème, le classement SUIT (2048 devient « bas » face à '
-        + 'un normal à 4096) — un 1024 recopié dans le JS aurait figé l\'ancien barème');
+        + 'un partagé à 4096) — un 1024 recopié dans le JS aurait figé l\'ancien barème');
 verifie(I.poidsBas({}, J.partages[1]) === false,
         '2c. barème absent → on ne CLASSE PAS (pas de « bas » inventé sans référence)');
 verifie(!/[^0-9]1024[^0-9]/.test(code.replace(/\/\/[^\n]*/g, '')),
@@ -195,16 +195,16 @@ verifie(/onmouseenter = b\.onfocus/.test(code),
 console.log('\n8. ★ Le niveau seul ; les cœurs d\'un Dédié se règlent ici (07/11)');
 win.hasPerm = (p) => p === 'containers.deploy';
 win.BobiContainerPanel = { open() {} };
-win.t = (k) => ({ 'settings.cores.weight.dedicated': 'Dédié', 'settings.cores.weight.normal': 'Normal',
+win.t = (k) => ({ 'settings.cores.weight.dedicated': 'Dédié', 'settings.cores.weight.shared': 'Partagé',
                   'settings.cores.cap_n': 'plafond {n}',
                   'projects.res_level_no_room': 'Dédié demande {need} cœur(s) sur {name}, qui n\'en a que {available} de libre(s)' }[k] || k);
 const DED = L({ vmid: 201, hostname: 'mix', place: 'dedie', cpuset_reserve: '0-1', cores: 2,
                 poids: { niveau: 'dedicated', valeur: 2048, source: 'manifest' }, protection: 'protege' });
 const CARTE = L({ vmid: 202, hostname: 'sdi', place: 'dedie', cpuset_reserve: '2-3', cores: 2, node_io: true,
-                  poids: { niveau: 'normal', valeur: 1024, source: 'override' }, protection: 'protege' });
+                  poids: { niveau: 'shared', valeur: 1024, source: 'override' }, protection: 'protege' });
 const CAP = L({ vmid: 203, hostname: 'tr', place: 'partage_plafonne', plafond: 4 });
 verifie(I.libelleNiveau(DED) === 'Dédié', '8a. ★ un Dédié se dit « Dédié », pas « Réservé · Dédié »', I.libelleNiveau(DED));
-verifie(I.libelleNiveau(CAP) === 'Normal · plafond 4', '8b. un partagé plafonné dit son plafond', I.libelleNiveau(CAP));
+verifie(I.libelleNiveau(CAP) === 'Partagé · plafond 4', '8b. un partagé plafonné dit son plafond', I.libelleNiveau(CAP));
 verifie(/<input type="number" class="bc-cores-in"[^>]*value="2"[^>]*data-vmid="201"/.test(I.coeursCellule(DED)),
         '8c. ★ le nombre de cœurs d\'un Dédié est un champ réglable', I.coeursCellule(DED));
 verifie(!/input/.test(I.coeursCellule(CARTE)) && /settings\.cores\.node_io_note/.test(I.coeursCellule(CARTE)),

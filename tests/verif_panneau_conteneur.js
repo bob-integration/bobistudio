@@ -133,7 +133,7 @@ function sandbox() {
     return env;
 }
 const settle = () => new Promise((r) => setTimeout(r, 0)).then(() => new Promise((r) => setTimeout(r, 0)));
-const LEVELS = ['dedicated', 'normal', 'background', 'batch'].map((id, i) => ({ id, value: [0, 1024, 512, 64][i] }));
+const LEVELS = ['dedicated', 'shared', 'background'].map((id, i) => ({ id, value: [0, 1024, 64][i] }));
 const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', engine: false, levels: LEVELS,
     level_source: 'override', node_io: false, memory: 2048, reserved: '', assigned: '', node: { id: 3, name: 'dl360-1' },
     free_dedicated: 6, applied: '', coherent: true, projects: [{ id: 7, name: 'Atelier' }], media_volume: false }, o);
@@ -147,8 +147,8 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
     await E.P.open(42, { hostname: 'mix-1' }); await settle();
     const R = E.root();
     const lvl = E.ctls[0];
-    ok(lvl && lvl.kind === 'buttons' && lvl.opts.options.map((o) => o.label).join() === 'Dédié,Normal,Arrière-plan,Batch'
-       && lvl.opts.value === 'dedicated', '1a. niveau : contrôle du catalogue à 4 choix, sur Dédié', lvl && lvl.opts);
+    ok(lvl && lvl.kind === 'buttons' && lvl.opts.options.map((o) => o.label).join() === 'Dédié,Partagé,Arrière-plan'
+       && lvl.opts.value === 'dedicated', '1a. niveau : contrôle du catalogue à 3 choix, sur Dédié', lvl && lvl.opts);
     ok(find(R, 'cores') && find(R, 'cores').textContent === '2', '2a. cœurs dédiés affichés');
     ok(find(R, 'free') && find(R, 'free').textContent === '6 libres sur dl360-1', '2b. « 6 libres sur dl360-1 »', find(R, 'free') && find(R, 'free').textContent);
     ok(find(R, 'reserved') && find(R, 'reserved').textContent === 'Cœurs attribués\u00a0: 4-5', '2c. cœurs attribués');
@@ -171,7 +171,7 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
 
     console.log('\n1. ★ Niveau refusé (no_room)');
     E = sandbox();
-    E.rv = base({ level: 'normal', dedicated: false, cores: null, cap: null, coherent: false, applied: '0-31', reserved: '' });
+    E.rv = base({ level: 'shared', dedicated: false, cores: null, cap: null, coherent: false, applied: '0-31', reserved: '' });
     await E.P.open(42, {}); await settle();
     const R2 = E.root(), l2 = E.ctls[0];
     E.patchReplies.push([409, { error: 'no_room', name: 'dl360-1', need: 3, available: 1 }]);
@@ -180,7 +180,7 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
     const st = find(R2, 'res-status');
     const attendu = fmt('projects.res_level_no_room', { need: 3, name: 'dl360-1', available: 1 });
     ok(st && st.textContent === '✕ ' + attendu, '1c. ★ refus no_room : message formaté', st && st.textContent);
-    ok(l2.sets[l2.sets.length - 1] === 'normal', '1d. ★ le contrôle revient sur le niveau gardé', l2.sets);
+    ok(l2.sets[l2.sets.length - 1] === 'shared', '1d. ★ le contrôle revient sur le niveau gardé', l2.sets);
 
     console.log('\n3. ★ Partagé : plafond CPU, recréation demandée');
     ok(find(R2, 'cap') && find(R2, 'cap').textContent === 'Aucun', '3a. plafond « Aucun » affiché');
@@ -199,7 +199,7 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
 
     console.log('\n3bis. ★ Retirer le plafond CPU');
     const E3 = sandbox();
-    E3.rv = base({ level: 'normal', dedicated: false, cores: null, cap: 4 });
+    E3.rv = base({ level: 'shared', dedicated: false, cores: null, cap: 4 });
     await E3.P.open(42, {}); await settle();
     const R3 = E3.root(), rm = find(R3, 'cap-remove');
     ok(rm && rm.textContent === FR['containers.panel.res_cap_remove'], '3bis-a. ★ plafond posé : « Aucun plafond » proposé', rm && rm.textContent);
@@ -236,13 +236,13 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
 
     console.log('\n7. Droits et actions du plugin');
     E = sandbox();
-    E.rv = base({ level: 'normal', dedicated: false, cores: null, cap: 2 });
+    E.rv = base({ level: 'shared', dedicated: false, cores: null, cap: 2 });
     await E.P.open(42, { canDeploy: false, canDestroy: false }); await settle();
     ok(find(E.root(), 'read-only') && !find(E.root(), 'act-restart') && !find(E.root(), 'cap-apply') && !find(E.root(), 'cap-remove')
        && E.ctls[0] && E.ctls[0].opts.disabled === true, '7a. sans droit : lecture seule, niveau désactivé, pas d\'action');
     ok(find(E.root(), 'cap').textContent === '2 cœur(s)', '7b. plafond posé affiché', find(E.root(), 'cap').textContent);
     E = sandbox();
-    E.rv = base({ level: 'normal', dedicated: false, cores: null, cap: null });
+    E.rv = base({ level: 'shared', dedicated: false, cores: null, cap: null });
     let ran = null;
     await E.P.open(42, { canDeploy: true, canDestroy: true, inst: { vmid: 42 },
                          settingsActions: (i) => [{ label: 'Assistant', run: () => { ran = i.vmid; } }] }); await settle();
@@ -251,6 +251,26 @@ const base = (o) => Object.assign({ vmid: 42, hostname: 'mix-1', type: 'mixer', 
     ok(find(E.root(), 'act-destroy') && find(E.root(), 'act-stop'), '7d. Détruire et Stop présents avec les droits');
     if (pa) pa.children[0].onclick();
     ok(ran === 42 && E.root().hidden === true, '7e. l\'action reçoit l\'instance, le panneau se ferme');
+
+    console.log('\n7bis. Témoin d\'échéance (P1, 23/11)');
+    E = sandbox();
+    E.rv = base({ level: 'dedicated', dedicated: true, cores: 2, cap: null, reserved: '4-5',
+                  deadline: { missed_24h: 0, hours: 3, missed: 0, window_s: 60, late_p999_ms: -4.12, late_max_ms: -2 } });
+    await E.P.open(42, {}); await settle();
+    let dl = find(E.root(), 'deadline');
+    ok(dl && dl.textContent === fmt('containers.panel.res_deadline_ok', { margin: '4.1' }) && dl.className === 'meta',
+       '7f. rien de manqué : la marge au p99,9', dl && dl.textContent);
+    E = sandbox();
+    E.rv = base({ level: 'dedicated', dedicated: true, cores: 2, cap: null, reserved: '4-5',
+                  deadline: { missed_24h: 7, hours: 3, missed: 2, window_s: 60, late_p999_ms: 1, late_max_ms: 3.25 } });
+    await E.P.open(42, {}); await settle();
+    dl = find(E.root(), 'deadline');
+    ok(dl && dl.className === 'cpanel-warn' && dl.textContent === fmt('containers.panel.res_deadline_missed', { n: 7, window: 2, s: 60, late: '3.3' }),
+       '7g. manquées en 24 h : avertissement, compte et retard max', dl && dl.textContent);
+    E = sandbox();
+    E.rv = base({ level: 'shared', dedicated: false, cores: null, cap: null });
+    await E.P.open(42, {}); await settle();
+    ok(!find(E.root(), 'deadline'), '7h. pas de témoin publié : pas de ligne');
 
     console.log('\n8. ★ Menu de la carte');
     const inerte = new Proxy(function () {}, { get: (t, k) => (k === Symbol.toPrimitive ? () => '' : inerte), apply: () => inerte, construct: () => inerte });

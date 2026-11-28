@@ -31,8 +31,11 @@ import xml.sax.saxutils as sx
 ROOT = "/m"
 EXTS = (".mxf", ".mov", ".mp4", ".mkv", ".avi", ".ts", ".mts", ".m2ts", ".m4v", ".webm",
         ".wav", ".mp3", ".aac", ".flac", ".m4a",
-        ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff")
+        ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".heic", ".heif")
 IMAGE_CODECS = ("png", "mjpeg", "bmp", "gif", "webp", "tiff", "jpeg2000")
+# HEIC/HEIF (iPhone photos, 2026-11-22): ffprobe sees an "hevc" video stream in an MP4-family
+# container, with no duration. The extension says it is a still image.
+HEIF_EXTS = (".heic", ".heif")
 CHUNK = 4 << 20
 ID_RE = re.compile(r'<media\b[^>]*?\bid="([^"]+)"')
 STATUS_RE = re.compile(r'<media\b[^>]*?\bstatus="([^"]+)"|<status>\s*([a-z]+)\s*</status>')
@@ -112,7 +115,8 @@ def probe(full, err=None):
                                   "rate": int(s.get("sample_rate") or 0) or None,
                                   "bits": int(s.get("bits_per_raw_sample") or 0) or None})
     v = tech["video"] or {}
-    if v and (v.get("codec") in IMAGE_CODECS) and not tech["audio"] and (tech["duration"] or 0) < 0.5:
+    if v and (v.get("codec") in IMAGE_CODECS or full.lower().endswith(HEIF_EXTS)) and not tech["audio"] \
+            and (tech["duration"] or 0) < 0.5:
         tech["kind"], tech["duration"] = "image", None
     else:
         tech["kind"] = "video" if v else ("audio" if tech["audio"] else "")

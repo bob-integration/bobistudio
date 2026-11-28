@@ -61,6 +61,7 @@ def sonde(liste=RELEVE_REEL, tool=True, list_rc=0, noeuds=12, boot=BOOT, flashe=
         "pci": (0, str(pci)),
         "built": (0, str(built)),
         "kernel": (0, noyau),
+        "preempt_rt": (1, ""),            # non-RT node (cf. verif_pilote_blackmagic_rt.py)
     }
     bm._marqueur_lu = lambda: flashe          # noqa: SLF001 — on injecte le marqueur
     return lambda nom: reponses[nom]

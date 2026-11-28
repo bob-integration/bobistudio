@@ -58,6 +58,7 @@ _ctl_prev_cpu = {}
 _ctl_prev_net = {}
 
 CONTROLLER_KEY = "controller"
+STANDBY_KEY = "standby"
 
 
 def _cfg(key, default):
@@ -298,6 +299,7 @@ def _verifier_coeurs(nid):
         from . import core_pool
         vue = core_pool.vue_coeurs(nid)
         core_pool.alerter_partage_bas(nid, vue=vue)
+        core_pool.alerter_rt_partage(nid, vue=vue)
         core_pool.alerter_dedies_non_exclusifs(nid, vue=vue)
     except Exception as e:
         log.debug("node_health cores check node %s: %s", nid, e)
@@ -345,8 +347,18 @@ def _merge_cpu_partage(nid, snap):
     snap["cpu_partage"] = out
 
 
-def _check_disk_alert(key, name, disks):
+# Which machine a disk alert is about: a node (default), the controller itself, or its standby.
+# The node wording ("the /dev/shm pipeline may stall") is wrong for the other two.
+_DISK_ALERT_KEYS = {
+    None: ("alert.disk.saturation", "alert.disk.retabli"),
+    "controller": ("alert.disk.saturation_controller", "alert.disk.retabli_controller"),
+    "standby": ("alert.disk.saturation_standby", "alert.disk.retabli_standby"),
+}
+
+
+def _check_disk_alert(key, name, disks, role=None):
     """Alerte par transition sur le remplissage disque (max sur shm/root/media)."""
+    key_sat, key_ok = _DISK_ALERT_KEYS[role]
     warn = _cfg("node_health_disk_warn_pct", 85.0)
     err = _cfg("node_health_disk_err_pct", 95.0)
     worst = None
@@ -369,12 +381,12 @@ def _check_disk_alert(key, name, disks):
         _alert_state[k] = prev
     marge = _cfg("node_health_disk_clear_margin", 5.0)
     if level and level != prev:
-        db_add_alert("alert.disk.saturation", level, node_id=key, kind="disk",
+        db_add_alert(key_sat, level, node_id=key, kind="disk",
                      params={"mount": worst_mount, "n": name, "pct": worst})
         _alert_state[k] = level
         _episodes.poser(k, level)
     elif not level and prev and (worst is None or worst <= warn - marge):
-        db_add_alert("alert.disk.retabli", "info", node_id=key, kind="disk",
+        db_add_alert(key_ok, "info", node_id=key, kind="disk",
                      params={"n": name, "pct": worst})
         _alert_state[k] = None
         _episodes.retirer(k)
@@ -1223,6 +1235,13 @@ def _sample_one(node):
         # Fréquence : contrôle SÉPARÉ de la prép MTL, parce qu'il vaut pour TOUS les nœuds et pas
         # seulement ceux qui portent du 2110 (cf. le commentaire de _check_freq_drift).
         _check_freq_drift(nid, snap["name"], node)
+        # Real-time aptitude sheet (app/node_aptitude.py): measured in the background every
+        # REFRESH_S, never in this loop.
+        try:
+            from . import node_aptitude
+            node_aptitude.refresh_due(nid)
+        except Exception as e:                                   # noqa: BLE001
+            log.debug("node_health aptitude node %s: %s", nid, e)
         # Profondeur MXL : même raisonnement que la fréquence — tous les nœuds qui portent le
         # domaine MXL (donc tous les nœuds Docker, pas seulement l'io2110), cf. _check_mxl_history_drift.
         _check_mxl_history_drift(nid, snap["name"], node)
@@ -1266,7 +1285,15 @@ def sample_all(force=False):
 
     # 1) Contrôleur (toujours, lecture locale).
     try:
-        _record(CONTROLLER_KEY, _controller_snapshot())
+        ctl = _controller_snapshot()
+        _record(CONTROLLER_KEY, ctl)
+        # The controller's own disk goes through the SAME thresholds as a node's. It used to be
+        # measured and displayed but never compared: on 2026-11-28 it sat at 92 % with no alert,
+        # the only check left being the log floor (5 GB free, error only, worded as a log issue).
+        # The controller holds the database, the logs and the backups: a full disk there blinds
+        # the whole cluster, not one node. `node_id` comes out NULL (`_alert_int("controller")`).
+        _check_disk_alert(CONTROLLER_KEY, ctl.get("name") or CONTROLLER_KEY, ctl.get("disks"),
+                          role="controller")
     except Exception as e:
         log.debug("node_health contrôleur: %s", e)
 
@@ -1285,6 +1312,45 @@ def sample_all(force=False):
     if time.time() - _last_flush >= STATS_FLUSH_S:
         _flush_stats()
         _last_flush = time.time()
+
+
+# ─── Standby controller's disk ────────────────────────────────────────────────
+# The standby runs no sampler (it boots passive, cf. main.py) and an alert written into its own
+# database would be seen by nobody: the UI, the notifications and SNMP all live on the ACTIVE one.
+# So the standby REPORTS its disk in its answer to each replica push (routes/ha.py), and the active
+# one judges it here, with the node thresholds. A full standby disk otherwise surfaced only as a
+# generic "replication failed", and then as a failover that cannot write its database.
+def local_disk_report():
+    """This host's disks as the standby reports them: system disk + the database's partition."""
+    out = {}
+    seen = set()
+    for k, path in (("root", "/"), ("data", os.path.dirname(os.path.abspath(DB_PATH)) or "/")):
+        try:
+            # One entry per FILESYSTEM: with the database on the root partition, "data" would be
+            # the same disk under another name, and could be the one the alert names (VM test,
+            # 2026-11-28: "Disque /opt/bobistudio" while / was full). "/" is listed first, so it wins.
+            dev = os.stat(path).st_dev
+            if dev in seen:
+                continue
+            seen.add(dev)
+            u = shutil.disk_usage(path)
+            out[k] = {"path": path, "used": u.used, "total": u.total,
+                      "pct": round(u.used / u.total * 100, 1) if u.total else None}
+        except OSError:
+            continue
+    return {"name": platform.node(), "disks": out}
+
+
+def check_standby_disk(report):
+    """Active side: judge the disk report sent back by the standby. Silently ignores a missing or
+    malformed report (a standby on an older version sends none)."""
+    if not isinstance(report, dict) or not isinstance(report.get("disks"), dict):
+        return
+    disks = {k: d for k, d in report["disks"].items()
+             if isinstance(d, dict) and isinstance(d.get("pct"), (int, float))}
+    if disks:
+        _check_disk_alert(STANDBY_KEY, str(report.get("name") or STANDBY_KEY), disks,
+                          role="standby")
 
 
 # ─── Persistance 24 h (modèle ptp._flush_stats / _load_stats) ─────────────────

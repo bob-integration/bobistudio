@@ -226,6 +226,33 @@ def project_resources_view(pid):
     return jsonify(project_resources.view(pid))
 
 
+@bp.route("/api/projects/<int:pid>/trial", methods=["GET", "POST", "DELETE"])
+@require_project_role("viewer")
+def project_trial_route(pid):
+    """« Éprouver » (app/project_trial.py). GET: the running trial or the last result, plus what a
+    trial would do (`plan`). POST {duration_s}: start — saturates the shared pool of the project's
+    nodes, so it needs `containers.deploy`. DELETE: abort."""
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    from .. import project_trial
+    from ..auth import has_perm
+    if request.method == "GET":
+        return jsonify({"ok": True, "trial": project_trial.state(pid), "plan": project_trial.plan(pid),
+                        "default_s": project_trial.DURATION_S})
+    if not has_perm("containers.deploy"):
+        return jsonify({"error": "forbidden"}), 403
+    if request.method == "DELETE":
+        return jsonify({"ok": project_trial.abort(pid)})
+    body = request.json or {}
+    ok, out = project_trial.start(pid, body.get("duration_s", project_trial.DURATION_S))
+    if not ok:
+        return jsonify(dict(out, ok=False)), 409
+    from ..audit import journal as _journal
+    _journal("alert.audit.eprouver_projet", cible=(db_get_project(pid) or {}).get("name") or pid, kind="resource",
+             params={"p": (db_get_project(pid) or {}).get("name") or pid, "s": out.get("duration_s")})
+    return jsonify({"ok": True, "trial": out})
+
+
 @bp.route("/api/projects/<int:pid>/apply", methods=["POST"])
 @require_perm("containers.deploy")
 def project_apply_plan(pid):

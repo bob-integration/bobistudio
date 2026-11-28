@@ -14,7 +14,8 @@
 //     (nom déjà pris dans le dossier : fenêtre « Envoyer sous ce nom / Ignorer » AVANT l'envoi)
 //   MediaUpload.chooseTarget({count, bins, bin_id, projects, project_ids}) → Promise<{node_id, folder:'', bin_id, project_ids} | null>   (Gestionnaire)
 //   MediaUpload.config() → Promise<{chunk_size, max_bytes, exts, kinds, nodes}>
-// Chaque fichier importé émet `ml:uploaded` (detail {asset_id, session}) : les bibliothèques relisent.
+// Chaque fichier importé émet `ml:uploaded` (detail {asset_id, session, tag}) : les bibliothèques relisent.
+// `tag` (enqueue's opts.tag) names the library that asked for it (ml.upload).
 (function(){
   'use strict';
   if(window.MediaUpload) return;
@@ -73,7 +74,7 @@
     if(!ok.length) return;
     const plan = await resolveNames(ok, target, opts);
     for(const p of plan)
-      queue.push({id:++_seq, file:p.file, name:p.name, target:Object.assign({}, target), bin_id:opts.bin_id || null, label:opts.label || '',
+      queue.push({id:++_seq, file:p.file, name:p.name, target:Object.assign({}, target), bin_id:opts.bin_id || null, label:opts.label || '', tag:opts.tag || null,
                   state:'queued', sent:0, size:p.file.size, err:'', samples:[]});
     render(); pump();
   }
@@ -140,7 +141,7 @@
           // Rangé comme l'aurait été l'envoi : projet du contexte, bin.
           const a = await api('POST', '/api/media/upload/attach', {asset_id:row.duplicates[0].asset_id, vmid:target.vmid,
             project_id:target.project_id || null, project_ids:target.project_ids || null, bin_id:opts.bin_id || null}).catch(() => ({ok:false, d:{}}));
-          if(a.ok && (a.d.project_id || a.d.bin_id)) document.dispatchEvent(new CustomEvent('ml:uploaded', {detail:{asset_id:row.duplicates[0].asset_id, session:null}}));
+          if(a.ok && (a.d.project_id || a.d.bin_id || opts.tag)) document.dispatchEvent(new CustomEvent('ml:uploaded', {detail:{asset_id:row.duplicates[0].asset_id, session:null, tag:opts.tag || null}}));
           kept.push(f.name);
           continue;
         }
@@ -375,7 +376,7 @@
       if(g.d.state === 'importing') continue;
       if(g.d.state === 'done'){
         it.state = 'done'; it.asset_id = g.d.asset_id; it.known = g.d.known;
-        document.dispatchEvent(new CustomEvent('ml:uploaded', {detail:{asset_id:g.d.asset_id, session:g.d}}));
+        document.dispatchEvent(new CustomEvent('ml:uploaded', {detail:{asset_id:g.d.asset_id, session:g.d, tag:it.tag}}));
       } else { it.state = 'failed'; it.err = g.d.error || g.d.state; }
       break;
     }

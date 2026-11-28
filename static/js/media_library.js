@@ -39,7 +39,14 @@
 //   et une petite marque ✓ signale les médias présents sur le nœud du conteneur.
 //   });
 //   ml.reload(); ml.byPath(p); ml.assetThumb(a); ml.openInfo(id); ml.destroy();
+//   ml.focusSearch() : curseur dans la recherche (raccourci « / » d'un hôte) ; Entrée y lance l'action principale sur le 1er résultat.
+//   ml.step(±1, actionId) : action sur l'élément voisin du courant, dans l'ordre de la liste (raccourcis clavier).
+//   ml.upload(files, done): sends files from the computer like « Importer depuis l'ordinateur… », then calls
+//     done({asset, path, name}) for EACH once it is in the base, with a copy the container sees (a file the
+//     base already had, kept as is, is fetched first when needed). With vmid only.
 //   upload: false                         // masque « Importer depuis l'ordinateur… » (défaut : affiché)
+//   importTargets: name => [{label, run(results)}]   // extra destinations of a share import (folder or
+//                                         // selection), after the bins; results = [{asset, path, name}]
 //   ml.getState() → {tab, bin, q, tree, view} (petit, sérialisable) ; ml.setState(s) le réapplique (validé).
 //
 // PROXY de lecture (MP4 540 p, ou M4A pour l'audio seul) : la fiche Infos le LIT (lecteur HTML5,
@@ -79,6 +86,8 @@
   'use strict';
   const LIB_MAX = 2000;            // = plafond de la recherche serveur ; rendu par lots (cf. batched)
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // Text as a search compares it: accents dropped, lower case (same rule as fold() in the base).
+  const foldTxt = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const baseName = p => { const s = String(p || ''); const i = s.lastIndexOf('/'); return i >= 0 ? s.slice(i + 1) : s; };
   const fmtSize = b => !b ? '' : b >= 1e9 ? (b / 1e9).toFixed(1) + ' Go' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' Mo' : Math.max(1, Math.round(b / 1e3)) + ' Ko';
   const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})});
@@ -89,7 +98,7 @@
   };
   // Groupes de l'éditeur de recherche ; un champ inconnu tombe dans « Général ».
   const SF_GROUPS = [
-    ['general', ['name','title','description','keywords','kind','origin','producer','project','created_at','file_created','updated_at']],
+    ['general', ['name','title','description','keywords','credit','rights_until','principal','kind','origin','producer','project','created_at','file_created','updated_at']],
     ['tech', ['duration','width','height','fps','scan','vcodec','audio_codec','audio_tracks','container','timecode','size','has_video']],
     ['where', ['on_node','on_share','copies','has_proxy']],
     ['proc', ['versions','version','derived','relation','preset','loudness_lufs','true_peak','realtime_factor','submitted_by','watchfolder']],
@@ -158,6 +167,8 @@
   // ── Modes d'affichage : logique pure (garde sous node : tests/verif_media_modes.py) ──
   const VIEWS = ['table', 'grid', 'cards', 'strip', 'preview'];
   const GROUPS = ['none', 'day', 'project', 'node', 'origin', 'codec'];
+  // Sorts offered in the bar (every mode but the list, whose column headers sort): '' = the base's order.
+  const SORTS = ['', 'name', 'created_at', 'file_created', 'size', 'duration'];
   const GROUPABLE = new Set(['table', 'grid', 'cards']);
   // Clé de colonne / de champ de carte : un champ connu (`duration`…) ou un champ personnalisé (`meta.<clé>`).
   const FIELD_RE = /^(?:[a-z][a-z_]{0,23}|meta\.[A-Za-z0-9_.-]{1,40})$/;
@@ -187,6 +198,8 @@
       out.colW = w;
     }
     if(typeof s.cell === 'number' && isFinite(s.cell)) out.cell = clampInt(s.cell, CELL_MIN, CELL_MAX);
+    if(s.sort && typeof s.sort === 'object' && (s.sort.key === '' || FIELD_RE.test(s.sort.key)))
+      out.sort = {key:s.sort.key, dir:s.sort.dir < 0 ? -1 : 1};
     return out;
   }
   // Colonne (ou champ de carte) cochée / décochée : retirée si présente, ajoutée EN FIN sinon.
@@ -292,7 +305,8 @@
     // les actions qui la déclarent (`kinds`) s'y appliquent ; les autres restent aux médias.
     const kindOfRow = r => kindOf(r && r.asset);
     const actsFor = r => { const k = kindOfRow(r);
-      return actions.filter(x => x.kinds ? x.kinds.includes(k) : k !== 'playlist'); };
+      return actions.filter(x => x.kinds ? x.kinds.includes(k) : k !== 'playlist' && k !== 'grid'); };
+    const isSet = a => ['playlist', 'grid'].includes(kindOf(a));   // fiches sans fichier : playlist, grille d'images
     const L = (k, d) => { const v = T('medialib.' + k, d); return (v && v !== 'medialib.' + k) ? v : d; };
     const uid = 'ml' + (++_uid) + '-' + Date.now().toString(36);
     // Mode d'affichage et ses réglages : défaut de l'hôte (liste, ou vignettes aux Images fixes), puis
@@ -304,7 +318,7 @@
     let view = viewsHere.includes(o.view) ? o.view : 'table';
     const DEF_COLS = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', ...(o.dateColumn ? ['created_at'] : [])];
     const DEF_CARDF = ['description', 'file', 'format', 'project', 'keywords'];
-    const vs = {group:'none', cols:null, colW:{}, cell:168, cardF:null};
+    const vs = {group:'none', cols:null, colW:{}, cell:168, cardF:null, sort:null};
     const viewKey = 'view.' + (o.viewKey || (global ? 'global' : 'c' + vmid));
     // LOCK (asked on 2026-11-07): a container's library keeps ITS search (filters, search, bin, tab)
     // on this computer, for this container — and leaves the user's shared preference alone (two
@@ -315,7 +329,7 @@
     let lockReady = !locked;          // nothing is saved before the kept search is back
     function applyViewState(p){
       if(p.view && viewsHere.includes(p.view)) view = p.view;
-      ['group', 'cols', 'colW', 'cell', 'cardF'].forEach(k => { if(k in p) vs[k] = p[k]; });
+      ['group', 'cols', 'colW', 'cell', 'cardF', 'sort'].forEach(k => { if(k in p) vs[k] = p[k]; });
     }
     applyViewState(sanitizeViewState(pref.get(viewKey, null)));
     const saveView = () => pref.set(viewKey, {view, ...vs});
@@ -336,6 +350,9 @@
           <select class="ml-group">${GROUPS.map(g => `<option value="${g}">${esc(L('group.' + g, g))}</option>`).join('')}</select></label>
         <label class="ml-vopt ml-size-l" hidden><span>${esc(L('thumb_size','Taille'))}</span>
           <input type="range" class="ml-size" min="${CELL_MIN}" max="${CELL_MAX}" step="10"></label>
+        <label class="ml-vopt ml-sort-l" hidden><span>${esc(L('sort_by','Trier par'))}</span>
+          <select class="ml-sort">${SORTS.filter(k => !(imagesOnly && k === 'duration')).map(k => `<option value="${k}">${esc(L('sort.' + (k || 'default'), k))}</option>`).join('')}</select></label>
+        <button type="button" class="btn ml-sort-dir" hidden></button>
         <button type="button" class="btn ml-compat" aria-pressed="false" hidden></button>
         <button type="button" class="btn ml-onetap" aria-pressed="false" hidden>${esc(L('one_click','1 clic'))}</button>
         <button type="button" class="btn ml-cardf-btn" aria-haspopup="menu" hidden>${esc(L('card_fields','Champs'))} ▾</button>
@@ -347,7 +364,7 @@
           <input type="file" class="ml-plimp-in" accept=".json,application/json" hidden>` : ''}
         <button type="button" class="btn ml-upload"${o.upload === false ? ' hidden' : ''}>${esc(L('up_btn','Importer depuis l\'ordinateur…'))}</button>
         <input type="file" class="ml-upload-in" multiple hidden>
-        <button type="button" class="btn ml-refresh" title="${esc(L('refresh','Rafraîchir'))}" aria-label="${esc(L('refresh','Rafraîchir'))}">↻</button>
+        <button type="button" class="btn ml-refresh" title="${esc(L('refresh','Rafraîchir'))}" aria-label="${esc(L('refresh','Rafraîchir'))}">↻<span class="ml-auto-dot" aria-hidden="true" hidden></span></button>
       </div>
       <div class="ml-chips" hidden></div>
       <div class="ml-filters" hidden>
@@ -364,8 +381,8 @@
       <div class="ml-bulk" hidden><span class="ml-bulk-n"></span><span class="ml-bulk-acts"></span>
         <span class="ml-sp"></span><button type="button" class="btn ml-bulk-all">${esc(L('sel_all','Tout sélectionner'))}</button>
         <button type="button" class="btn ml-bulk-clear">${esc(L('sel_clear','Désélectionner'))}</button></div>
-      <div class="ml-job" hidden role="status" aria-live="polite"><span class="ml-job-txt"></span><progress class="ml-job-bar" max="1" value="0"></progress></div>
-      <div class="ml-crumbs" hidden></div>
+      <div class="ml-job" hidden role="status" aria-live="polite"><span class="ml-job-txt"></span><progress class="ml-job-bar" max="1" value="0"></progress><button type="button" class="btn ml-job-cancel" hidden>${esc(L('cancel','Annuler'))}</button></div>
+      <div class="ml-crumbs" hidden><span class="ml-crumbs-txt"></span><button type="button" class="btn ml-net-imp" aria-haspopup="menu" hidden></button></div>
       <div class="ml-menu" hidden role="menu"></div>
       <div class="ml-body">
         <aside class="ml-bins"><label class="ml-bins-opt"><input type="checkbox" class="ml-bin-kids"> <span>${esc(L('bin_children','Avec le contenu des sous-bins'))}</span></label>
@@ -378,7 +395,7 @@
 
     // `filters` : conditions posées à l'ouverture (ex. le recorder montre d'abord SES clips) ; on les retire comme les autres.
     const st = {tab:'base', assets:[], byPath:{}, all:[], regOk:true, bins:[], bin:null, tree:{items:(o.filters || []).map(f => ({...f})), links:(o.filters || []).slice(1).map(() => 'and')}, editBin:null, sf:null, q:'',
-                net:{path:'', dirs:[], files:[]}, extra:{}, netOk:false, sel:new Set(), anchor:null, sort:{key:'', dir:1},
+                net:{path:'', dirs:[], files:[]}, extra:{}, netOk:false, sel:new Set(), anchor:null, sort:vs.sort ? {...vs.sort} : {key:'', dir:1},
                 folded:new Set(pref.get('bins.folded', [])), kids:!!pref.get('bins.children', false), vals:{}, ctx:null,
                 order:[], groups:[], sharedMine:{bins:[], assets:[]}};   // order : clés affichées, dans l'ordre (sélection Maj / Ctrl+A) ; groups : groupes affichés
     $('.ml-bin-kids').checked = st.kids;
@@ -397,11 +414,12 @@
       return [`${v.width}×${v.height}`, rate, codecName(v.codec)].filter(Boolean).join(' · '); }
     function fmtShort(a){ const t = a.tech || {}, v = t.video || {};
       if(kindOf(a) === 'playlist') return L('pl_items','{n} élément(s)').replace('{n}', t.items || 0);
+      if(kindOf(a) === 'grid') return L('grid_cells','{n} case(s)').replace('{n}', t.items || 0);
       if(kindOf(a) === 'image') return v.width ? `${v.width}×${v.height} ${codecName(v.codec)}` : '';
       if(!v.width) return (t.audio || []).length ? L('audio_only','audio seul') : '';
       const r = v.fps ? (v.scan === 'i' ? Math.round(v.fps * 2) + 'i' : (Math.round(v.fps * 100) / 100) + 'p') : '';
       return `${v.height}${r ? ' ' + r : ''} ${codecName(v.codec)}`.trim(); }
-    function fmtAudioShort(a){ const au = (a.tech || {}).audio || []; if(!au.length) return ['image', 'playlist'].includes(kindOf(a)) ? '' : '—';
+    function fmtAudioShort(a){ const au = (a.tech || {}).audio || []; if(!au.length) return ['image', 'playlist', 'grid'].includes(kindOf(a)) ? '' : '—';
       const mono = au.every(x => x.channels === 1), same = au.every(x => x.channels === au[0].channels);
       if(mono) return au.length === 1 ? 'mono' : `${au.length} × mono`;
       if(same && au[0].channels === 2) return au.length === 1 ? L('stereo','stéréo') : `${au.length} × ${L('stereo','stéréo')}`;
@@ -482,7 +500,10 @@
         if(d.error){ toast(d.error, 'error'); return; }
         st.net = {path:d.path || '', dirs:d.dirs || [], files:d.files || []};
       }catch(e){ return; }
-      $('.ml-crumbs').textContent = L('tab_net','Serveur réseau') + ' / ' + (st.net.path || '');
+      $('.ml-crumbs-txt').textContent = L('tab_net','Serveur réseau') + ' / ' + (st.net.path || '');
+      // Inside a folder of a share: import all its files (of this library's kinds) in one go.
+      const ib = $('.ml-net-imp'); ib.hidden = global || !st.net.path || !st.net.files.length;
+      ib.textContent = L('imp_folder','Importer ce dossier vers…') + ' ▾';
       render();
     }
     async function reload(){
@@ -499,8 +520,8 @@
         const base = st.net.path ? st.net.path + '/' : '';
         const out = [];
         if(st.net.path) out.push({dir:'..', name:'..'});
-        st.net.dirs.filter(n => !q || n.toLowerCase().includes(q)).forEach(n => out.push({dir:n, name:n}));
-        st.net.files.filter(f => !q || f.name.toLowerCase().includes(q)).forEach(f =>
+        st.net.dirs.filter(n => !q || foldTxt(n).includes(foldTxt(q))).forEach(n => out.push({dir:n, name:n}));
+        st.net.files.filter(f => !q || foldTxt(f.name).includes(foldTxt(q))).forEach(f =>
           out.push({ext: base + f.name, name:f.name, size:f.size, inBase:f.asset_id || null}));
         return out;
       }
@@ -516,7 +537,7 @@
         }
         return out;
       }
-      return (st.extra[st.tab] || []).filter(f => !q || String(f.path).toLowerCase().includes(q)).map(f => {
+      return (st.extra[st.tab] || []).filter(f => !q || foldTxt(f.path).includes(foldTxt(q))).map(f => {
         const a = st.byPath[f.path]; return a ? {...f, asset:a, name:(a.meta || {}).title || a.name} : {...f, name:f.name || baseName(f.path)}; }).filter(compatOk);
     }
     const keyOf = r => r.asset ? r.asset.id : r.ext ? 'ext:' + r.ext : '';
@@ -527,7 +548,14 @@
     // projets) : le serveur donne `homonyms` et `name_hint` (projets, à défaut nœud · dossier) ;
     // affiché en petit à côté du nom, et seulement dans ce cas.
     // Média vu seulement par un PARTAGE (app/media_sharing.py) : marqué, discrètement, du nom du partageur.
-    const homTag = r => ((r && r.asset && r.asset.homonyms > 0 && r.asset.name_hint)
+    // Rights of a media (2026-11-22): `rights_until` (YYYY-MM-DD) in the past = expired.
+    const today = () => new Date().toISOString().slice(0, 10);
+    const rightsOver = a => { const d = ((a && a.meta) || {}).rights_until; return !!d && String(d) < today(); };
+    const homTag = r => ((r && r.asset && (r.asset.meta || {}).principal)
+      ? ` <span class="ml-prin" title="${esc(L('if_principal','Photo principale'))}">★</span>` : '')
+      + (r && r.asset && rightsOver(r.asset)
+      ? ` <span class="ml-hom ml-rights-over" title="${esc(L('rights_over_tip','Droits expirés le {d}').replace('{d}', r.asset.meta.rights_until))}">⚠ ${esc(L('rights_over','droits'))}</span>` : '')
+      + ((r && r.asset && r.asset.homonyms > 0 && r.asset.name_hint)
       ? ` <span class="ml-hom" title="${esc(L('hom_tip','Plusieurs médias portent ce nom'))}">${esc(r.asset.name_hint)}</span>` : '')
       + ((r && r.asset && r.asset.shared)
       ? ` <span class="ml-hom ml-shared-by" title="${esc(L('sh_by_tip','Partagé avec vous par {u}').replace('{u}', r.asset.shared.by || '?'))}">↗ ${esc(r.asset.shared.by || '')}</span>` : '');
@@ -535,7 +563,7 @@
     function copiesCell(r){
       const a = r.asset;
       if(!a) return r.size ? fmtSize(r.size) : '';
-      if(kindOf(a) === 'playlist') return '';                // aucune copie : par nature
+      if(isSet(a)) return '';                                // aucune copie : par nature
       const n = a.copies_n != null ? a.copies_n : (a.available_nodes || []).length;
       const tip = n ? [...(a.available_nodes || []), ...(a.on_share ? [L('loc_share','sur un partage')] : [])].join(', ')
                     : L('loc_offline','hors ligne');
@@ -589,6 +617,7 @@
     // « 1080p25 » (la définition ET la cadence, comme on les dit en régie) ; une image : sa taille.
     const plItems = a => L('pl_items','{n} élément(s)').replace('{n}', (a.tech || {}).items || 0);
     const defRate = a => { const v = (a.tech || {}).video || {}; if(kindOf(a) === 'playlist') return plItems(a);
+      if(kindOf(a) === 'grid') return L('grid_cells','{n} case(s)').replace('{n}', (a.tech || {}).items || 0);
       if(!v.width) return kindOf(a) === 'audio' ? L('audio_only','audio seul') : '';
       return kindOf(a) === 'image' ? `${v.width}×${v.height}` : `${v.height}${rateOf(v)}`; };
     const codecOf = a => { const t = a.tech || {}; return codecName((t.video && t.video.codec) || ((t.audio || [])[0] || {}).codec || ''); };
@@ -599,6 +628,11 @@
       title:{label:() => L('if_title','Titre'), text:a => (a.meta || {}).title || ''},
       description:{label:() => L('if_desc','Description'), text:a => (a.meta || {}).description || ''},
       keywords:{label:() => L('if_kw','Mots-clés'), text:a => kwOf(a).join(', ')},
+      credit:{label:() => L('if_credit','Crédit'), text:a => (a.meta || {}).credit || ''},
+      rights_until:{label:() => L('if_rights','Droits jusqu\'au'), mono:1, sv:a => (a.meta || {}).rights_until || '',
+        html:r => { const a = r.asset || r, d = (a.meta || {}).rights_until; if(!d) return '';
+          return rightsOver(a) ? `<span class="ml-rights-over">⚠ ${esc(d)}</span>` : esc(d); }},
+      principal:{label:() => L('if_principal','Photo principale'), sv:a => (a.meta || {}).principal ? 1 : 0, text:a => (a.meta || {}).principal ? '★' : ''},
       file:{label:() => L('if_file','Fichier'), text:a => a.name || ''},
       duration:{label:() => L('col_dur','Durée'), mono:1, sv:a => (a.tech || {}).duration || 0,
         text:a => a.growing ? L('growing','croissant') : kindOf(a) === 'image' ? '' : fmtDur((a.tech || {}).duration)},
@@ -634,9 +668,9 @@
         if(f && f.ok) return `<span class="ml-compat-ok" title="${esc(f.title || '')}">${esc(f.label || '✓')}</span>`;
         if(f) return `<span class="ml-badge warn" title="${esc(f.title || '')}">⚠ ${esc(f.title || f.label || '')}</span>`;
         return r.asset.tech && r.asset.tech.video ? `<span class="ml-compat-ok" title="${esc(L('compat_ok','Au format de la sortie'))}">✓</span>` : ''; }};
-    const COL_CHOICES = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', 'created_at', 'file_created', 'title', 'description', 'keywords', 'project', 'origin',
+    const COL_CHOICES = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', 'created_at', 'file_created', 'title', 'description', 'keywords', 'credit', 'rights_until', 'principal', 'project', 'origin',
                          'producer', 'size', 'resolution', 'fps', 'vcodec', 'timecode', 'container', 'proxy'];
-    const CARD_CHOICES = ['description', 'file', 'format', 'audio', 'duration', 'project', 'keywords', 'origin', 'created_at', 'file_created', 'size', 'copies', 'timecode'];
+    const CARD_CHOICES = ['description', 'file', 'format', 'audio', 'duration', 'project', 'keywords', 'credit', 'rights_until', 'origin', 'created_at', 'file_created', 'size', 'copies', 'timecode'];
     function fieldDef(k){
       if(FIELDS[k]) return FIELDS[k];
       if(!/^meta\./.test(String(k))) return null;
@@ -692,7 +726,8 @@
     const selCls = r => keyOf(r) && st.sel.has(keyOf(r)) ? ' is-sel' : '';
     const thumbImg = (r, cls) => `<img class="ml-thumb${cls || ''}" loading="lazy" decoding="async" alt="" src="${assetThumb(r.asset)}"${canScrub(r.asset) ? ` data-scrub="1" title="${esc(L('scrub_tip','Survoler pour parcourir'))}"` : ''}>`;
     const thumbOf = r => r.asset && (kindOf(r.asset) === 'video' || kindOf(r.asset) === 'image') ? thumbImg(r)
-      : kindOf(r.asset) === 'playlist' ? `<span class="ml-thumb ml-thumb-pl" aria-hidden="true">☰</span>` : `<span class="ml-thumb"></span>`;
+      : kindOf(r.asset) === 'playlist' ? `<span class="ml-thumb ml-thumb-pl" aria-hidden="true">☰</span>`
+      : kindOf(r.asset) === 'grid' ? `<span class="ml-thumb ml-thumb-pl" aria-hidden="true">▦</span>` : `<span class="ml-thumb"></span>`;
     // Vignette d'une cellule ou d'une carte : l'image, la durée et un badge P (proxy) / REC dessus.
     function thumbBox(r){
       const a = r.asset;
@@ -751,6 +786,15 @@
       $('.ml-group').value = vs.group;
       $('.ml-size-l').hidden = mode !== 'grid';
       $('.ml-size').value = vs.cell;
+      const sortOn = st.tab === 'base' && mode !== 'table', sk = st.sort.key || '';
+      $('.ml-sort-l').hidden = !sortOn;
+      const ss = $('.ml-sort');
+      if(sk && !ss.querySelector(`option[value="${CSS.escape(sk)}"]`))   // a column sort picked in the list
+        ss.insertAdjacentHTML('beforeend', `<option value="${esc(sk)}" data-col="1">${esc(fieldDef(sk) ? fieldDef(sk).label() : sk)}</option>`);
+      ss.value = sk;
+      const sd = $('.ml-sort-dir'), up = st.sort.dir > 0;
+      sd.hidden = !sortOn || !sk; sd.textContent = up ? '▲' : '▼';
+      sd.title = L(up ? 'sort_asc' : 'sort_desc', up ? 'Croissant' : 'Décroissant'); sd.setAttribute('aria-label', sd.title);
       $('.ml-cardf-btn').hidden = mode !== 'cards';
       $('.ml-cols-btn').hidden = !(mode === 'table' && st.tab !== 'net');
       root.style.setProperty('--ml-cell', vs.cell + 'px');
@@ -765,6 +809,10 @@
     $('.ml-group').onchange = e => { if(!GROUPS.includes(e.target.value)) return; vs.group = e.target.value; saveView(); render(); };
     $('.ml-size').oninput = e => { vs.cell = clampInt(+e.target.value || 168, CELL_MIN, CELL_MAX); root.style.setProperty('--ml-cell', vs.cell + 'px'); };
     $('.ml-size').onchange = () => saveView();
+    // Sort: kept with the view (this computer, this container), so it survives a page reload.
+    function setSort(key, dir){ st.sort = {key, dir}; vs.sort = {...st.sort}; saveView(); render(); }
+    $('.ml-sort').onchange = e => { const k = e.target.value; setSort(k, k === 'name' ? 1 : -1); };
+    $('.ml-sort-dir').onclick = () => setSort(st.sort.key, -st.sort.dir);
 
     // Déplace le repère de l'élément COURANT sans reconstruire la liste. `render()` recrée toutes les vignettes :
     // choisir une image les rechargeait toutes (images fixes, 2026-10-18), pour un simple liseré à déplacer.
@@ -1070,6 +1118,8 @@
       const multi = actions.filter(x => x.multi);
       $('.ml-bulk-acts').innerHTML = multi.map(x => `<button type="button" class="btn" data-bulk="act:${esc(x.id)}">${esc(x.label)}</button>`).join('')
         + (o.bulk || []).map((b, i) => `<button type="button" class="btn" data-bulk="${i}"${b.items ? ' aria-haspopup="menu"' : ''}>${esc(b.label)}${b.items ? ' ▾' : ''}</button>`).join('')
+        + (!global && st.tab === 'net' ? `<button type="button" class="btn" data-bulk="imp" aria-haspopup="menu">${esc(L('imp_to_btn','Importer vers…'))} ▾</button>` : '')
+        + (st.tab === 'base' ? `<button type="button" class="btn" data-bulk="meta">${esc(L('bk_btn','Métadonnées…'))}</button>` : '')
         + `<button type="button" class="btn" data-bulk="bin" aria-haspopup="menu">${esc(L('sel_to_bin','Ranger dans un bin'))} ▾</button>`
         + (canShare() ? `<button type="button" class="btn" data-bulk="proj" aria-haspopup="menu">${esc(L('sel_to_project','Projet'))} ▾</button>` : '');
       if(!st.sf && canShare()) loadSF();     // project list, ready for the selection menu
@@ -1114,6 +1164,8 @@
     $('.ml-bulk-acts').onclick = async e => {
       const b = e.target.closest('[data-bulk]'); if(!b) return;
       const rs = selectedRows();
+      if(b.dataset.bulk === 'meta') return openBulkMeta(rs.filter(r => r.asset).map(r => r.asset.id));
+      if(b.dataset.bulk === 'imp') return openImportMenu(b, {paths:rs.filter(r => r.ext).map(r => r.ext)}, st.net.path);
       if(b.dataset.bulk === 'bin') return openMenu(b, toBinItems(rs.filter(r => r.asset).map(r => r.asset.id)));
       if(b.dataset.bulk === 'proj'){ await loadSF(); return openMenu(b, toProjItems(rs)); }
       if(b.dataset.bulk.startsWith('act:')) return actOnRows(b.dataset.bulk.slice(4), rs);
@@ -1178,6 +1230,8 @@
         if(kindOf(a) === 'playlist'){
           out.push({label:L('pl_open','Contenu de la playlist…'), run:() => openInfo(a.id, 'pl')},
                    {label:L('pl_export','Exporter…'), run:() => { location.href = '/api/media/playlists/' + encodeURIComponent(a.id) + '/export'; }});
+        } else if(kindOf(a) === 'grid'){
+          out.push({label:L('grid_export','Exporter la grille…'), run:() => { location.href = '/api/media/grids/' + encodeURIComponent(a.id) + '/export'; }});
         } else if(plOn) out.push({label:L('pl_add_item','Ajouter à une playlist…'), run:() => openPlPick([a.id])});
         out.push({label:L('info','Infos…'), run:() => openInfo(a.id)});
         if(kindOf(a) === 'video' || kindOf(a) === 'audio')
@@ -1199,6 +1253,9 @@
     function selMenuItems(){
       const rs = selectedRows(), ids = rs.filter(r => r.asset).map(r => r.asset.id), out = [{header:L('sel_n','{n} sélectionné(s)').replace('{n}', rs.length)}];
       actions.filter(x => x.multi && rs.every(r => actsFor(r).includes(x))).forEach(x => out.push({label:x.label, run:() => actOnRows(x.id, rs)}));
+      if(ids.length && st.tab === 'base') out.push({label:L('bk_btn','Métadonnées…'), run:() => openBulkMeta(ids)});
+      const exts = rs.filter(r => r.ext).map(r => r.ext);
+      if(!global && exts.length) out.push(...importToItems({paths:exts}, st.net.path));
       (o.bulk || []).forEach(b => { if(b.items){ const its = b.items(rs) || []; if(its.length){ out.push({header:b.label}, ...its); } }
                                     else if(b.run) out.push({label:b.label, run:() => b.run(rs)}); });
       const cur = st.bins.find(b => b.id === st.bin);
@@ -1208,7 +1265,7 @@
       if(own.length && canShare() && st.sf) out.push(...toProjItems(rs));
       const pxIds = rs.filter(r => r.asset && (kindOf(r.asset) === 'video' || kindOf(r.asset) === 'audio')).map(r => r.asset.id);
       if(pxIds.length) out.push({label:L('px_create_n','Créer les proxys ({n})').replace('{n}', pxIds.length), run:() => createProxies(pxIds)});
-      const mids = rs.filter(r => r.asset && kindOf(r.asset) !== 'playlist').map(r => r.asset.id);
+      const mids = rs.filter(r => r.asset && !isSet(r.asset)).map(r => r.asset.id);
       if(plOn && mids.length) out.push({label:L('pl_add_item','Ajouter à une playlist…'), run:() => openPlPick(mids)});
       out.push({header:L('sel_to_bin','Ranger dans un bin')}, ...toBinItems(ids));
       return out;
@@ -1268,8 +1325,91 @@
     let _qT = null;
     $('.ml-search').oninput = e => { st.q = e.target.value.trim().toLowerCase();
       if(st.tab === 'base'){ clearTimeout(_qT); _qT = setTimeout(async () => { await loadAssets(); render(); }, 300); } else render(); };
+    // Enter in the search box: the primary action on the FIRST result, as shown (2026-11-22: three
+    // letters of a name, Enter, and the portrait is in preview). Results are reread first, so a
+    // fast typist does not get the list of the previous letters. Then the box lets go of the keys
+    // (the host's shortcuts — Space = TAKE — work again); Escape lets go without acting.
+    $('.ml-search').addEventListener('keydown', async e => {
+      if(e.key === 'Escape'){ e.target.blur(); return; }
+      if(e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      st.q = e.target.value.trim().toLowerCase();
+      if(st.tab === 'base'){ clearTimeout(_qT); await loadAssets(); render(); }
+      const byKey = new Map(rows().map(x => [keyOf(x), x]));
+      const res = (st.order || []).map(k => byKey.get(k)).filter(x => x && (x.asset || x.ext));
+      const r = res.find(x => x.asset && (x.asset.meta || {}).principal) || res[0];   // a person's principal photo first
+      const prim = actions.find(x => x.primary) || actions[0];
+      if(!r || !prim){ toast(L('search_none','Aucun résultat'), 'info'); return; }
+      e.target.blur();
+      st.sel.clear(); st.sel.add(keyOf(r)); paintSel();
+      actRow(prim.id, r);
+    });
     $('.ml-refresh').onclick = () => reload();
+
+    // ── Auto-refresh (2026-11-26): new media show up without a reload ──
+    // Every `o.autoRefresh` ms, a cheap stamp (/api/media/stamp); the list is re-read only when it
+    // moved, and redrawn only when what it shows changed — with the scroll, the selection and the
+    // focus kept. Skipped while the user is busy (menu, dialog, drag, hover preview, hidden tab).
+    const AUTO_MS = o.autoRefresh > 0 ? Math.max(1000, o.autoRefresh) : 0;
+    let _autoT = null, _autoStamp = null, _autoBusy = false, _dragOn = false;
+    const autoDot = $('.ml-auto-dot');
+    const listSig = () => st.assets.map(a => [a.id, a.updated_at, a.local_path, a.copies_n, a.growing ? 1 : 0, a.thumb && a.thumb.v].join(':')).join('|');
+    const userBusy = () => !menuEl.hidden || !!root.querySelector('dialog[open]') || _dragOn || !!_sc
+      || document.visibilityState !== 'visible' || (document.activeElement && root.contains(document.activeElement) && document.activeElement.matches('input:not(.ml-search), select, textarea'));
+    function autoMark(state, tip){
+      const b = $('.ml-refresh');
+      autoDot.hidden = false; autoDot.dataset.state = state;
+      b.title = tip + ' — ' + L('refresh','Rafraîchir'); b.setAttribute('aria-label', b.title);
+      if(state === 'on'){ autoDot.classList.remove('is-tick'); void autoDot.offsetWidth; autoDot.classList.add('is-tick'); }
+    }
+    // Redraw without moving: same scroll offset (rendering the batches it needs), same focused item.
+    function renderInPlace(){
+      const sc0 = $('.ml-main .ml-scroll'), top = sc0 ? sc0.scrollTop : 0;
+      const fk = document.activeElement && root.contains(document.activeElement) && document.activeElement.closest('[data-key]')
+        ? document.activeElement.closest('[data-key]').dataset.key : null;
+      render();
+      const sc = $('.ml-main .ml-scroll');
+      if(sc && top){ while(_more && sc.scrollHeight < top + sc.clientHeight + 1 && _more()); sc.scrollTop = top; }
+      if(fk){ const el = root.querySelector(`.ml-main [data-key="${CSS.escape(fk)}"]`); if(el && el.focus) el.focus({preventScroll:true}); }
+    }
+    async function quietRefresh(force){
+      if(_autoBusy || _dead || !root.isConnected || st.tab !== 'base' || userBusy()) return 'paused';
+      _autoBusy = true;
+      try{
+        const r = await fetch('/api/media/stamp'); if(!r.ok) throw new Error('HTTP ' + r.status);
+        const stamp = ((await r.json()) || {}).stamp;
+        if(force || stamp !== _autoStamp){
+          const before = listSig();
+          await loadAssets();
+          if(!st.regOk) throw new Error('search');
+          _autoStamp = stamp;
+          if(listSig() !== before && !userBusy() && st.tab === 'base') renderInPlace();
+        }
+        return 'on';
+      }catch(e){ return 'err'; }
+      finally{ _autoBusy = false; }
+    }
+    async function autoTick(){
+      _autoT = null;
+      if(_dead || !root.isConnected) return;
+      const res = await quietRefresh(false);
+      const hh = new Date().toLocaleTimeString();
+      autoMark(res, res === 'on' ? L('auto_on','Actualisation automatique toutes les {s} s · vérifié à {t}').replace('{s}', AUTO_MS / 1000).replace('{t}', hh)
+        : res === 'err' ? L('auto_err','Actualisation automatique : base injoignable ({t})').replace('{t}', hh)
+        : L('auto_paused','Actualisation automatique en pause'));
+      if(!_dead && root.isConnected) _autoT = setTimeout(autoTick, AUTO_MS);
+    }
+    const _onDragEnd = () => { _dragOn = false; };
+    document.addEventListener('dragend', _onDragEnd, true);
+    if(AUTO_MS) _autoT = setTimeout(autoTick, AUTO_MS);
     const main = $('.ml-main');
+    // A keyword chip is a filter: click it and the list shows the media carrying that keyword
+    // (2026-11-22). Capture phase: the click must not also select or play the card under it.
+    main.addEventListener('click', e => {
+      const k = e.target.closest('.ml-kw'); if(!k || k.classList.contains('ml-warn')) return;
+      e.preventDefault(); e.stopPropagation();
+      const inp = $('.ml-search'); inp.value = k.textContent.trim(); inp.dispatchEvent(new Event('input'));
+    }, true);
     // ── Envoi depuis le poste (static/js/media_upload.js, chargé au premier usage) ──
     let _upLoad = null;
     function uploader(){
@@ -1286,11 +1426,11 @@
       return _upLoad;
     }
     // Bin manuel visé : celui sur lequel on dépose, sinon celui affiché.
-    async function sendFiles(files, binId){
+    async function sendFiles(files, binId, tag){
       files = Array.from(files || []); if(!files.length) return;
       let up; try{ up = await uploader(); }catch(e){ toast(e.message, 'error'); return; }
       const b = binId != null ? st.bins.find(x => x.id === binId) : curManual();
-      const opts = {bin_id: b && !b.smart ? b.id : null, label: b && !b.smart ? '▤ ' + b.name : ''};
+      const opts = {bin_id: b && !b.smart ? b.id : null, label: b && !b.smart ? '▤ ' + b.name : '', tag: tag || null};
       if(!global) return up.enqueue(files, {vmid}, opts);
       // Gestionnaire : nœud, bin (celui visé par défaut) et projets — un ou plusieurs, celui du filtre
       // « projet = … » coché d'office (2026-11-07).
@@ -1307,7 +1447,24 @@
     $('.ml-upload').onclick = async () => { upIn.value = ''; upIn.click(); try{ (await uploader()).open(); }catch(_){} };
     upIn.onchange = () => sendFiles(upIn.files);
     const isFiles = dt => !!dt && Array.from(dt.types || []).includes('Files') && !Array.from(dt.types).includes('application/x-bobi-src');
-    const _onUploaded = async () => { if(!root.isConnected) return; await loadAssets(); render(); loadBins(); };
+    // Uploads started by ml.upload: their `done` waits for the media in the base (reread first).
+    const _upDone = new Map(); let _upSeq = 0;
+    const _onUploaded = async e => {
+      if(!root.isConnected) return; await loadAssets(); render(); loadBins();
+      const d = (e && e.detail) || {}, done = d.tag && _upDone.get(d.tag);
+      if(!done || !d.asset_id) return;
+      const a = st.all.find(x => x.id === d.asset_id) || st.assets.find(x => x.id === d.asset_id);
+      if(!a) return;
+      const name = (a.meta || {}).title || a.name;
+      if(a.local_path) return done({asset:a, path:a.local_path, name});
+      return fetchThen(a.id, p => done({asset:a, path:p, name}));
+    };
+    function upload(files, done){
+      if(global) return;
+      const tag = uid + ':' + (++_upSeq);
+      if(done) _upDone.set(tag, done);
+      return sendFiles(files, null, tag);
+    }
     document.addEventListener('ml:uploaded', _onUploaded);
     // Attente d'une tâche de fond de la base (import, copie, rapatriement) ; renvoie son résultat.
     // `onProgress({done, total, name})` : avancement, quand la tâche en publie (copie d'un bin).
@@ -1375,6 +1532,77 @@
         return res;
       }
     }
+    // Several share files at once (2026-11-22): a selection ({paths}) or a whole folder ({folder}, its
+    // files of this library's kinds, subfolders not entered). ONE background task imports them (a
+    // file already in the base is not copied again), then they go where the operator asked: a bin,
+    // a new bin named after the folder, or what the host offers (`importTargets`: a grid of the
+    // Still plugin). `then(results)` gets [{asset, path, name}] in the order of the folder.
+    // « Avec les sous-dossiers » (a folder only): its subfolders are imported too, and mirrored —
+    // sub-bins under the chosen bin, one grid per subfolder for a host that offers grids. Remembered
+    // on this browser.
+    let impSub = !!pref.get('imp.sub', false);
+    function importToItems(spec, from){
+      const name = baseName(from || '') || L('imp_new_bin_dflt','Import');
+      const sub = !!spec.folder && impSub, sp = Object.assign({}, spec, spec.folder ? {subfolders:sub} : {});
+      const out = [{header:L('imp_to','Importer dans la base, puis…')}];
+      if(spec.folder) out.push({label:L('imp_sub','Avec les sous-dossiers'), check:impSub, run:() => { impSub = !impSub; pref.set('imp.sub', impSub); }});
+      const into = b => rs => sub ? binTree(b, rs) : addToBin(b, rs.map(x => x.asset.id));
+      st.bins.filter(b => !b.smart && (!b.shared || b.shared.level === 'edit')).forEach(b =>
+        out.push({label:'▤ ' + b.name + (sub ? ' ' + L('imp_tree_mark','(+ sous-bins)') : ''), run:() => importBatch(sp, name, into(b))}));
+      out.push({label:(sub ? L('imp_new_bin_tree','Nouveau bin « {n} », un sous-bin par sous-dossier') : L('imp_new_bin','Nouveau bin « {n} »')).replace('{n}', name),
+        run:() => importBatch(sp, name, async rs => {
+          const d = await regCall('POST', '/api/media/bins', {name}); if(!d) return;
+          await loadBins(); await into(st.bins.find(x => x.id === d.id) || {id:d.id, name})(rs); })});
+      (typeof o.importTargets === 'function' ? o.importTargets(name, {subfolders:sub}) || [] : []).forEach(t =>
+        out.push({label:t.label, run:() => importBatch(sp, name, t.run)}));
+      out.push({label:L('imp_only','Dans la base seulement'), run:() => importBatch(sp, name, null)});
+      return out;
+    }
+    function openImportMenu(anchor, spec, from, at){
+      openMenu(anchor, importToItems(spec, from), at, () => openImportMenu(anchor, spec, from, at));
+    }
+    // Imported files sorted into `root` and, for each subfolder (r.dir « a/b »), a sub-bin of the same
+    // name, created when missing (an existing child bin with that name is reused).
+    async function binTree(root, rs){
+      const ids = new Map([['', root.id]]);
+      const binOf = async dir => {
+        if(ids.has(dir)) return ids.get(dir);
+        const cut = dir.lastIndexOf('/'), parent = await binOf(cut < 0 ? '' : dir.slice(0, cut)), nm = dir.slice(cut + 1);
+        const ex = st.bins.find(b => b.parent_id === parent && !b.smart && b.name === nm);
+        const id = ex ? ex.id : ((await regCall('POST', '/api/media/bins', {name:nm, parent_id:parent})) || {}).id;
+        ids.set(dir, id); return id;
+      };
+      const by = new Map();
+      for(const r of rs){ const id = await binOf(r.dir || ''); if(id == null) continue; (by.get(id) || by.set(id, []).get(id)).push(r.asset.id); }
+      for(const [bid, aids] of by) await regCall('POST', `/api/media/bins/${bid}/items`, {asset_ids:aids});
+      await loadBins(); binsChanged();
+      toast(L('imp_tree_done','Rangé dans « {b} » et {n} sous-bin(s)').replace('{b}', root.name).replace('{n}', Math.max(0, by.size - (by.has(root.id) ? 1 : 0))), 'info');
+      if(st.bin != null){ await loadAssets(); render(); }
+    }
+    async function importBatch(spec, name, then){
+      const r = await regCall('POST', '/api/media/import_share_batch', Object.assign({vmid, kinds:o.kinds || null}, spec)); if(!r) return;
+      const job = $('.ml-job'), txt = $('.ml-job-txt'), bar = $('.ml-job-bar'), stop = $('.ml-job-cancel');
+      const show = p => { txt.textContent = L('imp_run','Import de « {n} »').replace('{n}', name) + ' — ' + (!p ? '…'
+          : p.phase === 'scan' ? L('imp_scanning','analyse des fichiers copiés…') : `${p.done}/${p.total}${p.name ? ' · ' + p.name : ''}`);
+        bar.max = (p && p.total) || 1; bar.value = (p && p.done) || 0; };
+      // Cancel: no further file is copied; what was copied is still registered (and sorted below).
+      stop.hidden = false; stop.disabled = false;
+      stop.onclick = async () => { stop.disabled = true; await regCall('POST', '/api/media/scan/cancel', {}); };
+      job.hidden = false; show({done:0, total:r.total || 0, name:''});
+      const res = await waitJob(show);
+      job.hidden = true; stop.hidden = true;
+      if(!res || !root.isConnected) return;
+      const items = res.items || [], ok = items.filter(x => x.asset_id), bad = items.filter(x => x.error);
+      if(res.cancelled) toast(L('imp_cancelled','Import annulé : {n} fichier(s) importé(s) sur {t}').replace('{n}', ok.length).replace('{t}', r.total || '?'), 'warning');
+      await loadAssets(); if(st.tab === 'net') await loadNet(st.net.path); render();
+      if(bad.length) toast(L('imp_failed','{n} fichier(s) non importé(s) : {l}').replace('{n}', bad.length)
+        .replace('{l}', bad.slice(0, 3).map(x => baseName(x.path) + ' (' + x.error + ')').join(', ')), 'warning');
+      if(!then || !ok.length) return;
+      const relDir = p => { const rel = spec.folder && p.startsWith(spec.folder + '/') ? p.slice(spec.folder.length + 1) : baseName(p);
+        const k = rel.lastIndexOf('/'); return k < 0 ? '' : rel.slice(0, k); };
+      await then(ok.map(x => ({asset:st.all.find(a => a.id === x.asset_id) || {id:x.asset_id}, path:x.local_path || '', name:baseName(x.path), dir:relDir(x.path)})));
+    }
+    $('.ml-net-imp').onclick = e => openImportMenu(e.currentTarget, {folder:st.net.path}, st.net.path);
     // Action `id` sur la ligne `r` (bouton, menu, double-clic, sélection).
     function actRow(id, r){
       if(id === '__info') return r.asset && openInfo(r.asset.id);
@@ -1398,7 +1626,7 @@
       if(e.target.closest('.ml-pv-side [data-px-create]') && pv.aid){ const id = pv.aid;
         createProxies([id]).then(r => { if(r && pv.aid === id) pvLoad(id); }); return; }
       const th = e.target.closest('th[data-sort]');
-      if(th){ const k = th.dataset.sort; st.sort = {key:k, dir: st.sort.key === k ? -st.sort.dir : (k === 'name' ? 1 : -1)}; render(); return; }
+      if(th){ const k = th.dataset.sort; setSort(k, st.sort.key === k ? -st.sort.dir : (k === 'name' ? 1 : -1)); return; }
       const d = e.target.closest('.ml-dir');
       if(d){ const n = d.dataset.dir; loadNet(n === '..' ? st.net.path.split('/').slice(0, -1).join('/') : (st.net.path ? st.net.path + '/' : '') + n); return; }
       const b = e.target.closest('[data-act]'), it = e.target.closest('[data-k]');
@@ -1416,6 +1644,7 @@
       const ra = actsFor(rowOf(it)), prim = ra.find(x => x.primary) || ra[0];
       // Une playlist sans action de l'hôte (Gestionnaire, Images fixes…) : sa fiche, sur son contenu.
       if(!prim && kindOfRow(rowOf(it)) === 'playlist') return openInfo(rowOf(it).asset.id, 'pl');
+      if(!prim && kindOfRow(rowOf(it)) === 'grid') return openInfo(rowOf(it).asset.id);
       if(!prim){
         // Hôte sans action propre (Gestionnaire, 2026-10-20) : il choisit (o.primary → {label, run}),
         // sinon — ou si son envoi n'a pas pu partir (run rend false) — la fiche Infos. Avant : rien.
@@ -1469,6 +1698,13 @@
     main.addEventListener('contextmenu', e => {
       // En-tête de la liste : le choix des colonnes.
       if(e.target.closest('thead') && st.tab !== 'net'){ e.preventDefault(); openFieldsMenu('cols', null, {x:e.clientX, y:e.clientY}); return; }
+      const dir = st.tab === 'net' && !global && e.target.closest('[data-dir]');
+      if(dir && dir.dataset.dir !== '..'){
+        e.preventDefault();
+        const f = (st.net.path ? st.net.path + '/' : '') + dir.dataset.dir;
+        if(!f.includes('/')) return openMenu(null, [{header:L('imp_pick_folder','Ouvrez ce serveur pour en importer un dossier')}], {x:e.clientX, y:e.clientY});
+        return openImportMenu(null, {folder:f}, f, {x:e.clientX, y:e.clientY});
+      }
       const it = e.target.closest('[data-k]'); if(!it || e.target.closest('input,textarea,video,audio')) return;
       e.preventDefault();
       const key = it.dataset.key;
@@ -1532,6 +1768,7 @@
     });
     main.addEventListener('dragstart', e => {
       scrubStop();                                   // un glisser qui démarre annule le survol
+      _dragOn = true;                                // auto-refresh waits for the drop
       const it = e.target.closest('[data-k]'); if(!it) return;
       const key = it.dataset.key;
       const rs = key && st.sel.has(key) && st.sel.size > 1 ? selectedRows() : [rowOf(it)];
@@ -1831,7 +2068,7 @@
     function armBinTimer(){
       clearInterval(_binTimer); _binTimer = null;
       const b = st.bins.find(x => x.id === st.bin);
-      if(b && b.smart) _binTimer = setInterval(async () => { if(st.tab !== 'base' || !root.isConnected) return; await loadAssets(); render(); }, 10000);
+      if(b && b.smart) _binTimer = setInterval(() => quietRefresh(true), 10000);
     }
 
     // ── Recherche avancée ──
@@ -2241,6 +2478,21 @@
           <button type="submit" class="btn btn-green">${esc(L('pl_create','Créer'))}</button></form>
         <div class="ml-pld-list"></div>
       </dialog>
+      <dialog class="ml-dlg ml-bkdlg">
+        <div class="ml-if-top"><div class="ml-if-title"><div class="ml-if-name">${esc(L('bk_title','Métadonnées de la sélection'))}</div><div class="ml-muted ml-bk-sub"></div></div>
+          <button type="button" class="btn ml-bk-close">${esc(L('close','Fermer'))}</button></div>
+        <div class="ml-bk-body">
+          <div class="ml-bk-kw">
+            <label for="ml-bk-add">${esc(L('bk_kw_add','Ajouter des mots-clés'))}</label>
+            <input id="ml-bk-add" class="ml-bk-add" list="ml-bk-kwlist" autocomplete="off" placeholder="${esc(L('bk_kw_ph','séparés par des virgules'))}">
+            <span class="ml-bk-lbl">${esc(L('bk_kw_rm','Retirer'))}</span><div class="ml-bk-have"></div>
+          </div>
+          <datalist id="ml-bk-kwlist"></datalist>
+          <div class="ml-if-form ml-bk-form"></div>
+          <p class="ml-muted">${esc(L('bk_note','Un champ laissé vide ne change pas. « Vider » l\'efface sur toute la sélection.'))}</p>
+          <div class="ml-if-acts"><span class="ml-sp"></span><button type="button" class="btn btn-green ml-bk-go">${esc(L('bk_go','Appliquer'))}</button></div>
+        </div>
+      </dialog>
       <dialog class="ml-dlg ml-shdlg">
         <div class="ml-if-top"><div class="ml-if-title"><div class="ml-if-name ml-sh-name"></div><div class="ml-muted ml-sh-sub"></div></div>
           <button type="button" class="btn ml-sh-close">${esc(L('close','Fermer'))}</button></div>
@@ -2280,7 +2532,7 @@
     // Rangement d'une playlist créée ici : le bin manuel affiché ; le projet du conteneur (player),
     // ou au Gestionnaire celui du filtre « projet = … » — sans quoi un utilisateur à portée
     // restreinte ne la verrait plus.
-    const plDlg = dlgHost.querySelector('.ml-pldlg');
+    const plDlg = dlgHost.querySelector('.ml-pldlg'), bkDlg = dlgHost.querySelector('.ml-bkdlg');
     const plWhere = () => { const b = curManual(), pf = st.tree.items.find(f => f && f.field === 'project' && f.op === 'eq' && f.value);
       return Object.assign({}, b ? {bin_id:b.id} : {}, global ? (pf ? {project_id:+pf.value || null} : {}) : {vmid}); };
     async function plList(){
@@ -2302,6 +2554,54 @@
       return r.id;
     }
     // `ids` vide : « Nouvelle playlist » (création seule, puis sa fiche) ; sinon les médias à ajouter.
+    // Metadata of a whole selection (2026-11-22): keywords added or removed, the same value for a
+    // field (Personne, Parti…) on every media. Empty field = unchanged; « Vider » clears it.
+    // Keywords in use, offered while typing (bulk dialog and info sheet share the <datalist>).
+    function loadKwList(){
+      fetch('/api/media/keywords').then(r => r.json()).then(d => { bkDlg.querySelector('#ml-bk-kwlist').innerHTML =
+        (d.values || []).map(x => `<option value="${esc(x.value)}">`).join(''); }).catch(() => {});
+    }
+    // Built-in fields of a portrait library (2026-11-22), in the info sheet and the bulk dialog.
+    const RIGHTS_FIELDS = () => [{key:'credit', label:L('if_credit','Crédit'), type:'text'},
+      {key:'rights_until', label:L('if_rights','Droits jusqu\'au'), type:'date'},
+      {key:'principal', label:L('if_principal','Photo principale'), type:'bool'}];
+    async function openBulkMeta(ids){
+      ids = [...new Set(ids)]; if(!ids.length) return;
+      let fields = [];
+      try{ fields = (await (await fetch('/api/media/fields')).json()).fields || []; }catch(e){}
+      const base = [...RIGHTS_FIELDS(), {key:'title', label:L('if_title','Titre'), type:'text'}, {key:'description', label:L('if_desc','Description'), type:'longtext'}];
+      bkDlg.querySelector('.ml-bk-sub').textContent = L('sel_n','{n} sélectionné(s)').replace('{n}', ids.length);
+      bkDlg.querySelector('.ml-bk-form').innerHTML = [...fields, ...base].map(f => `<label for="ml-bk-${esc(f.key)}">${esc(f.label)}</label>
+        <span class="ml-bk-field">${fieldInput(f.type === 'bool' ? Object.assign({}, f, {type:'enum', options:[L('yes','oui'), L('no','non')]}) : f, '', 'ml-bk-')}
+        <label class="ml-bk-clr"><input type="checkbox" data-clr="${esc(f.key)}"> ${esc(L('bk_clear','Vider'))}</label></span>`).join('');
+      // Keywords already on the selection: click one to remove it from all.
+      const have = new Map();
+      ids.forEach(id => { const a = assetById(id); kwOf(a).forEach(k => { const f = foldTxt(k); const h = have.get(f) || {k, n:0}; h.n++; have.set(f, h); }); });
+      bkDlg.querySelector('.ml-bk-have').innerHTML = have.size ? [...have.values()].sort((x, y) => y.n - x.n)
+        .map(h => `<button type="button" class="ml-kw ml-bk-kwx" aria-pressed="false" data-kw="${esc(h.k)}" title="${esc(L('bk_kw_rm_tip','Retirer de toute la sélection'))}">${esc(h.k)} <span class="ml-muted">${h.n}</span></button>`).join('')
+        : `<span class="ml-muted">${esc(L('bk_kw_none','aucun'))}</span>`;
+      bkDlg.querySelectorAll('.ml-bk-kwx').forEach(b => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')));
+      bkDlg.querySelector('.ml-bk-add').value = '';
+      loadKwList();
+      bkDlg.querySelector('.ml-bk-go').onclick = async () => {
+        const set = {};
+        bkDlg.querySelectorAll('.ml-bk-form [data-k]').forEach(el => {
+          const v = el.value.trim(), f = [...fields, ...base].find(x => x.key === el.dataset.k);
+          if(v) set[el.dataset.k] = f && f.type === 'bool' ? v === L('yes','oui') : f && f.type === 'number' ? Number(v) : v; });
+        bkDlg.querySelectorAll('[data-clr]:checked').forEach(c => { set[c.dataset.clr] = null; });
+        const kw_add = bkDlg.querySelector('.ml-bk-add').value.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+        const kw_remove = [...bkDlg.querySelectorAll('.ml-bk-kwx[aria-pressed="true"]')].map(b => b.dataset.kw);
+        if(!Object.keys(set).length && !kw_add.length && !kw_remove.length) return bkDlg.close();
+        const d = await regCall('POST', '/api/media/assets/meta_bulk', {asset_ids:ids, set, kw_add, kw_remove}); if(!d) return;
+        bkDlg.close();
+        toast(L('bk_done','{n} média(s) modifié(s)').replace('{n}', d.changed)
+          + (d.skipped ? ' · ' + L('sel_proj_skipped','{n} ignoré(s)').replace('{n}', d.skipped) : ''), d.skipped ? 'warning' : 'info');
+        await loadAssets(); render();
+      };
+      if(!bkDlg.open) bkDlg.showModal();
+      bkDlg.querySelector('.ml-bk-add').focus();
+    }
+    bkDlg.querySelector('.ml-bk-close').onclick = () => bkDlg.close();
     async function openPlPick(ids){
       ids = (ids || []).filter(id => { const a = assetById(id); return !a || kindOf(a) !== 'playlist'; });
       plDlg.querySelector('.ml-pld-title').textContent = ids.length ? L('pl_add_title','Ajouter à une playlist') : L('pl_new_lbl','Nouvelle playlist');
@@ -2390,7 +2690,7 @@
     function shRender(){
       const q = (shDlg.querySelector('.ml-sh-q').value || '').trim().toLowerCase(), R = _sh.rcpt || {};
       const key = x => x.kind + ':' + x.id, picked = new Set(_sh.picked.map(key));
-      const all = [...(R.groups || []), ...(R.users || []), ...(R.projects || [])].filter(x => !picked.has(key(x)) && (!q || x.label.toLowerCase().includes(q)));
+      const all = [...(R.groups || []), ...(R.users || []), ...(R.projects || [])].filter(x => !picked.has(key(x)) && (!q || foldTxt(x.label).includes(foldTxt(q))));
       shDlg.querySelector('.ml-sh-res').innerHTML = all.slice(0, 30).map(x => `<button type="button" class="ml-chip ml-sh-cand" data-k="${esc(key(x))}"><span class="ml-muted">${esc(shKind(x.kind))}</span> ${esc(x.label)}${x.members != null ? ` <span class="ml-muted">(${x.members})</span>` : ''}</button>`).join('')
         || (R.users ? `<span class="ml-muted">${esc(L('sh_no_match','Aucun destinataire ne correspond.'))}</span>` : '');
       shDlg.querySelector('.ml-sh-picked').innerHTML = _sh.picked.length ? _sh.picked.map(x => `<span class="ml-chip"><span class="ml-muted">${esc(shKind(x.kind))}</span> ${esc(x.label)}<button type="button" data-unpick="${esc(key(x))}" aria-label="${esc(L('sh_unpick','Retirer ce destinataire'))}">×</button></span>`).join('')
@@ -2442,12 +2742,13 @@
     infoDlg.addEventListener('close', () => { stopPlayer(); clearTimeout(_pxT); });
     function stopPlayer(){ const m = infoDlg.querySelector('.ml-if-media video, .ml-if-media audio'); if(m){ m.pause(); m.removeAttribute('src'); m.load(); } }
     infoDlg.addEventListener('click', ev => { if(ev.target === infoDlg) infoDlg.close(); });
-    function fieldInput(f, v){
-      const id = 'ml-if-' + f.key, val = v == null ? '' : v;
+    function fieldInput(f, v, pre){
+      const id = (pre || 'ml-if-') + f.key, val = v == null ? '' : v;
       if(f.type === 'longtext') return `<textarea id="${id}" data-k="${esc(f.key)}" rows="3">${esc(val)}</textarea>`;
       if(f.type === 'bool') return `<input type="checkbox" id="${id}" data-k="${esc(f.key)}" data-bool="1"${v ? ' checked' : ''}>`;
       if(f.type === 'enum') return `<select id="${id}" data-k="${esc(f.key)}"><option value=""></option>${(f.options || []).map(x => `<option${x === val ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
-      return `<input type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}" id="${id}" data-k="${esc(f.key)}" value="${esc(val)}">`;
+      const sug = f.key === 'keywords' ? ' list="ml-bk-kwlist" autocomplete="off"' : '';
+      return `<input type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}" id="${id}" data-k="${esc(f.key)}" value="${esc(val)}"${sug}>`;
     }
     async function openInfo(aid, tab){
       let a;
@@ -2475,8 +2776,9 @@
       infoDlg.querySelector('.ml-facts').innerHTML = rows2.map(([kk, vv]) =>
         `<dt>${esc(kk)}</dt><dd>${Array.isArray(vv) ? vv.map(x => `<div>${esc(x)}</div>`).join('') : esc(vv)}</dd>`).join('');
       const base = [{key:'title', label:L('if_title','Titre'), type:'text'}, {key:'description', label:L('if_desc','Description'), type:'longtext'},
-                    {key:'keywords', label:L('if_kw','Mots-clés'), type:'text'}];
+                    {key:'keywords', label:L('if_kw','Mots-clés'), type:'text'}, ...RIGHTS_FIELDS()];
       infoDlg.querySelector('.ml-if-form').innerHTML = [...base, ...(a.fields || [])].map(f => `<label for="ml-if-${esc(f.key)}">${esc(f.label)}</label>${fieldInput(f, m[f.key])}`).join('');
+      loadKwList();
       const cps = a.copies || [];
       infoDlg.querySelector('.ml-if-copies').innerHTML = cps.length ? cps.map(c => {
         const s2 = c.state === 'present' ? (c.growing ? L('if_growing','en écriture') : L('if_present','présente')) : c.state === 'missing' ? L('if_missing','absente') : c.state;
@@ -2962,11 +3264,27 @@
       clearSelection(){ st.sel.clear(); render(); },
       byPath: p => st.byPath[p] || null,
       assets: () => st.all,
+      // Copy of asset `aid` this container can read (fetched first if needed, with progress) →
+      // Promise of its local path, or null if it could not be brought here.
+      fetchAsset: aid => new Promise(ok => { fetchThen(aid, ok).then(() => ok(null), () => ok(null)); }),
+      // Neighbour of the current row (`current()`) in list order, `delta` ±1: runs action `id`
+      // on it (fetching a copy first if needed). Returns the row, or null at either end.
+      step(delta, id){
+        const all = rows().filter(r => (r.asset || r.ext) && !r.dir), cur = o.current ? o.current() : '';
+        const k = cur ? all.findIndex(r => r.path === cur) : -1, n = k < 0 ? (delta > 0 ? 0 : all.length - 1) : k + delta;
+        if(n < 0 || n >= all.length) return null;
+        const r = all[n];
+        actRow(id || (actions[0] || {}).id, r);
+        const node = root.querySelector(`[data-key="${CSS.escape(keyOf(r))}"]`);
+        if(node && node.scrollIntoView) node.scrollIntoView({block:'nearest'});
+        return r;
+      },
       assetThumb, openInfo, fmtDur, fmtShort, fmtAudioShort, kindOf, fmtSize,
-      selectAll, renameFile, openMenu, getState, setState,
-      destroy(){ _dead = true; scrubStop(); stopBatches(); sbStop(); pvStop(true); clearInterval(_binTimer); clearTimeout(_qT); clearTimeout(_fT);
+      selectAll, renameFile, openMenu, getState, setState, upload,
+      focusSearch(){ const i = $('.ml-search'); if(i){ i.focus(); i.select(); } },
+      destroy(){ _dead = true; scrubStop(); stopBatches(); sbStop(); pvStop(true); clearInterval(_binTimer); clearTimeout(_autoT); clearTimeout(_qT); clearTimeout(_fT);
         document.removeEventListener('mousedown', _closeMenu, true); document.removeEventListener('ml:bins', _onBins); window.removeEventListener('imageeditor:saved', _onImgSaved);
-        document.removeEventListener('ml:uploaded', _onUploaded);
+        document.removeEventListener('ml:uploaded', _onUploaded); document.removeEventListener('dragend', _onDragEnd, true);
         window.removeEventListener('scroll', _closeOnScroll, true); window.removeEventListener('blur', closeMenu);
         root.innerHTML = ''; root.classList.remove('ml', 'ml-fill'); },
     };
@@ -2975,5 +3293,18 @@
   if(typeof module !== 'undefined') module.exports = {scrubFrac, scrubPopSize, scrubTime, fmtClock, createSeeker, teardownVideo,
     VIEWS, GROUPS, sanitizeViewState, toggleField, moveField, groupKeys, buildGroups, pickFrames, sbValid, sbCell, sbTime, sbIndexAt};
   if(typeof window === 'undefined') return;
-  window.MediaLibrary = {mount};
+  // A container answered « file not found » for a file the base says it has: does it see its media
+  // volume at all? (It does not if it started before a storage volume was mounted on the node.)
+  // Resolves to a message to show instead of the bare error, or null. Asked on demand, never polled.
+  async function explainMissing(vmid){
+    try{
+      const r = await fetch(`/api/containers/${encodeURIComponent(vmid)}/media_mount`);
+      const j = r.ok ? await r.json() : null;
+      if(!j || j.sees_volume !== false) return null;
+      const m = window.t ? window.t('media.mount_stale') : 'media.mount_stale';
+      return (m && m !== 'media.mount_stale' ? m : 'Ce conteneur a démarré avant le montage du volume de stockage de {node} : il ne voit pas les fichiers. Redémarrez-le.')
+        .replace('{node}', j.node || '');
+    }catch(_){ return null; }
+  }
+  window.MediaLibrary = {mount, explainMissing};
 })();

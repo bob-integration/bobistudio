@@ -120,6 +120,23 @@ def raison_sans_passerelle():
     return "La passerelle WebRTC n'est pas déployée/activée (Réglages → WebRTC)."
 
 
+def unavailable():
+    """Why no monitor can be created on this instance, as (code, message), or None.
+
+    Checked BEFORE anything is created (2026-11-15): on an instance without the `streamer`
+    plugin, opening the monitor created a container, failed with « Type de script inconnu :
+    streamer » in the alerts only, restarted it three times, and the panel said « Déploiement de
+    l'encodeur échoué » — nothing about what was missing. The codes are what the UI translates."""
+    if not _plugins.is_plugin("streamer"):
+        return ("no_streamer", "Le plugin streamer n'est pas installé : c'est lui qui encode "
+                               "l'image du moniteur (Réglages → Catalogue).")
+    if not gateway_ready():
+        from . import core_plugins
+        code = "no_gateway" if core_plugins.is_service("webrtc_gateway") else "no_gateway_service"
+        return (code, raison_sans_passerelle())
+    return None
+
+
 def _ip_navigateur():
     """IP de la passerelle WebRTC TELLE QUE LA VOIT UN NAVIGATEUR.
 
@@ -513,6 +530,7 @@ def status(uid):
     fps = _live_fps(ip) if running else 0.0
     return {
         "gateway_ready": gateway_ready(),
+        "unavailable": (unavailable() or (None,))[0],
         "exists": bool(c),
         "vmid": (c or {}).get("vmid"),
         "ip": ip,
@@ -530,8 +548,9 @@ def create_iter(uid):
     """Générateur streamé (contrat ✅/❌) : crée le container monitor Docker de l'utilisateur
     et y déploie l'encodeur streamer."""
     yield f"Création du monitor de l'utilisateur #{uid}…"
-    if not gateway_ready():
-        yield "❌ " + raison_sans_passerelle()
+    why = unavailable()
+    if why:
+        yield "❌ " + why[1]
         return
 
     c = _container_for(uid)
@@ -942,8 +961,9 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None, suffix=None):
     nouvelle source au lieu de créer un second conteneur."""
     from .database import db_get_projects
 
-    if not gateway_ready():
-        yield "❌ " + raison_sans_passerelle()
+    why = unavailable()
+    if why:
+        yield "❌ " + why[1]
         return
 
     player = db_get_container(player_vmid)

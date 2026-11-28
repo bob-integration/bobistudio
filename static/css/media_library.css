@@ -22,6 +22,8 @@
 .ml-filters-btn.on { border-color:var(--accent); color:var(--accent); }
 .ml-tab:focus-visible, .ml-search:focus-visible, .ml-bin:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .ml-crumbs { font-family:var(--font-mono); font-size:0.8em; color:var(--text-muted); padding:6px 12px 0; }
+.ml-crumbs:not([hidden]) { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ml-crumbs .ml-net-imp { font-family:inherit; margin-left:auto; }
 .ml-body { display:grid; grid-template-columns:minmax(150px, 200px) minmax(0, 1fr); min-height:120px; }
 .ml-body.no-bins { grid-template-columns:minmax(0, 1fr); }
 .ml-body.no-bins .ml-bins { display:none; }
@@ -490,3 +492,31 @@
 .mlu-projs { border:1px solid var(--border-soft); border-radius:6px; padding:6px 10px; margin:0; font-size:0.86em; color:var(--text-muted); }
 .mlu-projs-list { max-height:9.5em; overflow:auto; display:flex; flex-direction:column; gap:2px; }
 .mlu-dlg-f label.mlu-proj { flex-direction:row; align-items:center; gap:6px; color:var(--text); }
+
+/* Metadata of a selection (2026-11-22): keywords to add / remove, then the fields. */
+.ml-bkdlg { width:min(620px, calc(100vw - 32px)); }
+.ml-bk-body { display:flex; flex-direction:column; gap:12px; padding:12px 16px 16px; }
+.ml-bk-kw { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:8px 12px; align-items:center; font-size:0.86em; }
+.ml-bk-kw > label, .ml-bk-lbl { color:var(--text-muted); }
+.ml-bk-add { width:100%; background:var(--bg-input); color:var(--text); border:1px solid var(--border-soft); border-radius:4px; padding:5px 8px; font:inherit; }
+.ml-bk-have { display:flex; flex-wrap:wrap; gap:4px; }
+.ml-bk-kwx { cursor:pointer; border:1px solid var(--border-soft); font:inherit; }
+.ml-bk-kwx[aria-pressed="true"] { text-decoration:line-through; border-color:var(--danger, #c62828); color:var(--danger, #c62828); }
+.ml-bk-field { display:flex; align-items:center; gap:8px; min-width:0; }
+.ml-bk-field > :first-child { flex:1 1 auto; min-width:0; }
+.ml-if-form .ml-bk-clr { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-size:0.9em; }
+.ml-main .ml-kw:not(.ml-warn) { cursor:pointer; }
+.ml-main .ml-kw:not(.ml-warn):hover { color:var(--text); }
+/* Portrait library (2026-11-22): principal photo, rights expired. */
+.ml-prin { color:#d4a72c; }
+.ml-rights-over { color:var(--danger, #c62828); font-weight:600; }
+
+/* Auto-refresh witness (2026-11-26): a dot on ↻ — green, blinks at each check; grey paused; red unreachable.
+   Absolutely placed: it never moves the bar. */
+.ml-refresh { position:relative; }
+.ml-auto-dot { position:absolute; top:2px; right:2px; width:6px; height:6px; border-radius:50%; background:var(--text-muted); pointer-events:none; }
+.ml-auto-dot[data-state="on"] { background:var(--ctl-ok, #3fb950); }
+.ml-auto-dot[data-state="err"] { background:var(--ctl-err, #f85149); }
+.ml-auto-dot.is-tick { animation:ml-auto-tick 0.6s ease-out; }
+@keyframes ml-auto-tick { from { opacity:0.25; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .ml-auto-dot.is-tick { animation:none; } }

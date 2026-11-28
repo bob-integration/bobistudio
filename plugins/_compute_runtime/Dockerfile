@@ -25,7 +25,10 @@
 # ---------------------------------------------------------------- étage builder : compiler libmxl
 # Reproduit le schéma de build amont (examples/Dockerfile : vcpkg + preset CMake + ninja).
 FROM debian:trixie-slim AS mxl-builder
-ARG MXL_REF=v1.1.0
+# MXL_REF = a tag OR a commit (fetched by name, so both work). 2026-11-28: maintenance branch
+# release/v1.1 pinned on its commit of 2026-11-26 (90 commits past v1.1.0: initiator cqDepth #736,
+# RC/RDM queue drain and shutdown, #844, slice fixes). Switch to the v1.1.1 tag once published.
+ARG MXL_REF=a45b647db58b1a288a460c79a259a93def1a187c
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VCPKG_ROOT=/opt/vcpkg
 # build-essential/cmake/ninja + deps de build des ports vcpkg (autoconf/automake/libtool/nasm/
@@ -83,7 +86,10 @@ ENV PKG_CONFIG_PATH=/opt/libfabric/lib/pkgconfig
 RUN git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" \
  && "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
 # Sources MXL épinglées (ARG MXL_REF) → reproductibilité ; bump = changer le tag.
-RUN git clone --depth 1 --branch "${MXL_REF}" https://github.com/dmf-mxl/mxl.git /src/mxl
+RUN git init -q /src/mxl \
+ && git -C /src/mxl remote add origin https://github.com/dmf-mxl/mxl.git \
+ && git -C /src/mxl fetch -q --depth 1 origin "${MXL_REF}" \
+ && git -C /src/mxl -c advice.detachedHead=false checkout -q FETCH_HEAD
 WORKDIR /src/mxl
 # CONFIGURE séparé du build (couche CACHÉE) : la configuration cmake déclenche l'install vcpkg
 # (compile toutes les deps, ~30 min) — on l'isole pour que les itérations du patch ci-dessous
@@ -150,10 +156,15 @@ COPY plugins/_compute_runtime/patches/mxl-fabrics-slice-reset.patch /tmp/mxl-fab
 # sans FI_FENCE rien n'ordonne les écritures RMA d'un lot multi-plans, la cible publie des
 # tranches dont les octets sont encore en vol. SECONDE cause des bandes déchirées.
 COPY plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch /tmp/mxl-fabrics-fence-notification.patch
+# mxl-fabrics-demo hands JSON setup options (`--fabrics-options`, e.g. cqDepth) to the initiator
+# and the target. Upstream passes nullptr: without it, an audio flow wider than 31 channels
+# overflows the initiator completion queue even on a release that has #736.
+COPY plugins/_compute_runtime/patches/mxl-fabrics-demo-options.patch /tmp/mxl-fabrics-demo-options.patch
 RUN git apply --verbose /tmp/mxl-planar-type.patch \
  && git apply --verbose /tmp/mxl-planar-slices.patch \
  && git apply --verbose /tmp/mxl-fabrics-slice-reset.patch \
  && git apply --verbose /tmp/mxl-fabrics-fence-notification.patch \
+ && git apply --verbose /tmp/mxl-fabrics-demo-options.patch \
  && cmake --build build -j"$(nproc)" \
  && cmake --install build
 # Variante OPTIMISÉE (x86-64-v3 = AVX2 + FMA + BMI2). Arbre déjà patché, dépendances vcpkg déjà
@@ -212,6 +223,14 @@ COPY script_templates/scopekernel.c /src/scopekernel.c
 RUN gcc -O3 -march=x86-64-v2 -shared -fPIC /src/scopekernel.c -o /out/libbobi_scope.so \
  && gcc -O3 -march=x86-64-v3 -shared -fPIC /src/scopekernel.c -o /out/libbobi_scope_v3.so
 
+# Noyau du plugin Images fixes (2026-11-15) : RGBA → trame planar Fill + Key (BT.709 studio, chroma
+# moyennée) en une passe, OpenMP. Préparer une image 1080p coûtait ~90 ms de numpy dans le processus
+# qui publie la sortie ; ~13 ms ici. -ffp-contract=off : mêmes arrondis que la référence numpy du
+# plugin (identique octet pour octet en 4:2:2). Absent → le plugin garde son calcul numpy.
+COPY script_templates/stillskernel.c /src/stillskernel.c
+RUN gcc -O3 -march=x86-64-v2 -fopenmp -ffp-contract=off -shared -fPIC /src/stillskernel.c -o /out/libbobi_stills.so \
+ && gcc -O3 -march=x86-64-v3 -fopenmp -ffp-contract=off -shared -fPIC /src/stillskernel.c -o /out/libbobi_stills_v3.so
+
 # ---------------------------------------------------------------- image finale : runtime compute
 FROM debian:trixie-slim
 
@@ -220,6 +239,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # l'UI). FONT_MAP du script.py pointe sur ces chemins ; repli DejaVu si une police manque.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-numpy python3-pil ca-certificates libstdc++6 libgomp1 \
+      libheif-examples \
       fonts-dejavu-core fonts-liberation fonts-inter fonts-roboto fonts-firacode \
       rdma-core ibverbs-providers libibverbs1 librdmacm1 \
       liblilv-0-0 \
@@ -232,6 +252,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && mkdir -p /usr/share/doc/libgl1 && cp /usr/share/doc/libglvnd0/copyright /usr/share/doc/libgl1/ 2>/dev/null; \
     rm -rf /var/lib/apt/lists/* \
  && mkdir -p /usr/local/lib/lv2 /usr/local/lib/clap /usr/local/lib/vst3
+# libheif-examples (0.84, 2026-11-22): `heif-dec`, the HEIC/HEIF decoder of the Still plugin (iPhone
+# photos, stills >= 0.19.25). Pulls libheif1 (LGPL-3), libde265 (LGPL-3) and libaom (BSD-2): about 10 MB.
+# Absent, the plugin refuses a HEIC file and says why.
 # liblilv (ISC) + serd / sord / sratom : le CHARGEUR de plugins LV2 de l'hôte de plugins tiers de la console
 # audio (plugins/audio_console/host, ouvert par dlopen dans un bac à sable). AUCUN plugin dans l'image : ils
 # sont distribués par l'orchestrateur et montés en lecture seule sous /usr/local/lib/lv2 — une mise à jour de

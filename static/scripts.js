@@ -509,23 +509,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Type MÉDIA sur un nœud SANS la capacité `media` : l'API refuse la création (routes.creer) — on
 // le grise donc ici, avec la même raison, plutôt que de laisser cliquer vers un refus.
-function _ccMediaMissing(n) {
-    if (!(_curType && _curType.needsMedia)) return false;
+// Capacité de nœud qui MANQUE au type choisi, ou '' — même refus que l'API (routes.creer).
+// La capacité requise vient du SERVEUR (`plugins.required_capability`, attribut data-required-cap) :
+// cette fonction en avait sa propre copie (média, gui) et laissait créer un decklink_io partout.
+function _ccCapMissing(n) {
+    const need = (_curType && _curType.requiredCap) || '';
+    if (!need) return '';
     let caps = n.capabilities || [];
     if (typeof caps === 'string') { try { caps = JSON.parse(caps) || []; } catch (e) { caps = []; } }
-    return !caps.includes('media');
+    return caps.includes(need) ? '' : need;
 }
-// Capacité de nœud qui MANQUE au type choisi ('media', 'gui') ou '' — même refus que l'API (routes.creer) :
-// les interfaces natives (image bobi-gui, node_only) n'existent que sur un nœud qui déclare `gui`.
-function _ccCapMissing(n) {
-    if (_ccMediaMissing(n)) return 'media';
-    if (_curType && _curType.imageKind === 'gui') {
-        let caps = n.capabilities || [];
-        if (typeof caps === 'string') { try { caps = JSON.parse(caps) || []; } catch (e) { caps = []; } }
-        if (!caps.includes('gui')) return 'gui';
-    }
-    return '';
-}
+// Messages écrits en toutes lettres (une clé assemblée échappe au contrôle de portée i18n de la CI).
+const _CC_NO_CAP_SUFFIX = {media: 'js.node_no_media_cap', gui: 'js.node_no_gui_cap',
+                           decklink: 'js.node_no_decklink_cap'};
+const _CC_NO_CAP_ATTN = {media: 'containers.create.load.attn_no_media',
+                         gui: 'containers.create.load.attn_no_gui',
+                         decklink: 'containers.create.load.attn_no_decklink'};
 
 // <option> du sélecteur de nœud. Full-Docker : tout container se crée SUR un nœud — plus de tête
 // « — LXC (par défaut) — », qui laissait choisir « aucun nœud » pour finir sur un refus serveur.
@@ -539,8 +538,8 @@ function _ccNodeOptionsHtml() {
         const st = (n.images || {})[kind];
         const noCap = _ccCapMissing(n);
         const missing = !!noCap || (st ? st.present === false : (n.image_ok === false && kind === 'mtl'));
-        const why = noCap === 'gui' ? window.t('js.node_no_gui_cap')
-                  : noCap ? window.t('js.node_no_media_cap') : window.t('js.node_image_missing');
+        const why = noCap ? window.t(_CC_NO_CAP_SUFFIX[noCap] || 'js.node_image_missing')
+                          : window.t('js.node_image_missing');
         return `<option value="${n.id}"${missing ? ' disabled' : ''}>${escapeHtml(n.name)} · ${escapeHtml(n.host)}${missing ? escapeHtml(why) : ''}</option>`;
     }).join('');
 }
@@ -746,8 +745,8 @@ function _ccNodesPanelHtml(selectedId, openId) {
     const kind = (_curType && _curType.imageKind) || 'compute';
     return head + _ccNodes.map(n => {
         const st = (n.images || {})[kind];
-        const noMedia = !!_ccCapMissing(n);
-        const missing = noMedia || (st ? st.present === false : (n.image_ok === false && kind === 'mtl'));
+        const noCap = !!_ccCapMissing(n);
+        const missing = noCap || (st ? st.present === false : (n.image_ok === false && kind === 'mtl'));
         const sel = String(n.id) === String(selectedId);
         const open = String(n.id) === String(openId);
         const pool = n.cores_pool || {};
@@ -836,7 +835,7 @@ function _ccNodeAlerte(n, cost) {
     const kind = (_curType && _curType.imageKind) || 'compute';
     const st = (n.images || {})[kind];
     const _noCap = _ccCapMissing(n);
-    if (_noCap) return T(_noCap === 'gui' ? 'containers.create.load.attn_no_gui' : 'containers.create.load.attn_no_media');
+    if (_noCap) return T(_CC_NO_CAP_ATTN[_noCap] || 'containers.create.load.attn_image');
     const imageAbsente = st ? st.present === false : (n.image_ok === false && kind === 'mtl');
     if (imageAbsente) return T('containers.create.load.attn_image');
     if (n.online === false) return T('containers.create.load.attn_offline');
@@ -947,8 +946,8 @@ async function selectCreateType(chip) {
     let resources = {};
     try { resources = JSON.parse(chip.dataset.resources || '{}') || {}; } catch (e) { resources = {}; }
     document.querySelectorAll('.create-type-chip').forEach(c => c.classList.toggle('active', c === chip));
-    const needsMedia = chip.dataset.needsMedia === '1';      // type MÉDIA → nœud à capacité `media`
-    _curType = { type, label, runtime, imageKind, resources, needsMedia };
+    const requiredCap = chip.dataset.requiredCap || '';      // capacité de nœud exigée ('' = aucune)
+    _curType = { type, label, runtime, imageKind, resources, requiredCap };
 
     // Full-Docker : tout type se crée sur un nœud. `_curVis` ne porte plus que ce qui VARIE
     // encore d'un type à l'autre.
@@ -1080,7 +1079,16 @@ function _createSetWarn(msg) {
 
 // « Ajouter à la liste » : lit toutes les lignes de l'étape 2 → autant d'entrées
 // dans le panier (une par container).
+// Re-entry guard: the project reminder makes this function wait (server round trip, then the
+// dialog). A second click meanwhile ran a second pass that passed the « already listed » check
+// before the first had pushed anything — the same containers ended up twice in the list.
+let _addToCartBusy = false;
 async function addToCart() {
+    if (_addToCartBusy) return;
+    _addToCartBusy = true;
+    try { await _addToCart(); } finally { _addToCartBusy = false; }
+}
+async function _addToCart() {
     if (!_curType) { _createSetWarn(window.t('js.create.pick_type_first')); return; }
     const rows = [...document.querySelectorAll('#create-step2-rows .create-row')];
     if (!rows.length) return;
@@ -1117,7 +1125,12 @@ async function addToCart() {
     if (inProj && window.ProjectEnv) {
         const psel = document.querySelector('.cc-project-sel');
         const pname = psel ? psel.options[psel.selectedIndex]?.text : '';
-        if (!(await ProjectEnv.confirmType(inProj.type, pname))) return;
+        // Declined → SAY it. A bare `return` here left the user in front of a button that had
+        // « done nothing », with an empty list and no way to tell why (tester, 2026-11-27).
+        if (!(await ProjectEnv.confirmType(inProj.type, pname))) {
+            _createSetWarn(window.t('js.create.project_declined'));
+            return;
+        }
     }
 
     _createCart.push(...lines);
@@ -1163,7 +1176,8 @@ function renderCart() {
 
 // POST d'un container : un seul chemin, celui du nœud Docker (node_id).
 // Les cœurs/RAM ne sont plus transmis — le profil `resources` du manifeste pilote le docker run.
-function _postCreateOne(line, hostname, confirmePartage) {
+function _postCreateOne(line, hostname, flags) {
+    flags = flags || {};
     const body = {
         hostname, deploy_type: line.type || null, deploy_params: line.params || null,
         node_id: line.nodeId,
@@ -1171,7 +1185,11 @@ function _postCreateOne(line, hostname, confirmePartage) {
         // Réponse à la porte SERVEUR « aucun cœur dédiable » (409, error_code
         // no_dedicated_core) : sans ce drapeau le serveur redemande, et c'est voulu — la
         // confirmation ne doit pas pouvoir ne vivre que dans l'interface.
-        confirme_partage: !!confirmePartage,
+        confirme_partage: !!flags.partage,
+        // Same for the shared pool's real-time budget (409 rt_shared_full, 2026-11-23).
+        confirme_rt: !!flags.rt,
+        // And for the node's RAM: the sum of the memory limits (409 memory_node_full).
+        confirme_memoire: !!flags.memoire,
     };
     return fetch('/api/containers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1179,17 +1197,21 @@ function _postCreateOne(line, hostname, confirmePartage) {
     });
 }
 
+// Server gates that ask the human to choose, and the flag that answers each one.
+const _CREATE_CONFIRM = { no_dedicated_core: 'partage', rt_shared_full: 'rt', memory_node_full: 'memoire' };
+
 // Envoie une fournée et TRIE les réponses en trois : créées, refusées pour de bon, et celles
-// que le serveur demande de confirmer parce qu'aucun cœur ne peut leur être dédié.
-async function _postCreateLot(plan, confirmePartage) {
+// que le serveur demande de confirmer (aucun cœur dédiable, budget temps réel du pool partagé).
+async function _postCreateLot(plan) {
     const refus = [], aConfirmer = [];
-    await Promise.all(plan.map(p => _postCreateOne(p.line, p.hostname, confirmePartage).then(async r => {
+    await Promise.all(plan.map(p => _postCreateOne(p.line, p.hostname, p.flags).then(async r => {
         if (r && r.ok) return;
         let msg = r ? ('HTTP ' + r.status) : window.t('js.request_failed');
         let j = null;
         try { j = await r.json(); if (j && j.error) msg = j.error; } catch (_) {}
-        if (r && r.status === 409 && j && j.error_code === 'no_dedicated_core') {
-            aConfirmer.push({ line: p.line, hostname: p.hostname, info: j });
+        if (r && r.status === 409 && j && _CREATE_CONFIRM[j.error_code]) {
+            aConfirmer.push({ line: p.line, hostname: p.hostname, info: j, code: j.error_code,
+                              flags: p.flags || {} });
             return;
         }
         refus.push(p.hostname + ' : ' + msg);
@@ -1230,6 +1252,79 @@ function _createDedieDialog(aConfirmer) {
         dlg.querySelector('#cdd-creer').onclick = () => rendre('creer');
         dlg.querySelector('#cdd-liberer').onclick = () => rendre('liberer');
         // Échap / clic hors de la fenêtre : jamais « créer » par défaut.
+        dlg.addEventListener('close', () => rendre('liberer'), { once: true });
+        if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+    });
+}
+
+// The shared pool's real-time budget is full (2026-11-23): create anyway, or not at all. Closing
+// the window means « do not create ». → Promise('creer' | 'liberer')
+function _createRtDialog(aConfirmer) {
+    const info = aConfirmer[0].info || {};
+    const rt = info.rt || {};
+    const tenus = (rt.conteneurs || []).map(o =>
+        '<li>' + escapeHtml(o.hostname) + ' <span style="color:var(--text-muted)">('
+        + escapeHtml(window.t('js.create.rt_charge').replace('{c}', o.charge)
+                     .replace('{r}', o.role)) + ')</span></li>').join('');
+    let dlg = document.getElementById('create-rt-dlg');
+    if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.id = 'create-rt-dlg';
+        dlg.className = 'modal-card';
+        document.body.appendChild(dlg);
+    }
+    dlg.innerHTML = '<h3>' + escapeHtml(window.t('js.create.rt_titre')) + '</h3>'
+        + '<p>' + escapeHtml(info.error || '') + '</p>'
+        + '<p style="color:var(--text-muted)">' + escapeHtml(window.t('js.create.rt_aide')) + '</p>'
+        + '<p><b>' + escapeHtml(aConfirmer.map(p => p.hostname).join(', ')) + '</b></p>'
+        + (tenus ? '<p>' + escapeHtml(window.t('js.create.rt_tenus').replace('{n}', rt.noeud || '?'))
+                 + '</p><ul>' + tenus + '</ul>' : '')
+        + '<div style="display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
+        + '<button type="button" class="btn" id="crt-liberer">'
+        + escapeHtml(window.t('js.create.rt_non')) + '</button>'
+        + '<button type="button" class="btn btn-blue" id="crt-creer">'
+        + escapeHtml(window.t('js.create.dedie_quand_meme')) + '</button></div>';
+    return new Promise(resolve => {
+        let fini = false;
+        const rendre = (choix) => { if (fini) return; fini = true; dlg.close(); resolve(choix); };
+        dlg.querySelector('#crt-creer').onclick = () => rendre('creer');
+        dlg.querySelector('#crt-liberer').onclick = () => rendre('liberer');
+        dlg.addEventListener('close', () => rendre('liberer'), { once: true });
+        if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+    });
+}
+
+// The node's memory limits would pass its RAM (2026-11-23): create anyway, or not at all. Closing
+// the window means « do not create ». → Promise('creer' | 'liberer')
+function _createMemDialog(aConfirmer) {
+    const info = aConfirmer[0].info || {};
+    const mem = info.memoire || {};
+    const tenus = (mem.conteneurs || []).map(o =>
+        '<li>' + escapeHtml(o.hostname) + ' <span style="color:var(--text-muted)">('
+        + escapeHtml(window.t('js.create.mem_limite').replace('{m}', o.memory)) + ')</span></li>').join('');
+    let dlg = document.getElementById('create-mem-dlg');
+    if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.id = 'create-mem-dlg';
+        dlg.className = 'modal-card';
+        document.body.appendChild(dlg);
+    }
+    dlg.innerHTML = '<h3>' + escapeHtml(window.t('js.create.mem_titre')) + '</h3>'
+        + '<p>' + escapeHtml(info.error || '') + '</p>'
+        + '<p style="color:var(--text-muted)">' + escapeHtml(window.t('js.create.mem_aide')) + '</p>'
+        + '<p><b>' + escapeHtml(aConfirmer.map(p => p.hostname).join(', ')) + '</b></p>'
+        + (tenus ? '<p>' + escapeHtml(window.t('js.create.mem_tenus').replace('{n}', mem.noeud || '?'))
+                 + '</p><ul>' + tenus + '</ul>' : '')
+        + '<div style="display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
+        + '<button type="button" class="btn" id="cmem-liberer">'
+        + escapeHtml(window.t('js.create.rt_non')) + '</button>'
+        + '<button type="button" class="btn btn-blue" id="cmem-creer">'
+        + escapeHtml(window.t('js.create.mem_quand_meme')) + '</button></div>';
+    return new Promise(resolve => {
+        let fini = false;
+        const rendre = (choix) => { if (fini) return; fini = true; dlg.close(); resolve(choix); };
+        dlg.querySelector('#cmem-creer').onclick = () => rendre('creer');
+        dlg.querySelector('#cmem-liberer').onclick = () => rendre('liberer');
         dlg.addEventListener('close', () => rendre('liberer'), { once: true });
         if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
     });
@@ -1283,30 +1378,42 @@ async function lancerCreation() {
     // Lance toutes les créations en parallèle. Le REFUS du serveur (400 hostname invalide,
     // 409 doublon) était jusqu'ici avalé par un `.catch(() => {})` : le conteneur n'apparaissait
     // simplement jamais dans le suivi, sans un mot d'explication. On remonte l'erreur.
-    let { refus, aConfirmer } = await _postCreateLot(plan, false);
+    let { refus, aConfirmer } = await _postCreateLot(plan);
     // Lignes gardées dans le panier : celles dont l'humain a préféré libérer des cœurs d'abord.
     // Vider le panier les lui ferait ressaisir alors qu'il vient justement de choisir d'y revenir.
     let garde = [];
-    if (aConfirmer.length) {
-        if (await _createDedieDialog(aConfirmer) === 'creer') {
-            const r2 = await _postCreateLot(aConfirmer, true);
+    // One window per kind of gate. A container confirmed past the first gate may meet the second
+    // (no dedicated core → shared → the shared pool's real-time budget): it is asked again, for
+    // that one. The SAME gate coming back with its flag set is counted as a refusal, never looped.
+    while (aConfirmer.length) {
+        const code = aConfirmer[0].code;
+        const lot = aConfirmer.filter(p => p.code === code);
+        let reste = aConfirmer.filter(p => p.code !== code);
+        const choix = code === 'rt_shared_full' ? await _createRtDialog(lot)
+            : code === 'memory_node_full' ? await _createMemDialog(lot) : await _createDedieDialog(lot);
+        if (choix === 'creer') {
+            lot.forEach(p => { p.flags = Object.assign({}, p.flags, { [_CREATE_CONFIRM[code]]: true }); });
+            const r2 = await _postCreateLot(lot);
             refus = refus.concat(r2.refus);
-            // Un second 409 de confirmation ne peut pas arriver (le drapeau est posé) ; s'il
-            // arrivait, on le compte comme un refus plutôt que de reboucler sur la fenêtre.
-            r2.aConfirmer.forEach(p => refus.push(p.hostname + ' : ' + ((p.info || {}).error || '')));
+            r2.aConfirmer.forEach(p => {
+                if (p.flags && p.flags[_CREATE_CONFIRM[p.code]]) {
+                    refus.push(p.hostname + ' : ' + ((p.info || {}).error || ''));
+                } else reste.push(p);
+            });
         } else {
-            garde = aConfirmer.map(p => p.line);
-            const kos = new Set(aConfirmer.map(p => p.hostname));
+            garde = garde.concat(lot.map(p => p.line));
+            const kos = new Set(lot.map(p => p.hostname));
             _batchHostnames = _batchHostnames.filter(h => !kos.has(h));
             _batchSave();
             _createSetWarn(window.t('js.create.dedie_annule'));
             showWireToast(window.t('js.create.dedie_annule'), 'error');
             // Droit sur l'écran où l'on libère des cœurs : la fenêtre du nœud concerné.
-            const nid = (aConfirmer[0].info || {}).node_id;
-            if (nid && window.BobiCores) {
-                window.BobiCores.ouvrir(nid, ((aConfirmer[0].info || {}).dedication || {}).noeud);
+            const inf = lot[0].info || {};
+            if (inf.node_id && window.BobiCores) {
+                window.BobiCores.ouvrir(inf.node_id, (inf.dedication || inf.rt || {}).noeud);
             }
         }
+        aConfirmer = reste;
     }
     if (refus.length) {
         _createSetWarn(window.t('js.create_refused').replace('{detail}', refus.join(' | ')));

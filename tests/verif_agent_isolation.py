@@ -25,6 +25,13 @@ MUTATIONS (le test DOIT échouer) — ISO_MUT=<nom> :
     nomce       le sondage MCE n'est jamais coupé (0.32.3)
     mcealways   le sondage MCE est coupé même sans cœur isolé
     mceold      le contrôleur demande `mce_off` à un agent qui ne le connaît pas
+    noheal      une partition invalide n'est pas repassée par `member` (0.32.5)
+    nosd        un voisin allégé ne l'est pas dans systemd, qui réécrit sa liste au daemon-reload (0.32.5)
+    leaveinvalid une partition refusée reste `invalid` (0.32.7 : rendue à `member`, retentée plus tard)
+    noback      une partition refusée est retentée à chaque passage (pas de délai)
+    nodrain     la partition n'est pas défaite avant l'arrêt ou la destruction du conteneur (0.32.7)
+    noirqpersist ce qui a été retiré des IRQ n'est pas relu au redémarrage de l'agent (0.32.9)
+    noboot      un état d'IRQ d'un AUTRE démarrage est rejoué (0.32.9)
 
     ./venv/bin/python tests/verif_agent_isolation.py
 """
@@ -38,7 +45,8 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 MUT = os.environ.get("ISO_MUT", "")
 if MUT not in ("", "nofree", "allroot", "noslice", "norelease", "engine", "samepush", "noguard", "nosibling",
-               "noirq", "widen", "nogiveback", "nomce", "mcealways", "mceold"):
+               "noirq", "widen", "nogiveback", "nomce", "mcealways", "mceold", "noheal", "nosd", "leaveinvalid",
+               "noback", "nodrain", "noirqpersist", "noboot"):
     print(" ÉCHEC mutation inconnue %r" % MUT)
     sys.exit(2)
 echecs = []
@@ -71,6 +79,18 @@ os.makedirs(A.MCE_DIR + "/machinecheck0")
 with open(A.MCE_DIR + "/machinecheck0/check_interval", "w") as _fh:
     _fh.write("300")
 SL = A.CG_ROOT + "/system.slice"
+SD = []                                        # systemctl calls — NEVER the host's systemd
+A._sd_run = lambda argv, timeout=20: (SD.append(argv), (0, "", ""))[1]
+if MUT == "nosd":
+    A._sd_run = lambda argv, timeout=20: (0, "", "")
+if MUT == "noheal":
+    A._iso_revalidate = lambda d, mode, want: A._cg_read(d + "/cpuset.cpus.partition") or ""
+if MUT == "leaveinvalid":
+    A._iso_to_member = lambda d: None
+if MUT == "noback":
+    A.ISO_RETRY_S = 0
+if MUT == "nodrain":
+    A._iso_drain = lambda name: A._ISO_DRAINING.add(name)
 CGS = {}                                       # container name -> cgroup rel path
 ECRITURES = []
 
@@ -100,6 +120,9 @@ def noyau_write(path, value):
     ECRITURES.append((path[len(A.CG_ROOT):], value))
     if path.endswith("/smp_affinity_list") and os.path.exists(os.path.join(os.path.dirname(path), "managed")):
         return "[Errno 5] Input/output error"   # kernel-managed IRQ: affinity is fixed
+    if path.endswith("/cpuset.cpus.partition") and value in ("isolated", "root"):
+        if (A._cg_read(path) or "").startswith(value + " invalid"):
+            return None                         # same mode again: the kernel re-checks nothing
     err = _vrai_write(path, value)
     if err or not path.endswith("/cpuset.cpus.partition") or value not in ("isolated", "root"):
         return err
@@ -195,7 +218,19 @@ c = r["state"].get("bobi-cmp-1339", {})
 verifie(c.get("status") == "invalid" and lire("/system.slice/docker-pin.scope", "cpuset.cpus") == "13"
         and any("docker-pin.scope" in b for b in c.get("blockers") or []),
         "1i. ★ voisin épinglé sur 13 seul : jamais vidé ; partition `invalid`, voisin NOMMÉ", c)
+# HPE DL360 Gen10, 6.12.117 (2026-11-15): a partition left invalid, rewritten by systemd, made the kernel
+# warn (cpuset.c) and the node froze at the next cgroup removal. A refusal goes back to `member` at once.
+verifie(lire("/system.slice/docker-con.scope", "cpuset.cpus.partition") == "member"
+        and lire("/system.slice/docker-con.scope", "cpuset.cpus.exclusive") == ""
+        and "invalid" in (c.get("partition") or "") and c.get("retry_in_s", 0) > 0,
+        "1j. ★ partition refusée : rendue AUSSITÔT à `member`, la raison du noyau reste dite", c)
+ECRITURES.clear()
+c = A._iso_reconcile(_pids=fake_pids)["state"].get("bobi-cmp-1339", {})
+verifie(not any(p.startswith("/system.slice/docker-con.scope/") for p, _v in ECRITURES)
+        and c.get("status") == "invalid" and "invalid" in (c.get("partition") or ""),
+        "1k. ★ pendant le délai : pas retentée (ni réécrite toutes les 10 s), toujours signalée", (ECRITURES[:4], c))
 os.rename(A.CG_ROOT + "/system.slice/docker-pin.scope", TMP + "/pin-gone")
+A._ISO_REFUSED.clear()                         # the retry delay has run out
 
 # ================================================================ 2. libération
 print("── 2. libération ───────────────────────────────────────────────────────────────")
@@ -215,6 +250,30 @@ A._iso_reconcile(_pids=fake_pids)
 verifie(lire("/system.slice/docker-con.scope", "cpuset.cpus.partition") == "member"
         and lire("/system.slice", "cpuset.cpus.exclusive") == "",
         "2b. carte vide : tout est rendu (le réglage `dedicated_cpu_isolation` = 0 y mène)")
+
+# 0.32.7: the partition is undone BEFORE docker stops or removes the container — the node froze on the
+# removal of a cgroup whose partition accounting the kernel had already reported broken.
+A._ISO["wanted"] = {"bobi-cmp-1339": "13"}
+A._iso_reconcile(_pids=fake_pids)
+_wd0, A._wd_pids = A._wd_pids, fake_pids
+_vu = {}
+A.docker = lambda *a, **k: (_vu.setdefault(a[0], lire("/system.slice/docker-con.scope", "cpuset.cpus.partition")),
+                            (0, "", ""))[1]
+A._iso_drain("bobi-cmp-1339")
+try:
+    A.docker("rm", "-f", "bobi-cmp-1339")
+    A._iso_reconcile(_pids=fake_pids)         # the periodic pass, while docker is at work
+    _pendant = lire("/system.slice/docker-con.scope", "cpuset.cpus.partition")
+finally:
+    A._iso_undrain("bobi-cmp-1339")
+verifie(_vu.get("rm") == "member" and _pendant == "member",
+        "2d. ★ destruction : partition défaite AVANT docker rm, et pas reposée pendant", (_vu, _pendant))
+A._iso_reconcile(_pids=fake_pids)
+verifie(lire("/system.slice/docker-con.scope", "cpuset.cpus.partition") == "isolated",
+        "2e. conteneur toujours là après coup : isolé de nouveau au passage suivant")
+A._wd_pids = _wd0
+A._ISO["wanted"] = {}
+A._iso_reconcile(_pids=fake_pids)
 
 # kernfs never sees a zero-byte write: clearing a list must still send bytes (dell-1, 2026-11-09 — the
 # slice kept lending CPU 13 after every partition had been released).
@@ -380,6 +439,32 @@ verifie(aff(279) == "0-15" and aff(208) == "13" and dflt == "0000ffff,ffffffff",
         "6g. ★ partition rendue : chaque IRQ retrouve son affectation d'origine", (aff(279), aff(208), dflt))
 A._iso_irqs(set(), _online=ONLINE, _isolated={30})
 verifie(not A._IRQ_TAKEN, "6h. plus rien à rendre ensuite", dict(A._IRQ_TAKEN))
+# 0.32.9: an agent restart (its update, typically) between the narrowing and the release
+A.BOOT_ID_PATH = os.path.join(TMP, "boot_id")
+with open(A.BOOT_ID_PATH, "w") as fh:
+    fh.write("boot-1")
+if MUT == "noirqpersist":
+    A._irq_taken_load = lambda: None
+if MUT == "noboot":
+    A.BOOT_ID_PATH = os.path.join(TMP, "no_boot_id")
+A._iso_irqs(LENT, _online=ONLINE, _isolated={30})
+A._IRQ_TAKEN.clear()                             # the agent restarts: its memory is gone
+A._iso_load()
+A._iso_irqs(set(), _online=ONLINE, _isolated={30})
+verifie(aff(279) == "0-15" and aff(208) == "13",
+        "6i. ★ agent redémarré entre les deux : l'affectation d'origine est quand même rendue",
+        (aff(279), aff(208)))
+A._iso_irqs(LENT, _online=ONLINE, _isolated={30})
+with open(os.path.join(TMP, "boot_id"), "w") as fh:
+    fh.write("boot-2")                           # the node rebooted: the kernel reset /proc/irq
+A._IRQ_TAKEN.clear()
+A._iso_load()
+verifie(not A._IRQ_TAKEN, "6j. état d'un autre démarrage : jamais rejoué", dict(A._IRQ_TAKEN))
+A._IRQ_TAKEN.clear()
+for _n, _a in ((279, "0-15"), (208, "13")):
+    irq(_n, _a, "x")
+with open(A.PROC_IRQ + "/default_smp_affinity", "w") as fh:
+    fh.write("ffff,ffffffff")
 
 # ================================================================ 7. sondage MCE (0.32.3)
 print("── 7. sondage MCE ──────────────────────────────────────────────────────────────")
@@ -460,6 +545,39 @@ for lang in ("fr", "en"):
     cat = json.load(open(os.path.join(RACINE, "i18n", lang + ".json"), encoding="utf-8"))
     verifie(all(cat.get("settings.cpu_iso." + k) for k in ("title", "intro", "mce_lbl", "mce_keep", "mce_off", "mce_hint")),
             "7m. textes du réglage (%s)" % lang)
+
+# ================================================================ 8. une partition tombée se relève (0.32.5)
+print("── 8. partition invalidée, systemd ─────────────────────────────────────────────")
+# dell-1, 2026-11-09: a container started by hand with --cpuset-cpus 0-12,14-87; a daemon-reload made
+# systemd write that list back, every partition but CPU 13's went invalid and stayed so for 36 h.
+A.CG_ROOT = os.path.join(TMP, "cg8")
+A._ISO.update(wanted={}, state={})
+cg("/user.slice", "0,31")
+cg("/system.slice", "", exclusive="")
+cg("/system.slice/docker-con.scope", "13", exclusive="")
+cg("/system.slice/docker-mix.scope", "20,22,24", exclusive="")
+cg("/system.slice/docker-dyv.scope", "0-12,14-30")
+CGS.update({"bobi-cmp-1339": "/system.slice/docker-con.scope", "bobi-cmp-1250": "/system.slice/docker-mix.scope"})
+A._ISO["wanted"] = {"bobi-cmp-1339": "13", "bobi-cmp-1250": "20,22,24"}
+SD.clear()
+st = A._iso_reconcile(_pids=fake_pids)["state"]
+verifie(st["bobi-cmp-1250"]["status"] == "root" and st["bobi-cmp-1339"]["status"] == "isolated",
+        "8a. le conteneur lancé à la main est allégé, les deux partitions sont valides", st)
+verifie(["systemctl", "set-property", "--runtime", "docker-dyv.scope", "AllowedCPUs=0-12,14-19,21,23,25-30"] in SD,
+        "8b. ★ systemd reçoit la même liste (sinon il réécrit l'ancienne au prochain daemon-reload)", SD)
+verifie(all(a[:3] == ["systemctl", "set-property", "--runtime"] for a in SD) and len(SD) == 1,
+        "8c. seul le voisin réellement allégé est touché", SD)
+# the daemon-reload of the night: systemd writes the old list back, the kernel drops the mixer's partition
+with open(A.CG_ROOT + "/system.slice/docker-dyv.scope/cpuset.cpus", "w") as fh:
+    fh.write("0-12,14-30")
+with open(A.CG_ROOT + "/system.slice/docker-mix.scope/cpuset.cpus.partition", "w") as fh:
+    fh.write("root invalid (Invalid cpu list in cpuset.cpus.exclusive)")
+st = A._iso_reconcile(_pids=fake_pids)["state"]
+verifie(st["bobi-cmp-1250"]["status"] == "root" and lire("/system.slice/docker-mix.scope", "cpuset.cpus.partition") == "root",
+        "8d. ★ la partition invalidée est repassée par `member` et redevient valide", st["bobi-cmp-1250"])
+verifie(st["bobi-cmp-1339"]["status"] == "isolated", "8e. la partition restée valide n'est pas touchée")
+n_member = sum(1 for p, v in ECRITURES if p == "/system.slice/docker-con.scope/cpuset.cpus.partition" and v == "member")
+verifie(n_member == 0, "8f. une partition valide n'est jamais repassée par `member` (elle perdrait son isolation un instant)")
 
 print()
 if echecs:

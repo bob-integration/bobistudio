@@ -128,14 +128,15 @@ ok(e["cpu_weight"] == "dedicated" and e.get("pin") and e["cores"] == 3, "1a. ★
 database.db_set_resources_override(801, cpu_weight="normal")
 ok(not eff(801).get("pin"), "1b. ★ set to Normal → shared", eff(801))
 e = eff(802)
-ok(e["cpu_weight"] == "normal" and not e.get("pin"), "1c. a type without a profile: normal, shared", e)
+ok(e["cpu_weight"] == "shared" and not e.get("pin"), "1c. a type without a profile: shared", e)
 database.db_set_resources_override(802, cpu_weight="dedicated")
 e = eff(802)
 ok(e.get("pin") and e["cores"] == 1, "1d. ★ set on air → one dedicated core", e)
 database.db_set_resources_override(803, cpu_weight="dedicated")
 ok(eff(803).get("pin") and eff(803)["cores"] == 4, "1e. on air with the manifest's cores", eff(803))
 e = eff(804)
-ok(e["cpu_weight"] == "batch" and not e.get("pin") and e.get("priority") == "batch", "1f. batch stays shared", e)
+ok(e["cpu_weight"] == "background" and not e.get("pin") and e.get("priority") == "batch",
+   "1f. the former batch profile is Background: never pinned, still the batch behaviour", e)
 database.db_set_resources_override(805, cpu_weight="normal")
 ok(eff(805).get("pin"), "1g. node I/O keeps its cores whatever its level", eff(805))
 
@@ -159,6 +160,22 @@ database.db_set_resources_override(808, cpu_weight="onair")
 ok(database.db_get_container(808).get("cpu_weight_override") == "dedicated" and eff(808).get("pin")
    and cpu_weight.niveau_valide("onair"),
    "2a''. ★ « onair » is still accepted on input (saved projects, macros) and stored « dedicated »")
+# 2026-11-23: three levels. Rows written before keep working: migrated at boot.
+_add(809, "color_corrector")
+_add(810, "streamer")
+with database.get_db() as db:
+    db.execute("UPDATE containers SET cpu_weight_override='normal' WHERE vmid=809")
+    db.execute("UPDATE containers SET cpu_weight_override='batch' WHERE vmid=810")
+    db.commit()
+database.init_db()
+ok(database.db_get_container(809).get("cpu_weight_override") == "shared"
+   and database.db_get_container(810).get("cpu_weight_override") == "background",
+   "2e. ★ « normal » becomes « shared » and « batch » « background » at boot",
+   (database.db_get_container(809).get("cpu_weight_override"),
+    database.db_get_container(810).get("cpu_weight_override")))
+ok(eff(810).get("priority") == "batch" and not eff(810).get("pin"),
+   "2f. a container set Background gets the former batch behaviour (never pinned, quota, not real time)",
+   eff(810))
 database.db_set_resources_override(804, cpu_mode="reserved")
 ok(database.db_get_container(804).get("cpu_weight_override") == "dedicated" and eff(804).get("pin"),
    "2b. the old API « reserved » writes the level on air")
@@ -193,7 +210,7 @@ r = cpu_weight.regler(803, "dedicated")
 c = database.db_get_container(803)
 ok(not r.get("ok") and isinstance(r.get("err"), dict) and r["err"].get("error") == "no_room",
    "4a. ★ refused, saying why", r)
-ok((c.get("cpu_weight_override") or "") in ("", "background", "normal") and c.get("cpu_weight_override") != "dedicated",
+ok((c.get("cpu_weight_override") or "") in ("", "background", "shared") and c.get("cpu_weight_override") != "dedicated",
    "4b. ★ the level is put back as it was", c.get("cpu_weight_override"))
 ok(core_pool.allocated_for(NID, 803) == 0 and not any("bobi-803" in x for x in EXEC), "4c. nothing reserved, nothing set")
 

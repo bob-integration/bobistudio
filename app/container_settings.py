@@ -38,6 +38,8 @@ def resources_view(vmid):
            "type": t, "node": ({"id": node["id"], "name": node.get("name") or ""} if node else None),
            "engine": docker_compute.is_mtl_type(t),
            "levels": [{"id": l, "value": cpu_weight.WEIGHTS[l]} for l in cpu_weight.LEVELS]}
+    out["realtime"] = realtime_view(vmid, t)
+    out["deadline"] = deadline_view(c)
     if out["engine"]:
         # The 2110 engine's cpuset comes from its DPDK lcores: no level, no cores to set here.
         return out
@@ -59,6 +61,11 @@ def resources_view(vmid):
             node["id"], vmid, core_pool.allocations_by_vmid(node["id"]).get(vmid) or [], res=res)
             if node else ""),
         "assigned": c.get("pinned_cores") or "",
+        # Dedicated without room at deployment: refused (False), or run on the shared pool by the
+        # user's choice (True) — cf. docker_compute.deploy_compute.
+        "dedicated_fallback": bool(c.get("dedicated_fallback_ok")),
+        # Peak of memory.current over 24 h (app/memory_watch.py): what the limit is judged on.
+        "memory_peak": memory_peak_view(c),
     })
     if node:
         out["free_dedicated"] = core_pool.free_dedicated_capacity(
@@ -70,6 +77,44 @@ def resources_view(vmid):
             out["coherent"] = line.get("coherent")
             out["protection"] = line.get("protection")
     return out
+
+
+def realtime_view(vmid, type_):
+    """Real-time priority of the container (app/realtime.py), or None when it neither has a role nor
+    publishes one: {role, asked, applied, error}. `applied` is what the SCRIPT published on :8080
+    (None = not published yet, or a version that does not publish it); the ask is never shown as
+    applied."""
+    from . import metrics, plugins, realtime
+    man = plugins.get(type_) or {}
+    role = realtime.role_of(man)
+    st = metrics.rt_state_cache.get(vmid)
+    if not role and not (st and st.get("priority")):
+        return None
+    return {"role": role or None, "asked": realtime.priority_of(man) or None,
+            "applied": st.get("priority") if st else None, "error": (st or {}).get("error") or ""}
+
+
+def memory_peak_view(c):
+    """{peak_mb, limit_mb, pct, hours} over 24 h, or None (never measured)."""
+    from . import memory_watch
+    p = memory_watch.peak_24h(c.get("instance_uuid") or ("vmid:%s" % c.get("vmid")))
+    if not p:
+        return None
+    return {"peak_mb": round(p["peak"] / 2**20), "limit_mb": round(p["limit"] / 2**20) if p["limit"] else None,
+            "pct": p["pct"], "hours": p["hours"]}
+
+
+def deadline_view(c):
+    """Deadline witness of the container (app/deadlines.py), or None when its script publishes
+    none: {missed_24h, hours, missed, window_s, late_p999_ms, late_max_ms}."""
+    from . import deadlines
+    blk = deadlines.state(c.get("vmid"))
+    if blk is None:
+        return None
+    m24, hours = deadlines.missed_24h(c.get("instance_uuid") or ("vmid:%s" % c.get("vmid")))
+    return {"missed_24h": m24, "hours": hours, "missed": blk.get("missed"),
+            "window_s": blk.get("window_s"), "late_p999_ms": blk.get("late_p999_ms"),
+            "late_max_ms": blk.get("late_max_ms")}
 
 
 def _cores_line(node_id, vmid):

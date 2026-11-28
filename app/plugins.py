@@ -967,6 +967,29 @@ def _commit_for_version(tdir, version):
     return None
 
 
+def _final_commit_for_version(tdir, version):
+    """The commit holding the FINAL state of `version`: the parent of the commit that moved
+    `plugin.json` on to another version, or HEAD if nothing did. `_commit_for_version` only sees
+    commits that touch `plugin.json`, so it misses every later commit that changes the script
+    alone — measured 2026-11-14 on stills 0.19.10: the cache came from fd277a7 and missed the
+    anonymisation (31e3544), which brought a client name back into the tree."""
+    out = _git(tdir, "log", "--format=%H", "-n", str(_REBUILD_MAX_COMMITS), "--", "plugin.json")
+    if not out:
+        return None
+    newer = None
+    for sha in out.split():
+        brut = _git(tdir, "show", "%s:plugin.json" % sha)
+        try:
+            v = (json.loads(brut) or {}).get("version") if brut else None
+        except ValueError:
+            v = None
+        if v == version:
+            final = _git(tdir, "rev-parse", "--verify", "-q", (newer + "^") if newer else "HEAD")
+            return final.strip() if final else None
+        newer = sha
+    return None
+
+
 def ensure_version(type_, version):
     """La version est-elle RENDABLE ? Si elle n'est ni la courante ni archivée, on tente de la
     reconstituer dans `versions/<version>/` depuis l'historique git du plugin.
@@ -994,7 +1017,7 @@ def ensure_version(type_, version):
         # donc pas de second test par-dessus — une condition qu'aucune mutation ne distingue est
         # du poids mort, et deux formulations de la même question finissent par se contredire.
         return os.path.isfile(os.path.join(dest, "script.py"))
-    sha = _commit_for_version(tdir, version)
+    sha = _final_commit_for_version(tdir, version)
     if not sha:
         log.info("plugins: %s %s is not in the local git history — cannot be reconstituted",
                  type_, version)
@@ -1135,6 +1158,13 @@ def render_config(type_, params):
     # AUDIO GRAIN: every type, resolved here (like the missing frame) so a change of the core setting
     # reaches each container at its next deploy. Scripts read it through bobimxl.audio_grain(CONFIG).
     cfg["mxl_audio_grain_us"] = audio_grain_us(cfg.get("audio_grain_us"))
+    # REAL-TIME PRIORITY (app/realtime.py): a type that declares a role gets the grid's number here,
+    # over any persisted value — it is a product decision, not a setting, and a grid change must reach
+    # every container at its next deploy. Types without a role keep what they had.
+    from . import realtime
+    _rt = realtime.priority_of(REGISTRY.get(type_))
+    if _rt:
+        cfg["rt_priority"] = _rt
     return cfg
 
 
@@ -1209,6 +1239,38 @@ def image_variant(type_):
     base image then could not be built without an optional plugin's sources."""
     v = str((REGISTRY.get(type_) or {}).get("image") or "compute").lower()
     return v if v in ("compute", "media", "gui", "decklink") else "compute"
+
+
+# Variantes d'image qui ne sont construites QUE sur les nœuds déclarant une capacité du même
+# nom. 'compute' n'en exige aucune : bobi-compute est l'image de base, présente partout.
+CAPABILITY_BY_VARIANT = {"media": "media", "gui": "gui", "decklink": "decklink"}
+
+
+def required_capability(type_):
+    """Capability a node MUST declare to run `type_`, or None.
+
+    ★ ONE RULE, NOT THREE COPIES (2026-11-25). This used to be spelled out by hand wherever it
+      was needed — the creation route, the list of candidate nodes, the deploy path — as a chain
+      of `if variant == "media" … elif variant == "gui"`. The `decklink` variant was added on
+      2026-11-01 and only ONE of the three copies learned about it. Measured on the testeur's Z8:
+      a `decklink_io` container was CREATED on a node without the capability, the image it needs
+      had therefore never been built there, and the refusal only came 23 minutes later from the
+      deploy path — by which time the page was blaming a missing Blackmagic driver that was in
+      fact installed. An enumeration written by hand does not see the newcomer; deriving the
+      capability from the variant means the next one is covered the day it is declared.
+    """
+    if image_variant(type_) == "media" or wants_media_volume(type_):
+        return "media"
+    cap = CAPABILITY_BY_VARIANT.get(image_variant(type_))
+    if cap:
+        return cap
+    # A plugin may declare the HARDWARE without carrying its own image variant. `needs_decklink`
+    # already says « this needs a Blackmagic card », and a card only exists on a node that
+    # declares the capability — so the requirement is read from the manifest here too, rather
+    # than left for each call site to remember.
+    if needs_decklink(type_):
+        return "decklink"
+    return None
 
 
 def image_min(type_, version=None):

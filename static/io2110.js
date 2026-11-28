@@ -1555,7 +1555,8 @@
       const chg = (j0.diff || []).filter(d => d.etat === 'a_changer');
       if (!chg.length) { alert(window.t('js.io2110.mcast_plan_none')); return; }
       const lignes = chg.map(d => `TX #${d.slot + 1} ${d.essence}${
-        d.essence === 'audio' ? ' #' + (d.audio_idx + 1) : ''} : ${d.de} → ${d.vers}:${d.port}`);
+        d.essence === 'audio' ? ' #' + (d.audio_idx + 1) : ''}${
+        (d.fabric === 'a' || d.fabric === 'b') ? ' [' + d.fabric.toUpperCase() + ']' : ''} : ${d.de} → ${d.vers}:${d.port}`);
       if (!confirm(window.t('js.io2110.mcast_plan_confirm').replace('{n}', chg.length)
                    + '\n\n' + lignes.join('\n'))) return;
       const r = await ioMutate(`/api/mtl/${vmid}/tx/mcast-plan`, {apply: true}, {vmid});

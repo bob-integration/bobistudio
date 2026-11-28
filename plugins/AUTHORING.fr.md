@@ -344,6 +344,58 @@ Déclarer l'image dont le plugin a besoin au minimum dans `requires.image_min` (
 déploiement y est refusé, avec une alerte qui nomme les deux versions. Un tag qu'on ne sait pas
 comparer ne bloque jamais rien.
 
+### `resources.realtime` — un fil qui a une échéance
+
+Un plugin dont un fil doit livrer chaque image ou chaque bloc audio à l'heure déclare le **rôle** de
+ce fil ; il ne choisit jamais de chiffre, et ne demande lui-même aucune capacité.
+
+```json
+"resources": {"realtime": "program"}
+```
+
+| Rôle | Priorité | Pour |
+|---|---|---|
+| `audio` | 10 | les blocs audio (console, cartouchier) |
+| `output` | 8 | une sortie physique (SDI, ST 2110 TX) |
+| `program` | 5 | l'image programme (PGM du mélangeur, images fixes, player) |
+| `monitoring` | 3 | ce qu'on regarde sans le diffuser (multiview) |
+
+L'orchestrateur accorde au conteneur `CAP_SYS_NICE` et une limite rtprio, et passe le chiffre dans
+`CONFIG["rt_priority"]`. Depuis le fil d'échéance, avant sa première échéance :
+
+```python
+bobimxl.rt_promote(bobimxl.rt_priority(CONFIG))   # SCHED_FIFO pour le fil APPELANT seulement
+metrics.update(bobimxl.rt_state())                # rt_priority (obtenue) + rt_priority_error sur :8080
+```
+
+- Un fil hérite de la politique du fil qui le lance. Un fil annexe lancé par le fil promu (preview,
+  préchargement, construction) appelle d'abord `bobimxl.rt_release()` ; les fils lancés avant la
+  promotion (serveurs HTTP) restent normaux. Modèle : `mixer`.
+- La fiche du conteneur affiche la priorité **obtenue**, lue sur `:8080`, jamais celle demandée.
+  Un refus est publié et ne change rien d'autre.
+- N'appelez jamais `os.sched_setscheduler(..., SCHED_FIFO, ...)` depuis le script : la garde
+  `tests/verif_priorite_temps_reel.py` le refuse.
+
+### `deadline` sur `:8080` — la preuve que la cadence tient
+
+Un conteneur Dédié n'est **garanti** que s'il tient ses cœurs, publie ce bloc et n'a manqué aucune
+échéance en 24 h. Pas de bloc = pas de preuve = pas de garantie. Le contrôleur le lit à chaque relevé
+et garde une ligne par heure.
+
+```python
+witness = bobimxl.DeadlineWitness(period_s)          # une fois, au démarrage
+witness.done(deadline_ns)                            # fin de chaque cycle : sa sortie était due là
+witness.skipped(n)                                   # créneaux de la cadence pas produits du tout
+metrics["deadline"] = witness.report()               # dans le JSON de :8080
+```
+
+- Une échéance est **manquée** quand la sortie est prête après elle, ou quand un créneau est sauté.
+- Passez à `done` l'échéance du cycle, pas l'heure où il a commencé : le bloc publie un retard
+  (négatif = marge).
+- Préchauffez avant la première échéance (compilation, allocations, première image) : un
+  redémarrage compte ses ratés comme les autres, et un mur redémarré à froid n'est pas garanti pendant 24 h.
+- Modèles : `mixer`, `stills` ; le player ne publie que les sauts (son échéance vit dans le Rust).
+
 ---
 
 ## Ports publiés (`ports`)

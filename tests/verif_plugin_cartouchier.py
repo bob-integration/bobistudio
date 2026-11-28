@@ -1846,15 +1846,17 @@ controle("fil audio : cadencé sur l'index TAI des échantillons, jamais sur l'h
          "bobimxl.current_index(SR)" in _at and "next_idx + BLOCK <= now_idx + LEAD" in _at
          and "time.monotonic() - t0" not in _at,
          "une cadence monotone dérive de la grille TAI (~4 ppm mesurés)")
-controle("fil audio : temps réel demandé dès son démarrage (SCHED_FIFO, refus publié)",
-         "_apply_rt()" in _at.split("while True")[0] and "os.SCHED_FIFO" in script and 'metrics["rt"] = rt' in script)
+controle("fil audio : temps réel demandé dès son démarrage (bobimxl.rt_promote, refus publié)",
+         "_apply_rt()" in _at.split("while True")[0] and "bobimxl.rt_promote(RT_PRIORITY)" in script
+         and 'metrics["rt"] = rt' in script and "metrics.update(st)" in script)
 _main = script.split("def main():")[1]
 controle("GIL rendu en 0,5 ms au fil audio", "sys.setswitchinterval(0.0005)" in _main.split("Thread(")[0])
 _mf = json.loads(lire("plugin.json"))
 _rtmax = [f for f in _mf["config_schema"] if f.get("key") == "rt_priority"]
-controle("manifeste : SYS_NICE et rtprio couvrent la priorité demandée",
-         "SYS_NICE" in (_mf["resources"].get("cap_add") or []) and _rtmax
-         and (_mf["resources"].get("ulimits") or {}).get("rtprio", 0) >= _rtmax[0]["max"])
+# Since 0.1.15 (2026-11-23) the role is declared and the orchestrator grants and numbers it (app/realtime.py).
+controle("manifeste : rôle temps réel « audio » déclaré, aucun réglage rt_priority",
+         _mf["resources"].get("realtime") == "audio" and not _rtmax
+         and not ({"cap_add", "ulimits"} & set(_mf["resources"])))
 _lead = re.search(r"^LEAD = ([^#\n]+)", script, re.M)
 _lead_v = eval(_lead.group(1), {"BLOCK": 48}) if _lead else 0
 controle("écriture en avance de 1 à 5 ms sur l'instant TAI (absorbe une requête qui tient le GIL)",

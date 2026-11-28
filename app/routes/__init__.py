@@ -591,32 +591,41 @@ def creer():
                     "error_code": "one_per_node",
                     "existing_vmid": _deja.get("vmid"),
                 }), 409
-        # Un plugin MÉDIA (image bobi-media et/ou volume média) ne tourne que sur un nœud qui a la
-        # capacité `media` : c'est elle qui fait tenir l'image média à jour et monter les partages
-        # réseau. Refusé ICI, avant toute ligne en base — sinon on n'apprenait l'échec que par une
-        # alerte après coup, et seulement si le champ `media_image` était vide.
-        if plugins.is_plugin(d_type) and (plugins.image_variant(d_type) == "media"
-                                          or plugins.wants_media_volume(d_type)):
+        # Un plugin dont l'IMAGE n'est construite que sur les nœuds portant une capacité ne peut
+        # pas naître ailleurs : média (bobi-media + partages réseau), interfaces natives (bobi-gui,
+        # 2026-10-18), entrées/sorties Blackmagic (bobi-decklink, 2026-11-01). Refusé ICI, avant
+        # toute ligne en base — sinon on n'apprend l'échec que par une alerte, après coup.
+        #
+        # ★ LA RÈGLE EST DÉRIVÉE, PLUS ÉNUMÉRÉE (2026-11-25). Ce contrôle était une suite de `if`
+        #   par variante, recopiée à l'identique dans `project_environment.nodes()` et dans le
+        #   chemin de déploiement. `decklink` n'a été ajouté qu'au troisième : sur la Z8 du
+        #   testeur, un conteneur `decklink_io` est né sur un nœud sans la capacité, l'image
+        #   qu'il lui faut n'y avait donc jamais été construite, et le refus n'est tombé que
+        #   23 minutes plus tard — pendant que la page accusait un pilote Blackmagic pourtant
+        #   installé. `plugins.required_capability` est maintenant la seule règle.
+        # ⚠ Les MESSAGES, eux, restent écrits en toutes lettres : une clé i18n assemblée par
+        #   concaténation échappe au contrôle de portée de la CI (même raison que dans
+        #   docker_compute). Une capacité sans message est un oubli que la garde doit voir, pas
+        #   un code brut affiché à l'exploitant → `tests/verif_capacite_requise_derivee.py`.
+        _cap_requise = plugins.required_capability(d_type) if plugins.is_plugin(d_type) else None
+        if _cap_requise:
             from ..node_driver import node_capabilities
             from ..i18n import t as _t
+            _MSG_CAPACITE = {
+                "media": ("api.containers.noeud_sans_capacite_media", None),
+                "gui": ("api.containers.noeud_sans_capacite_gui", "node_without_gui_capability"),
+                "decklink": ("api.containers.noeud_sans_capacite_decklink",
+                             "node_without_decklink_capability"),
+            }
             _node = db_get_node(int(node_id))
             if not _node:
                 return jsonify({"error": _t("api.containers.noeud_inconnu")}), 404
-            if "media" not in node_capabilities(_node):
-                return jsonify({"error": _t("api.containers.noeud_sans_capacite_media",
-                                           n=_node.get("name"), t=d_type)}), 400
-        # Même règle pour l'image des interfaces natives (bobi-gui, node_only) : elle n'est construite que sur
-        # les nœuds qui ont la capacité `gui` (2026-10-18).
-        if plugins.is_plugin(d_type) and plugins.image_variant(d_type) == "gui":
-            from ..node_driver import node_capabilities
-            from ..i18n import t as _t
-            _node = db_get_node(int(node_id))
-            if not _node:
-                return jsonify({"error": _t("api.containers.noeud_inconnu")}), 404
-            if "gui" not in node_capabilities(_node):
-                return jsonify({"error": _t("api.containers.noeud_sans_capacite_gui",
-                                           n=_node.get("name"), t=d_type),
-                                "error_code": "node_without_gui_capability"}), 400
+            if _cap_requise not in node_capabilities(_node):
+                _cle, _code = _MSG_CAPACITE[_cap_requise]
+                _rep = {"error": _t(_cle, n=_node.get("name"), t=d_type)}
+                if _code:
+                    _rep["error_code"] = _code
+                return jsonify(_rep), 400
         # ── AUCUN CŒUR NE POURRAIT ÊTRE DÉDIÉ : on AVERTIT, l'humain choisit ────────────────
         # Décision de Cyril, 2026-11-07. Ce n'est PAS un refus : le repli sur le pool partagé
         # reste le bon défaut (un conteneur sans cpuset flotterait sur les lcores du moteur 2110).
@@ -640,6 +649,43 @@ def creer():
                     "confirmation_requise": True,
                     "node_id": int(node_id),
                     "dedication": _pf,
+                }), 409
+        # ── THE SHARED POOL'S REAL-TIME BUDGET (2026-11-23) ─────────────────────────────────────
+        # A plugin with a real-time role runs in FIFO, ahead of every normal thread of the pool:
+        # past the budget (cf. core_pool.RT_SHARED_SHARE) it is refused unless the user chooses —
+        # the same rule as a Dedicated container without room. Gate on the server, before any row.
+        if not data.get("confirme_rt"):
+            _dedie_ok = True
+            if data.get("confirme_partage"):
+                _dedie_ok = docker_compute.preflight_dedication(int(node_id), d_type)["suffisant"]
+            _rt = docker_compute.preflight_rt_shared(int(node_id), d_type, dedicated_ok=_dedie_ok)
+            if not _rt["suffisant"]:
+                from ..i18n import t as _t
+                return jsonify({
+                    "error": _t("api.containers.rt_partage_plein", t=d_type, n=_rt["noeud"],
+                                want=_rt["demande"], charge=_rt["charge"], budget=_rt["budget"]),
+                    "error_code": "rt_shared_full",
+                    "confirmation_requise": True,
+                    "node_id": int(node_id),
+                    "rt": _rt,
+                }), 409
+        # ── THE NODE'S RAM (2026-11-23) ─────────────────────────────────────────────────────────
+        # The memory limits of a node's containers together must fit in its RAM (share
+        # memory_watch.NODE_SHARE): past it, refused unless the user chooses. Unknown RAM: admitted.
+        if not data.get("confirme_memoire"):
+            from .. import memory_watch
+            _mem = memory_watch.admission(int(node_id), (docker_compute.effective_resources(d_type, {})
+                                                         or {}).get("memory"))
+            if not _mem["suffisant"]:
+                from ..i18n import t as _t
+                return jsonify({
+                    "error": _t("api.containers.memoire_noeud_pleine", t=d_type, n=_mem["noeud"],
+                                want=_mem["demande"], somme=_mem["somme"], budget=_mem["budget"],
+                                ram=_mem["ram"]),
+                    "error_code": "memory_node_full",
+                    "confirmation_requise": True,
+                    "node_id": int(node_id),
+                    "memoire": _mem,
                 }), 409
         d_params = data.get("deploy_params") or {}
         if plugins.is_plugin(d_type):
@@ -671,10 +717,16 @@ def creer():
             # Création DANS un projet (chantier 5) : project_id posé AVANT le deploy →
             # bind média du projet au docker run + niveau de tally du projet par défaut.
             _proj_id = data.get("project_id")
+            _au_mieux = bool(data.get("confirme_partage"))
             def _creer_docker():
                 vmid = docker_compute.creer_container_compute(
                     int(node_id), d_type, hostname=data.get("hostname"))
                 if vmid:
+                    if _au_mieux:
+                        # « Créer au mieux » chosen above: its deployments may use the shared pool
+                        # when its cores are missing (otherwise refused, cf. deploy_compute).
+                        from ..database import db_set_dedicated_fallback
+                        db_set_dedicated_fallback(vmid, True)
                     if _proj_id:
                         from ..database import db_set_project
                         try:
@@ -757,6 +809,14 @@ def container_resources_view(vmid):
     return jsonify(out)
 
 
+@bp.route("/api/resources/memory_by_type", methods=["GET"])
+@require_login
+def memory_by_type():
+    """Fleet peak of each plugin over 7 days against its manifest limit (app/memory_watch.py)."""
+    from .. import memory_watch
+    return jsonify({"types": memory_watch.by_type()})
+
+
 @bp.route("/api/containers/<int:vmid>/cores_estimate", methods=["POST"])
 @require_login
 def cores_estimate(vmid):
@@ -797,6 +857,16 @@ def patch_resources(vmid):
     c = db_get_container(vmid)
     if not c:
         return jsonify({"error": "container introuvable"}), 404
+    if memory is not None and not reset and not data.get("confirme_memoire") and c.get("node_id"):
+        # The node's RAM (2026-11-23), as at creation: this container's own limit is replaced.
+        from .. import memory_watch
+        _mem = memory_watch.admission(c["node_id"], memory, exclude_vmid=vmid)
+        if not _mem["suffisant"]:
+            from ..i18n import t as _t
+            return jsonify({**_mem, "error": "memory_node_full",
+                            "message": _t("api.containers.memoire_noeud_pleine", t=c.get("hostname") or vmid,
+                                          n=_mem["noeud"], want=_mem["demande"], somme=_mem["somme"],
+                                          budget=_mem["budget"], ram=_mem["ram"])}), 409
     # Un cpuset choisi à la main contournerait la comptabilité de `core_pool` (cœurs dédiés à
     # d'autres, lcores busy-poll du moteur 2110). L'ancien formulaire renvoie le cpuset COURANT
     # tel quel : on tolère cette valeur inchangée (ou vide), on refuse tout le reste plutôt que de
@@ -823,14 +893,23 @@ def patch_resources(vmid):
         from .. import cpu_weight as _cw
         if not _cw.niveau_valide(cpu_weight_in):
             return jsonify({"error": "cpu_weight : %s" % ", ".join(_cw.LEVELS)}), 400
-        poids_res = _cw.regler(vmid, cpu_weight_in)
+        poids_res = _cw.regler(vmid, cpu_weight_in, confirme_rt=bool(data.get("confirme_rt")))
         if not poids_res.get("ok"):
             # On air needs dedicated cores (the place follows the level): refused when the node
             # has none to give, with what is missing — the level stays as it was.
             if isinstance(poids_res.get("err"), dict):
                 return jsonify(poids_res["err"]), 409
             return jsonify({"error": poids_res.get("err")}), 400
-    # ─── DEDICATED CORES: resized HOT (2026-11-07) ──────────────────────────────────────────
+    # ─── DEDICATED WITHOUT ROOM: refuse, or « au mieux » (2026-11-23) ───────────────────────
+    # The user's choice for a deployment that finds no cores (cf. docker_compute.deploy_compute).
+    # A setting only: nothing moves now, the next deployment reads it.
+    fallback_in = data.get("dedicated_fallback")
+    if fallback_in is not None:
+        if not isinstance(fallback_in, bool):
+            return jsonify({"error": "dedicated_fallback : true ou false"}), 400
+        from ..database import db_set_dedicated_fallback
+        db_set_dedicated_fallback(vmid, fallback_in)
+        # ─── DEDICATED CORES: resized HOT (2026-11-07) ──────────────────────────────────────────
     # For a dedicated container `cores` is its reservation, resized with `docker update` like a
     # guarantee — no cut. For a shared one it stays a CPU cap (`--cpus`), part of the spec: that
     # one recreates. Read AFTER the level above: « Dédié + 3 cores » in one request is one gesture.
@@ -870,10 +949,12 @@ def patch_resources(vmid):
              cible=c.get("hostname"), vmid=vmid, kind="deploy",
              params=({"chgs": _chgs} if _chgs else None))
     if not _chgs:
-        if poids_res is not None or cores_res is not None:
+        if poids_res is not None or cores_res is not None or fallback_in is not None:
             from ..audit import journal as _j2
             _hot = ", ".join(x for x in (("cpu_weight=%s" % poids_res["niveau"]) if poids_res else "",
-                                         ("cores=%s" % cores_res["cores"]) if cores_res else "") if x)
+                                         ("cores=%s" % cores_res["cores"]) if cores_res else "",
+                                         ("dedicated_fallback=%s" % int(fallback_in))
+                                         if fallback_in is not None else "") if x)
             _j2("alert.audit.modifier_ressources", cible=c.get("hostname"), vmid=vmid,
                 kind="deploy", params={"chgs": _hot})
             return jsonify({"status": "ok", "vmid": vmid, "cpu_weight": poids_res, "cores": cores_res})
@@ -1913,6 +1994,8 @@ from . import pages  # noqa: F401
 
 # Télémétrie/diagnostic infra (fabric, monitoring panels, pyramide, membw, santé nœuds, GPU, shm) — tranche 13.
 from . import monitoring_api  # noqa: F401
+from . import fabric_api  # noqa: F401
+from . import registry_api  # noqa: F401
 
 # Layouts multiview + Projets (CRUD, export/import, restore streamé) — tranche 14.
 from . import projects_api  # noqa: F401
@@ -1952,6 +2035,9 @@ from . import habilitations_api  # noqa: F401
 from . import inventaire  # noqa: F401
 from . import journaux_export  # noqa: F401
 from . import ops_journal_api  # noqa: F401 — journal d'exploitation des plugins (qui a fait quoi)
+
+# Rapport de problème : ce que l'exploitant nous envoie quand quelque chose ne va pas (14/11).
+from . import support_report_api  # noqa: F401
 
 # Disques locaux d'un nœud (inventaire, formatage gardé, montage persistant, veille).
 from . import node_disks  # noqa: F401

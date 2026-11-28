@@ -233,6 +233,8 @@ code { font-family: var(--font-mono); background: var(--bg-input);
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .btn:hover    { filter: brightness(1.10); }
+/* A disabled button must not look clickable: it was pixel-identical to an enabled one. */
+.btn:disabled, .btn:disabled:hover { opacity: 0.5; cursor: not-allowed; filter: none; }
 /* Hover du secondaire : surface bg-hover (comme la nav). Exclut les variantes
    colorées, qui conservent leur fill et ne réagissent qu'au filtre brightness. */
 .btn:not([class*="btn-"]):hover { background: var(--bg-hover); filter: none; }
@@ -5504,6 +5506,29 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
     line-height: 1.5;
     max-width: 62ch;                      /* prose : on reste dans la plage lisible */
 }
+/* Startup splash (Settings → Branding): the fields beside a 16:9 preview, one column when narrow. */
+.splash-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+    align-items: flex-start;
+}
+.splash-fields {
+    flex: 1 1 320px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: var(--space-4);
+}
+.splash-preview-wrap { flex: 1 1 320px; max-width: 640px; }
+#splash-preview {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: block;
+}
+.splash-form .identity-actions { margin-top: var(--space-4); }
 /* Le logo n'est pas un quatrième champ de texte : il est séparé par un filet, et son aperçu est
    posé À CÔTÉ de ses actions plutôt qu'au-dessus — c'est ce que l'on regarde en le changeant. */
 .identity-logo {
@@ -5571,12 +5596,14 @@ body:has(.subnav-deck) .topnav:not(.condensed) {
 .subnav-deck > .tab.active, .tabs-line > .tab.active, .navpair-deck > .tab.active { background: transparent; color: var(--text-strong, var(--text)); font-weight: 600; }
 .subnav-deck > .tab.active::after, .tabs-line > .tab.active::after, .navpair-deck > .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px;
     height: 2px; border-radius: 2px; background: var(--accent); }
-/* `.tabs-line` : l'actif passe en gras, ce qui l'élargissait et décalait ses voisins. La largeur du
-   gras est réservée par un double invisible du libellé (`data-label`, même case de grille). */
-.tabs-line > .tab[data-label], .navpair-deck > .tab[data-label] { display: inline-grid; }
+/* L'actif passe en gras, ce qui l'élargissait et décalait ses voisins. La largeur du gras est
+   réservée par un double invisible du libellé (`data-label`, même case de grille). Le `data-label`
+   est posé par `static/subnav_deck.js` (bandes) ou à la construction (`.tabs-line`). */
+.subnav-deck > .tab[data-label], .tabs-line > .tab[data-label], .navpair-deck > .tab[data-label] { display: inline-grid; text-align: center; }
+.subnav-deck > .tab[data-label] > span, .subnav-deck > .tab[data-label]::before,
 .tabs-line > .tab[data-label] > span, .tabs-line > .tab[data-label]::before,
 .navpair-deck > .tab[data-label] > span, .navpair-deck > .tab[data-label]::before { grid-area: 1 / 1; align-self: center; }
-.tabs-line > .tab[data-label]::before, .navpair-deck > .tab[data-label]::before { content: attr(data-label); font-weight: 600; visibility: hidden; }
+.subnav-deck > .tab[data-label]::before, .tabs-line > .tab[data-label]::before, .navpair-deck > .tab[data-label]::before { content: attr(data-label); font-weight: 600; visibility: hidden; }
 .subnav-deck-notch { position: absolute; top: 0; width: 0; height: 0; transform: translateX(-50%);
     border: 6px solid transparent; border-top-color: var(--border); pointer-events: none; }
 .subnav-deck-notch[hidden] { display: none; }

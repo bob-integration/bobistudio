@@ -1561,3 +1561,45 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 .ctl-filter .filter-search { flex: 1 1 240px; min-width: 0; max-width: 420px; }
 .ctl-filter-empty { margin: 0 0 var(--space-3); }
 [hidden].ctl-filter-empty { display: none; }
+
+/* ─── ctl-disclose — en-tête dépliant ─────────────────────────────────────────────────────────
+ * Une ligne cliquable qui ouvre et ferme ce qu'elle coiffe : chevron, libellé, compteur. Posée
+ * pour les groupes de la liste d'instances (tri par projet / par capacité, demande du testeur du
+ * 2026-11-27), elle vaut pour tout empilement de sections repliables.
+ *
+ * Contrat : un <button type="button"> qui porte `aria-expanded` — c'est lui qui tourne le chevron,
+ * pas une classe à poser à la main. Le compteur reste VISIBLE replié : c'est la seule chose qui
+ * dise ce qu'on cache. `--active` se pose quand le contenu replié tient l'élément en cours.
+ *
+ *   <button type="button" class="ctl-disclose" aria-expanded="false">
+ *     <span class="ctl-disclose-caret" aria-hidden="true">▸</span>
+ *     <span class="ctl-disclose-lab">Atelier</span>
+ *     <span class="ctl-disclose-count">3</span>
+ *   </button>
+ */
+.ctl-disclose {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; min-height: 36px; padding: 6px 8px;
+    border: 0; border-radius: var(--radius-small);
+    background: var(--border-soft); color: var(--text);
+    font: inherit; font-size: 0.85em; font-weight: 600;
+    text-align: left; cursor: pointer;
+}
+.ctl-disclose:hover { background: var(--bg-hover); }
+.ctl-disclose:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ctl-disclose-caret {
+    flex: none; width: 1em; color: var(--text-muted);
+    transition: transform 140ms;
+}
+.ctl-disclose[aria-expanded="true"] .ctl-disclose-caret { transform: rotate(90deg); }
+.ctl-disclose-lab {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctl-disclose-count {
+    flex: none; padding: 1px 7px;
+    border-radius: 9px; background: var(--bg);
+    color: var(--text-muted); font-family: var(--font-mono);
+    font-size: 0.85em; font-weight: 400;
+}
+.ctl-disclose--active .ctl-disclose-lab { color: var(--accent); }

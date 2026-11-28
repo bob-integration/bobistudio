@@ -114,6 +114,32 @@ mtl, comp = nr._desired_running(NID)
 controle("★★★ hors de la liste « censé tourner » → jamais « disparu », jamais relancé à l'aveugle",
          v not in [c["vmid"] for c in comp], [c["vmid"] for c in comp])
 
+print("\n── 1b. la cause ne survit pas au pilote (Z8 du testeur, 2026-11-25) ──────")
+# Cause posée à la création, pilote installé ensuite, redéploiement : la fiche disait encore
+# « pilote absent » tout l'après-midi, alors que le seul blocage était ailleurs.
+ETAT["doc"] = ABSENT
+z = conteneur(229, "carte")
+deploy.deployer_script(z, "carte", {})
+controle("★★ (précondition) cause posée par la porte",
+         ligne(z).get("status_cause") == "driver_missing_upload_needed", ligne(z).get("status_cause"))
+ETAT["doc"] = ABSENT
+deploy.deployer_script(z, "carte", {})
+controle("★★ pilote toujours absent au redéploiement : la cause reste",
+         ligne(z).get("status_cause") == "driver_missing_upload_needed", ligne(z).get("status_cause"))
+ETAT["doc"] = PRESENT
+APPELS["locked"] = []
+deploy.deployer_script(z, "carte", {})
+controle("★★★ pilote présent au redéploiement : l'ancienne cause est EFFACÉE",
+         not ligne(z).get("status_cause"), ligne(z).get("status_cause"))
+controle("★★ et le statut n'est plus « en attente du pilote »",
+         ligne(z).get("status") != "awaiting_driver", ligne(z).get("status"))
+controle("★★ le déploiement est bien parti", APPELS["locked"] == [z], APPELS["locked"])
+database.db_update_status(z, "crash_loop", cause="exit 1")
+ETAT["doc"] = PRESENT
+deploy.deployer_script(z, "simple", {})
+controle("★★ un plugin sans pilote déclaré ne touche pas à la cause d'un autre chemin",
+         ligne(z).get("status_cause") == "exit 1", ligne(z).get("status_cause"))
+
 print("\n── 2. ce qu'on ne retient PAS ───────────────────────────────────────────")
 for nom, doc, type_ in (("pilote présent", PRESENT, "carte"), ("agent muet (état inconnu)", None, "carte"),
                         ("plugin sans pilote déclaré", ABSENT, "simple"),

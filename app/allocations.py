@@ -6,9 +6,12 @@
 """
 Calcul des VMIDs et IPs libres en croisant settings, DB locale et liste LXC Proxmox.
 """
+import contextlib
 import ipaddress
 import json
 import logging
+import math
+import threading
 from . import settings
 from .database import db_get_containers
 
@@ -340,13 +343,41 @@ def next_free_vmid():
 
 
 # ─── B2-3 : multicast cluster-unique (pool alloué dans le registre NMOS) ──────────────────────
+# ─── Read snapshot ─────────────────────────────────────────────────────────────────────────
+# A SIMULATION (plan preview) asks "which groups are held?" once per flow. Each answer re-read
+# and re-decoded the whole NMOS registry and the whole ledger: 133 times for one preview of a
+# 132-flow engine, about 1 s under the interpreter lock, replayed at every keystroke of the plan
+# editor (measured 2026-11-11: the orchestrator answered in seconds while the editor was open).
+# Inside `read_snapshot()` both reads are taken once. ONLY for code that writes nothing: an
+# allocator that reserves must see the ledger as it is now, never a copy.
+_snapshot = threading.local()
+
+
+@contextlib.contextmanager
+def read_snapshot():
+    if getattr(_snapshot, "data", None) is not None:      # nested: keep the outer one
+        yield
+        return
+    _snapshot.data = {}
+    try:
+        yield
+    finally:
+        _snapshot.data = None
+
+
 def _registry_transports():
     """(resource_id, transport) du registre NMOS — source de vérité cluster du multicast."""
+    snap = getattr(_snapshot, "data", None)
+    if snap is not None and "registry" in snap:
+        return snap["registry"]
     try:
         from .database import db_nmos_resources
-        return [(r["id"], r.get("transport") or {}) for r in db_nmos_resources()]
+        out = [(r["id"], r.get("transport") or {}) for r in db_nmos_resources()]
     except Exception:
-        return []
+        out = []
+    if snap is not None:
+        snap["registry"] = out
+    return out
 
 
 def _mcast_keys(tr):
@@ -373,6 +404,87 @@ def _used_multicasts(transports=None):
         used.update(_mcast_keys(tr))
     used.update(db_used_mcast_allocations())
     return used
+
+
+# ─── Group exclusivity: one multicast GROUP per flow, whatever the port ──────────────────────────
+# IGMP subscribes to a group, not to a port: two flows on the same address that differ only by
+# port cannot be separated by a receiver (it gets both). Measured on a live engine: the 2022-7
+# leg-1 audios of TX1 and TX2 both landed on the leg-0 video group of TX1, because the scan only
+# skipped an occupied `ip:port`. Every allocator below therefore treats an address as free only if
+# NO other flow holds it, on any port. Existing allocations are left as they are.
+
+def _ledger_rows(ip=None):
+    """Ledger rows `(rowid, ip, port, owner_ref)`, in insertion order (rowid), optionally for one
+    address only."""
+    from .database import get_db
+    snap = getattr(_snapshot, "data", None)
+    if snap is not None:
+        if "ledger" not in snap:
+            with get_db() as db:
+                snap["ledger"] = [(int(r["rid"]), r["ip"], int(r["port"]), r["owner_ref"]) for r in db.execute(
+                    "SELECT rowid AS rid, ip, port, owner_ref FROM mcast_allocations ORDER BY rowid").fetchall()]
+        return [r for r in snap["ledger"] if ip is None or r[1] == ip]
+    q = "SELECT rowid AS rid, ip, port, owner_ref FROM mcast_allocations"
+    args = ()
+    if ip is not None:
+        q += " WHERE ip=?"
+        args = (ip,)
+    with get_db() as db:
+        return [(int(r["rid"]), r["ip"], int(r["port"]), r["owner_ref"])
+                for r in db.execute(q + " ORDER BY rowid", args).fetchall()]
+
+
+def _groups_held_by_others(owner_ref, transports=None):
+    """Addresses (groups) held by a flow OTHER than `owner_ref`, on any port: ledger rows of other
+    owners, plus NMOS registry transports whose exact `ip:port` is absent from the ledger (an
+    address imposed by hand, never reserved). A registry `ip:port` that IS in the ledger belongs to
+    its ledger owner — otherwise a flow would be refused the address its own NMOS resource shows.
+    `owner_ref` may be a set of owner refs (the legs of one flow, see `_flow_refs`)."""
+    mine = owner_ref if isinstance(owner_ref, (set, frozenset)) else {owner_ref}
+    taken = set()
+    ledger_keys = set()
+    for _rid, ip, port, owner in _ledger_rows():
+        ledger_keys.add(f"{ip}:{port}")
+        if owner not in mine:
+            taken.add(ip)
+    for _res_id, tr in (_registry_transports() if transports is None else transports):
+        for k in _mcast_keys(tr):
+            if k not in ledger_keys:
+                taken.add(k.rsplit(":", 1)[0])
+    return taken
+
+
+def _release_exact(ip, port, owner_ref):
+    """Release exactly this (ip, port) row of this owner (never another owner's row)."""
+    from .database import get_db
+    with get_db() as db:
+        db.execute("DELETE FROM mcast_allocations WHERE ip=? AND port=? AND owner_ref=?",
+                   (ip, int(port), owner_ref))
+        db.commit()
+
+
+def _claim_group(ip, port, owner_ref):
+    """Reserve (ip, port) for `owner_ref` and keep it only if no other owner holds the GROUP.
+
+    The ledger's uniqueness is on (ip, port): two concurrent allocators picking the same ip with
+    different ports both get their INSERT accepted. So after a successful reservation, re-read the
+    rows of that ip. Deterministic loser: the row inserted LAST (higher rowid) backs off. Both
+    allocators see the same rowid order; the later inserter necessarily reads after the earlier
+    one's commit (SQLite serializes writes), so it sees it and yields, while the earlier one sees
+    either nothing or a later row and keeps its address. Exactly one wins; neither loops forever.
+    Returns True if the address is ours."""
+    from .database import db_reserve_mcast
+    if not db_reserve_mcast(ip, port, owner_ref):
+        return False
+    rows = _ledger_rows(ip)
+    mine = [rid for rid, _ip, p, o in rows if o == owner_ref and p == int(port)]
+    if not mine:                      # released under our feet: treat as lost
+        return False
+    if any(o != owner_ref and rid < mine[0] for rid, _ip, _p, o in rows):
+        _release_exact(ip, port, owner_ref)
+        log.info("multicast %s: group %s taken concurrently by another flow — trying next", owner_ref, ip)
+        return False
+    return True
 
 
 def _reuse_owner_reservation(owner_ref, port, in_range=None):
@@ -404,15 +516,15 @@ def _reuse_owner_reservation(owner_ref, port, in_range=None):
 
 
 def allocate_multicast(port=None, owner_ref=None):
-    """1ᵉʳ groupe multicast libre du pool (`mcast_pool_base .. +size`) au port donné/défaut, RÉSERVÉ
-    ATOMIQUEMENT (voir database.db_reserve_mcast) pour `owner_ref` — l'INSERT en base est lui-même
-    l'opération qui tranche, pas une lecture Python suivie d'une décision : deux appels concurrents
-    (même processus ou non) qui viseraient la même adresse ne peuvent pas tous les deux « gagner ».
-    `owner_ref` identifie de façon stable QUI détient cette adresse (ex. 'tx:302:0:video:leg0',
-    'nmos:<resource_id>') — requis pour toute allocation réelle ; permet la libération ciblée
-    (db_release_mcast_owner/_prefix) à la destruction du container/de la ressource.
-    Retourne (ip, port) ou (None, None) si épuisé."""
-    from .database import db_reserve_mcast, db_add_alert
+    """First free multicast group of the global pool (`mcast_pool_base .. +size`) at the given/default
+    port, reserved ATOMICALLY (see database.db_reserve_mcast) for `owner_ref` — the INSERT itself
+    decides, not a Python read followed by a decision: two concurrent calls (same process or not)
+    aiming at the same address cannot both "win". A group is free only if no other flow holds it on
+    ANY port (see `_claim_group`). `owner_ref` identifies WHO holds the address in a stable way
+    (e.g. 'tx:302:0:video:leg0', 'nmos:<resource_id>') — required for any real allocation; it allows
+    targeted release (db_release_mcast_owner/_prefix) when the container/resource is destroyed.
+    Returns (ip, port), or (None, None) if exhausted."""
+    from .database import db_add_alert
     base = settings.get("mcast_pool_base") or "239.100.0.0"
     size = int(settings.get("mcast_pool_size") or 4096)
     port = int(port or settings.get("mcast_port_default") or 5000)
@@ -427,13 +539,12 @@ def allocate_multicast(port=None, owner_ref=None):
     reused = _reuse_owner_reservation(owner_ref, port)
     if reused:
         return reused
-    used = _used_multicasts()
-    for i in range(1, size):   # i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
+    taken = _groups_held_by_others(owner_ref)
+    for i in range(1, size):   # i=0 == base (network address of the block, e.g. .0) → never allocated
         ip = str(ipaddress.IPv4Address(a + i))
-        key = f"{ip}:{port}"
-        if key in used:
+        if ip in taken:
             continue
-        if db_reserve_mcast(ip, port, owner_ref):
+        if _claim_group(ip, port, owner_ref):
             return (ip, port)
     db_add_alert("alert.net.pool_multicast_epuise", "error", kind="net",
                  params={"base": base, "size": size})
@@ -469,9 +580,45 @@ def next_free_ip(node_id=None):
 # statique) impose une plage stricte — pas de repli sur le pool global si la plage dédiée est
 # épuisée (le switch rejetterait physiquement une adresse hors plage). Voir mcast_ranges (DB).
 
+# Relative tolerance for numeric format criteria: fractional rates are written in several ways
+# (59.94 in a rule, 60000/1001 = 59.94005994 on a slot: relative gap 1e-6) and must match, while
+# two distinct broadcast rates (59.94 vs 60: relative gap 1e-3) must not.
+MATCH_REL_TOL = 1e-4
+
+
+def _as_number(v):
+    """`v` as a finite float if it is a number or a numeric string, else None. Booleans are not
+    numbers here (True would otherwise equal 1)."""
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        f = float(v)
+    elif isinstance(v, str):
+        try:
+            f = float(v.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _criterion_matches(actual, expected):
+    """One `match_json` criterion. A key absent from the flow format (None) never matches. Two
+    numeric values (or numeric strings) compare as numbers within MATCH_REL_TOL: the settings UI
+    stores `{"fps": 50}` while a TX slot carries `50.0`, and the old text comparison ("50" vs
+    "50.0") made the rule silently never apply. Anything else compares as text, as before."""
+    if actual is None:
+        return False
+    a, e = _as_number(actual), _as_number(expected)
+    if a is not None and e is not None:
+        return math.isclose(a, e, rel_tol=MATCH_REL_TOL, abs_tol=1e-9)
+    return str(actual) == str(expected)
+
+
 def _regle_correspond(r, essence, leg, fmt):
-    """None si la règle `r` ne s'applique pas à (essence, leg, fmt) ; sinon un tuple de score de
-    spécificité (plus haut = plus spécifique) pour départager plusieurs règles candidates."""
+    """None if rule `r` does not apply to (essence, leg, fmt); otherwise a specificity score tuple
+    (higher = more specific) used to rank several candidate rules."""
     if r.get("essence") and r["essence"] != essence:
         return None
     if r.get("leg") is not None and int(r["leg"]) != int(leg or 0):
@@ -485,7 +632,7 @@ def _regle_correspond(r, essence, leg, fmt):
             crit = {}
         fmt = fmt or {}
         for k, v in crit.items():
-            if str(fmt.get(k)) != str(v):
+            if not _criterion_matches(fmt.get(k), v):
                 return None
             nb_crit += 1
     return (1 if r.get("essence") else 0, 1 if r.get("leg") is not None else 0, nb_crit, int(r.get("id") or 0))
@@ -525,7 +672,14 @@ def port_default_for(node_id, ifname, media_network_id, essence, leg, fmt, fallb
     `fallback` (comportement historique). L'appelant applique ensuite son propre décalage par slot/
     index par-dessus (le port de base ne suffit pas seul à distinguer plusieurs flux de la même
     essence — cf. hooks.py)."""
-    rule = _plage_applicable(node_id, ifname, media_network_id, essence, leg, fmt)
+    plan = _flow_plan(node_id, ifname, media_network_id)
+    if plan is not None:
+        if essence == "audio":            # callers pass a partial format: complete it (ptime…)
+            from .io2110_flows import audio_format
+            fmt = dict(audio_format({}), **(fmt or {}))
+        rule = _plan_line(plan, essence, fmt)
+    else:
+        rule = _plage_applicable(node_id, ifname, media_network_id, essence, leg, fmt)
     if rule is None:
         return fallback
     return int(rule.get(f"port_default_{essence}") or rule.get("port_default") or fallback)
@@ -563,34 +717,669 @@ def plan_decalages(rule):
 
 
 def _plan_offset(rule, essence, slot, sub_index=0, leg=0):
-    """Rang (décalage entier depuis base_ip) imposé par le plan, ou None si le plan ne s'applique
-    pas — auquel cas l'appelant retombe sur le scan historique « première adresse libre » :
-      - pas de n° de sortie connu (`slot=None`) : appel hors arbre TX (NMOS, pool global) ;
-      - essence inconnue du plan ;
-      - leg 1 (2022-7) sur une règle NON spécifique au leg : les deux legs partageraient la plage,
-        donc le rang planifié — le leg 1 garde le scan tant qu'il n'a pas SA plage.
-    Le rang 0 (adresse réseau du bloc, ex. .0) n'est jamais planifié : le plan démarre à slot+1."""
+    """Rank (integer offset from base_ip) the plan imposes, or None when the plan does not apply —
+    the caller then falls back to the historical "first free address" scan:
+      - no known output number (`slot=None`): call outside the TX tree (NMOS, global pool);
+      - essence unknown to the plan;
+      - leg 1 (2022-7) on a rule NOT specific to the leg: both legs would share the range, hence
+        the planned rank — leg 1 keeps the scan until it has ITS range.
+    Rank 0 (network address of a block, e.g. .0) is never planned: the plan starts at slot+1. An
+    explicit range ("first-last", `explicit_span`) has no network address: it starts at slot."""
     if slot is None or essence not in MCAST_PLAN_DEFAUT:
+        return None
+    if (rule or {}).get("rank_mode") == "counter":    # no planned rank: next free group of the range
         return None
     if int(leg or 0) != 0 and (rule or {}).get("leg") is None:
         return None
     d = plan_decalages(rule)
-    off = d[essence] + (slot + 1)
+    # Output N (slot N-1) at rank N in a block (rank 0 = network address), at rank N-1 in an
+    # explicit range, whose first address is usable.
+    off = d[essence] + slot + (0 if (rule or {}).get("explicit_span") else 1)
     if essence == "audio":
         off += int(sub_index or 0) * d["pas_audio"]
     return off
 
 
+# ─── Per-range plan axes ─────────────────────────────────────────────────────────────────────────
+# Sites address multicast in many ways; a plan is a COMBINATION of independent per-range settings,
+# never one scheme. Each axis is NULL by default, and NULL keeps the historical behaviour:
+#   rank_mode    'slot' (rank from the output number, `_plan_offset`) | 'counter' (next free group);
+#   port_mode    'increment' (the caller's port) | 'fixed' (one port per essence, the rule's);
+#   reserve_last the last address of the block is never allocated (the first never is);
+#   base_ip_b    2022-7 leg B = base_ip_b + (A − base_ip); equal to base_ip = same group on both
+#                fabrics.
+
+def _alloc_span(rule):
+    """`(first, end)` offsets allocatable in the rule's A block, `end` exclusive: rank 0 (network
+    address) is never allocated, and `reserve_last` withholds the last one too. An EXPLICIT range
+    (plan line `explicit_span`, typed "first-last") is allocatable end to end: `(0, size)`."""
+    r = rule or {}
+    size = max(int(r.get("size") or 0), 0)
+    if r.get("explicit_span"):
+        return 0, size
+    return 1, max(size - 1 if r.get("reserve_last") else size, 1)
+
+
+def range_capacity(rule):
+    """Number of allocatable A addresses of a rule (first/last reservations deducted)."""
+    first, end = _alloc_span(rule)
+    return max(end - first, 0)
+
+
+def range_used(rule, taken):
+    """Number of groups of `taken` (strings) that fall inside the rule's A block."""
+    try:
+        a = int(ipaddress.IPv4Address(rule["base_ip"]))
+    except Exception:
+        return 0
+    size = int(rule.get("size") or 0)
+    n = 0
+    for ip in taken:
+        try:
+            n += a <= int(ipaddress.IPv4Address(ip)) < a + size
+        except Exception:
+            continue
+    return n
+
+
+def ranges_with_usage(ranges, transports=None):
+    """`ranges` (dicts) each completed with `capacity` and `used` (groups currently held in its A
+    block, ledger + registry, as the allocators see them)."""
+    taken = _groups_held_by_others(None, transports)
+    return [dict(r, capacity=range_capacity(r), used=range_used(r, taken)) for r in ranges]
+
+
+def rule_port(rule, essence, port):
+    """Port a flow of `essence` gets under `rule`: with `port_mode='fixed'` the rule's essence port
+    (fallback `port_default`) whatever the caller passed, otherwise the caller's `port`."""
+    r = rule or {}
+    if r.get("port_mode") == "fixed":
+        fixed = (essence and r.get(f"port_default_{essence}")) or r.get("port_default")
+        if fixed:
+            return int(fixed)
+    return port
+
+
+def derive_leg_b(rule, ip_a):
+    """Leg-B address of a flow whose leg-0 address is `ip_a`, or None (rule without `base_ip_b`,
+    or `ip_a` outside the rule's A block)."""
+    r = rule or {}
+    if not r.get("base_ip_b") or not ip_a:
+        return None
+    try:
+        off = int(ipaddress.IPv4Address(ip_a)) - int(ipaddress.IPv4Address(r["base_ip"]))
+        if not 0 <= off < int(r.get("size") or 0):
+            return None
+        return str(ipaddress.IPv4Address(int(ipaddress.IPv4Address(r["base_ip_b"])) + off))
+    except Exception:
+        return None
+
+
+def _rule_contains(rule, ip):
+    try:
+        off = int(ipaddress.IPv4Address(ip)) - int(ipaddress.IPv4Address(rule["base_ip"]))
+    except Exception:
+        return False
+    return 0 <= off < int(rule.get("size") or 0)
+
+
+def _derivation_rule(node_id, ifname, media_network_id, essence, fmt, ip_a):
+    """The rule deriving leg B of a flow whose leg-0 address is `ip_a`: a rule with `base_ip_b`
+    whose A block holds `ip_a`. `ifname`/`media_network_id` are the LEG-1 port; the leg-0 port is
+    its paired interface, whose applicable rule is tried first, then every rule of either port."""
+    from .database import db_get_mcast_ranges
+
+    def derives(r):
+        return bool(r and r.get("base_ip_b")) and _rule_contains(r, ip_a)
+
+    pair = interface_appairee(node_id, ifname)
+    ifn0, net0 = (pair["ifname"], pair.get("media_network_id")) if pair else (ifname, media_network_id)
+    r = _plage_applicable(node_id, ifn0, net0, essence, 0, fmt)
+    if derives(r):
+        return r
+    rows = []
+    if node_id:
+        for ifn in {ifn0, ifname} - {None}:
+            rows += db_get_mcast_ranges(node_id=node_id, ifname=ifn)
+    for net in {net0, media_network_id} - {None}:
+        rows += db_get_mcast_ranges(media_network_id=net)
+    return _meilleure_regle([r for r in rows if derives(r)], essence, 0, fmt)
+
+
+def _slot_plan(node_id, params, slot_i):
+    """`(plan, fabric of leg 0)` addressing TX slot `slot_i`, or None (no plan: legacy rules)."""
+    ifn0, net0 = _egress_iface(node_id, params, slot_i, leg=0)
+    plan = _flow_plan(node_id, ifn0, net0)
+    return (plan, fabric_of(node_id, ifn0)) if plan is not None else None
+
+
+def _expected_leg_b(node_id, params, slot_i, essence, fmt, ip_a):
+    """Leg-B address the rules derive for TX slot `slot_i` from its leg-0 address, or None when no
+    derivation rule covers it. Under a plan: the other fabric's block at the rank leg 0 holds in
+    its own fabric's block (None if leg 0 is outside it)."""
+    sp = _slot_plan(node_id, params, slot_i)
+    if sp is not None:
+        plan, fab0 = sp
+        view = _plan_line(plan, essence, fmt)
+        if view is None:
+            return None
+        return _fabric_addr(view, _other_fabric(fab0), _rank_in(view, fab0, ip_a))
+    ifn1, net1 = _egress_iface(node_id, params, slot_i, leg=1)
+    rule = _derivation_rule(node_id, ifn1, net1, essence, fmt, ip_a)
+    return derive_leg_b(rule, ip_a) if rule else None
+
+
+def _flow_refs(owner_ref, sub_index=0):
+    """Ledger owner refs of BOTH legs of the flow `owner_ref` belongs to ('tx:{vmid}:{slot}:
+    {essence}[:{aidx}]:leg{0|1}'), operator overrides included ('…:{essence}:override:{rank}:
+    leg{n}', see routes/mtl_engine.api_mtl_tx_dest). The legs of one flow may share a group."""
+    if not owner_ref or not owner_ref.endswith((":leg0", ":leg1")):
+        return {owner_ref}
+    refs = {owner_ref[:-1] + "0", owner_ref[:-1] + "1"}
+    parts = owner_ref.split(":")
+    if len(parts) >= 5 and parts[0] == "tx":
+        rank = int(sub_index or 0) if parts[3] == "audio" else 0
+        for leg in (0, 1):
+            refs.add(f"tx:{parts[1]}:{parts[2]}:{parts[3]}:override:{rank}:leg{leg}")
+    return refs
+
+
+def _leg0_address(owner_ref, sub_index=0):
+    """`(ip, port)` held in the ledger by leg 0 of the flow whose leg-1 owner is `owner_ref`, or
+    None. An operator override wins over the automatic reservation it superseded (which stays in
+    the ledger until the container is destroyed)."""
+    from .database import db_mcast_for_owner
+    parts = owner_ref.split(":")
+    cands = []
+    if len(parts) >= 5 and parts[0] == "tx":
+        rank = int(sub_index or 0) if parts[3] == "audio" else 0
+        cands.append(f"tx:{parts[1]}:{parts[2]}:{parts[3]}:override:{rank}:leg0")
+    cands.append(owner_ref[:-1] + "0")
+    for ref in cands:
+        got = db_mcast_for_owner(ref)
+        if got:
+            return (got[0], int(got[1]))
+    return None
+
+
+def _leg_b_alert(owner_ref, sub_index, ip_b, rule, holders):
+    """Alert: the derived leg-B address of a flow is held by another flow, so leg B is left empty."""
+    from .database import db_add_alert, db_get_container
+    parts = owner_ref.split(":")
+    vmid, flow = None, owner_ref
+    if len(parts) >= 5 and parts[0] == "tx":
+        try:
+            vmid = int(parts[1])
+            flow = "TX%d %s%s (B)" % (int(parts[2]) + 1, parts[3],
+                                      str(int(sub_index or 0) + 1) if parts[3] == "audio" else "")
+        except ValueError:
+            pass
+    host = ((db_get_container(vmid) or {}).get("hostname") if vmid else None) or str(vmid or "?")
+    label = rule.get("label") or f"{rule.get('scope')}#{rule.get('id')}"
+    db_add_alert("alert.net.mcast_jambe_b_hors_regle", "warning", vmid=vmid, kind="net",
+                 params={"h": host, "n": 1,
+                         "detail": "%s: %s (%s) ← %s" % (flow, ip_b, label, ", ".join(sorted(holders)))})
+
+
+def _allocate_leg_b(node_id, ifname, media_network_id, essence, fmt, owner_ref, sub_index=0):
+    """Leg 1 of a flow whose leg-0 port is covered by a rule with `base_ip_b`: B is DERIVED from the
+    leg-0 address (same rank in the B block), with the leg-0 port. Returns None when no derivation
+    rule applies (the caller then allocates as before), else `(ip, port)` or `(None, None)`.
+
+    Never a fallback: a derived address held by another flow is refused with an alert, and leg B
+    stays empty, rather than landing on an address the switch of fabric B was not set up for.
+    Same group on both legs (`base_ip_b == base_ip`): the ledger key is (ip, port) and both legs
+    have the same port, so leg 1 records NOTHING; the leg-0 row holds the group for the flow, and
+    releasing it (destroy, replan) releases both legs."""
+    from .database import db_release_mcast_owner
+    if not owner_ref.endswith(":leg1"):
+        return None
+    leg0 = _leg0_address(owner_ref, sub_index)
+    if leg0 is None:
+        # Leg 0 unknown (its allocation failed, or it predates the ledger): if its port derives
+        # leg B, nothing can be derived and nothing else may be picked.
+        pair = interface_appairee(node_id, ifname)
+        r0 = _plage_applicable(node_id, pair["ifname"], pair.get("media_network_id"),
+                               essence, 0, fmt) if pair else None
+        if r0 and r0.get("base_ip_b"):
+            log.warning("multicast %s: leg 0 has no address, leg B cannot be derived (rule #%s)",
+                        owner_ref, r0.get("id"))
+            return (None, None)
+        return None
+    ip_a, port_a = leg0
+    rule = _derivation_rule(node_id, ifname, media_network_id, essence, fmt, ip_a)
+    ip_b = derive_leg_b(rule, ip_a)
+    if ip_b is None:
+        return None
+    refs = _flow_refs(owner_ref, sub_index)
+    holders = {o for _rid, ip, _p, o in _ledger_rows(ip_b) if o not in refs}
+    if not holders and ip_b in _groups_held_by_others(refs):
+        holders = {"nmos"}                       # registry-only holder (address imposed by hand)
+    if holders:
+        _leg_b_alert(owner_ref, sub_index, ip_b, rule, holders)
+        return (None, None)
+    if ip_b == ip_a:
+        db_release_mcast_owner(owner_ref)        # a stale leg-1 row of this flow, if any
+        return (ip_a, port_a)
+    already = any(ip == ip_b and p == port_a and o == owner_ref
+                  for _rid, ip, p, o in _ledger_rows(ip_b))
+    if already or _claim_group(ip_b, port_a, owner_ref):
+        db_release_mcast_owner(owner_ref, keep=(ip_b, port_a))
+        return (ip_b, port_a)
+    _leg_b_alert(owner_ref, sub_index, ip_b, rule,
+                 {o for _rid, _ip, _p, o in _ledger_rows(ip_b) if o not in refs})
+    return (None, None)
+
+
+# ─── Fabrics and multicast PLANS ──────────────────────────────────────────────────────────────────
+# Sites define multicast ranges per FABRIC (the A blocks live on one switch fabric, the B blocks on
+# the other) and declare redundancy per PAIR of interfaces (`node_interfaces.pair_group` +
+# `pair_role` red|blue). Which colour is "first" varies by site: `media_networks.first_fabric`.
+# A flow's leg 0 is the interface its slot is PINNED to, which can be either colour; so a plan
+# addresses by fabric, never by leg: the RANK is a property of the flow, shared by both legs, and
+# the address on fabric a is A base + rank, on fabric b B base + rank.
+#
+# A plan (`mcast_plans`) = one target (media network | node pair | unpaired interface) + shared
+# settings (b_rule, rank_mode, port_mode, reserve_last) + lines (`mcast_ranges` rows with
+# `plan_id`). Rows without `plan_id` are LEGACY rules and keep their behaviour (`_plage_applicable`).
+
+def _media_ifaces(node_id):
+    """Media (ST 2110) interfaces of a node, [] on error."""
+    if not node_id:
+        return []
+    try:
+        from .database import db_get_node_interfaces
+        return [r for r in db_get_node_interfaces(node_id) if r.get("role") == "media2110"]
+    except Exception as e:
+        log.warning("_media_ifaces(node %s): %s", node_id, e)
+        return []
+
+
+def _is_paired(row):
+    return bool(row) and row.get("pair_group") is not None and bool(row.get("pair_role"))
+
+
+def _first_colours():
+    """{media_network_id: 'red'|'blue'} — the colour that is fabric a on each network."""
+    try:
+        from .database import db_get_media_networks
+        return {n["id"]: n.get("first_fabric") or "red" for n in db_get_media_networks()}
+    except Exception:
+        return {}
+
+
+def pair_members(node_id, pair_group, rows=None):
+    """`{'a': row, 'b': row}` of a red/blue pair of a node, or None if the pair is incomplete.
+
+    Fabric a is the member whose colour is the `first_fabric` of its own media network. Members on
+    two networks that disagree (both, or neither, claim fabric a) are settled by the network of the
+    red member, so the answer never depends on which member is asked."""
+    rows = rows if rows is not None else _media_ifaces(node_id)
+    mates = [r for r in rows if _is_paired(r) and r.get("pair_group") == pair_group]
+    reds = [r for r in mates if r.get("pair_role") == "red"]
+    blues = [r for r in mates if r.get("pair_role") == "blue"]
+    if not reds or not blues:
+        return None
+    red, blue = reds[0], blues[0]
+    first = _first_colours()
+    votes = [m for m in (red, blue) if m.get("pair_role") == first.get(m.get("media_network_id"), "red")]
+    a_colour = votes[0].get("pair_role") if len(votes) == 1 \
+        else first.get(red.get("media_network_id"), "red")
+    return {"a": red, "b": blue} if a_colour == "red" else {"a": blue, "b": red}
+
+
+def fabric_of(node_id, ifname):
+    """'a' | 'b': the fabric of a media interface. An unpaired (or unknown) interface is fabric a.
+    THE single source of the fabric of an interface — allocation, re-planning, audit, preview."""
+    rows = _media_ifaces(node_id)
+    me = next((r for r in rows if r.get("ifname") == ifname), None)
+    if not _is_paired(me):
+        return "a"
+    mem = pair_members(node_id, me.get("pair_group"), rows)
+    if not mem:
+        return "a"
+    return "a" if mem["a"].get("ifname") == ifname else "b"
+
+
+def _other_fabric(fabric):
+    return "b" if fabric == "a" else "a"
+
+
+def _plans(candidate=None):
+    """Stored plans (with lines); `candidate` (an unsaved or edited plan, same shape) replaces the
+    stored plan of the same id, or is added — used by the preview, nothing is written."""
+    try:
+        from .database import db_get_mcast_plans
+        plans = db_get_mcast_plans()
+    except Exception as e:
+        log.warning("mcast plans unreadable: %s", e)
+        plans = []
+    if candidate is not None:
+        cid = candidate.get("id")
+        plans = [p for p in plans if cid is None or p["id"] != cid] + [candidate]
+    return plans
+
+
+def _flow_plan(node_id, ifname, media_network_id=None, candidate=None):
+    """The plan that addresses a flow leaving by `ifname` (either leg: the answer is the same for
+    both legs of a pair), or None. Priority: plan of its PAIR > plan of its (unpaired) INTERFACE >
+    plan of its media NETWORK (for a pair: the fabric-a member's network, then the other's)."""
+    plans = _plans(candidate)
+    if not plans:
+        return None
+    rows = _media_ifaces(node_id)
+    me = next((r for r in rows if r.get("ifname") == ifname), None) if ifname else None
+
+    def find(scope, **kw):
+        return next((p for p in plans if p.get("scope") == scope
+                     and all(p.get(k) == v for k, v in kw.items())), None)
+
+    if _is_paired(me):
+        p = find("pair", node_id=node_id, pair_group=me.get("pair_group"))
+        if p:
+            return p
+        mem = pair_members(node_id, me.get("pair_group"), rows)
+        nets = [mem["a"].get("media_network_id"), mem["b"].get("media_network_id")] if mem \
+            else [me.get("media_network_id")]
+    elif me:
+        p = find("interface", node_id=node_id, ifname=ifname)
+        if p:
+            return p
+        nets = [me.get("media_network_id")]
+    else:
+        nets = [media_network_id]
+    for net in nets:
+        if net is not None:
+            p = find("network", media_network_id=net)
+            if p:
+                return p
+    return None
+
+
+def _line_view(line, plan):
+    """A plan line as a rule dict the range helpers understand: the plan's shared settings merged
+    in, no leg (addressing is by fabric), and a label naming the plan."""
+    v = dict(line)
+    for k in ("rank_mode", "port_mode", "reserve_last"):
+        v[k] = plan.get(k)
+    v["leg"] = None
+    v["label"] = "%s / %s" % (plan.get("label") or "plan#%s" % plan.get("id"),
+                              line.get("label") or "%s/+%s" % (line.get("base_ip"), line.get("size")))
+    return v
+
+
+def _plan_line(plan, essence, fmt):
+    """The line of `plan` for a flow (most specific match on essence + format, like
+    `_meilleure_regle`) as a rule view, or None."""
+    line = _meilleure_regle(plan.get("lines") or [], essence, 0, fmt)
+    return _line_view(line, plan) if line is not None else None
+
+
+def _block_base(view, fabric):
+    """Integer base of the line's block on `fabric` (A block on a, B block on b), or None."""
+    v = (view or {}).get("base_ip" if fabric == "a" else "base_ip_b")
+    try:
+        return int(ipaddress.IPv4Address(v)) if v else None
+    except Exception:
+        return None
+
+
+def _rank_in(view, fabric, ip):
+    """Rank of `ip` inside the line's block on `fabric`, or None."""
+    base = _block_base(view, fabric)
+    if base is None or not ip:
+        return None
+    try:
+        off = int(ipaddress.IPv4Address(ip)) - base
+    except Exception:
+        return None
+    return off if 0 <= off < int(view.get("size") or 0) else None
+
+
+def _fabric_addr(view, fabric, rank):
+    """Address of `rank` on `fabric`, or None (no block on that fabric, or no rank)."""
+    base = _block_base(view, fabric)
+    if base is None or rank is None:
+        return None
+    return str(ipaddress.IPv4Address(base + rank))
+
+
+def _sibling_address(owner_ref, sub_index=0):
+    """`(ip, port)` held in the ledger by the OTHER leg of the flow `owner_ref` belongs to, or None.
+    An operator override wins over the automatic reservation it superseded."""
+    from .database import db_mcast_for_owner
+    if owner_ref.endswith(":leg1"):
+        return _leg0_address(owner_ref, sub_index)
+    if not owner_ref.endswith(":leg0"):
+        return None
+    parts = owner_ref.split(":")
+    cands = []
+    if len(parts) >= 5 and parts[0] == "tx":
+        rank = int(sub_index or 0) if parts[3] == "audio" else 0
+        cands.append(f"tx:{parts[1]}:{parts[2]}:{parts[3]}:override:{rank}:leg1")
+    cands.append(owner_ref[:-1] + "1")
+    for ref in cands:
+        got = db_mcast_for_owner(ref)
+        if got:
+            return (got[0], int(got[1]))
+    return None
+
+
+def _flow_desc(owner_ref, sub_index=0):
+    """`(vmid, hostname, 'TX1 audio1 (B)')` of a ledger owner ref, for alerts."""
+    from .database import db_get_container
+    parts = (owner_ref or "").split(":")
+    vmid, flow = None, owner_ref
+    if len(parts) >= 5 and parts[0] == "tx":
+        try:
+            vmid = int(parts[1])
+            flow = "TX%d %s%s%s" % (int(parts[2]) + 1, parts[3],
+                                    str(int(sub_index or 0) + 1) if parts[3] == "audio" else "",
+                                    " (B)" if owner_ref.endswith(":leg1") else "")
+        except ValueError:
+            pass
+    host = ((db_get_container(vmid) or {}).get("hostname") if vmid else None) or str(vmid or "?")
+    return vmid, host, flow
+
+
+def _plan_refusal(key, owner_ref, sub_index, plan, essence):
+    """Alert for a flow a plan applies to but cannot address (no line for it, or no block on its
+    fabric). The allocation is refused: never a fall-through to another plan or to the pool."""
+    from .database import db_add_alert
+    vmid, host, flow = _flow_desc(owner_ref, sub_index)
+    db_add_alert(key, "warning", vmid=vmid, kind="net",
+                 params={"h": host, "flow": flow, "essence": essence or "?",
+                         "plan": plan.get("label") or "plan#%s" % plan.get("id")})
+
+
+def _allocate_in_plan(plan, node_id, ifname, essence, port, fmt, owner_ref, slot, sub_index):
+    """Allocation of one leg of a flow under a PLAN, by fabric (see the section header).
+
+    - the line is the most specific match; none → refusal + alert, `(None, None)`;
+    - if the OTHER leg of the flow already holds an address in its fabric's block, the rank follows
+      it (whichever leg came first, whichever colour leg 0 is): address = this fabric's base + rank,
+      with the other leg's port. Held by another flow → refusal + alert, as `_allocate_leg_b`.
+      Same group on both fabrics (B block = A block): no second ledger row, as `_allocate_leg_b`;
+    - otherwise this leg picks the rank: `rank_mode='slot'` the planned rank, else (or if the
+      planned groups are held) the first rank whose address on this fabric AND, for a paired
+      interface with a distinct B block, on the other fabric are both free."""
+    from .database import db_release_mcast_owner, db_mcast_for_owner
+    view = _plan_line(plan, essence, fmt)
+    if view is None:
+        _plan_refusal("alert.net.mcast_plan_unmatched", owner_ref, sub_index, plan, essence)
+        return (None, None)
+    fab = fabric_of(node_id, ifname)
+    other = _other_fabric(fab)
+    base_f = _block_base(view, fab)
+    if base_f is None:
+        _plan_refusal("alert.net.mcast_plan_no_b_block", owner_ref, sub_index, plan, essence)
+        return (None, None)
+    port = int(port or (essence and view.get(f"port_default_{essence}"))
+               or view.get("port_default") or settings.get("mcast_port_default") or 5000)
+    port = rule_port(view, essence, port)
+    refs = _flow_refs(owner_ref, sub_index)
+
+    sib = _sibling_address(owner_ref, sub_index)
+    rank = _rank_in(view, other, sib[0]) if sib else None
+    if rank is not None:
+        ip = _fabric_addr(view, fab, rank)
+        holders = {o for _rid, i, _p, o in _ledger_rows(ip) if o not in refs}
+        if not holders and ip in _groups_held_by_others(refs):
+            holders = {"nmos"}
+        if holders:
+            _leg_b_alert(owner_ref, sub_index, ip, view, holders)
+            return (None, None)
+        if ip == sib[0]:                          # same group on both fabrics: no second row
+            db_release_mcast_owner(owner_ref)
+            return (ip, sib[1])
+        already = any(i == ip and p == sib[1] and o == owner_ref for _rid, i, p, o in _ledger_rows(ip))
+        if already or _claim_group(ip, sib[1], owner_ref):
+            db_release_mcast_owner(owner_ref, keep=(ip, sib[1]))
+            return (ip, sib[1])
+        _leg_b_alert(owner_ref, sub_index, ip, view,
+                     {o for _rid, _i, _p, o in _ledger_rows(ip) if o not in refs})
+        return (None, None)
+
+    first, end = _alloc_span(view)
+    base_o = _block_base(view, other)
+    check_other = (interface_appairee(node_id, ifname) is not None
+                   and base_o is not None and base_o != base_f)
+    taken = _groups_held_by_others(refs)
+
+    def try_rank(r):
+        ip = str(ipaddress.IPv4Address(base_f + r))
+        already = any(i == ip and p == port and o == owner_ref for _rid, i, p, o in _ledger_rows(ip))
+        if not already:
+            if ip in taken or (check_other and str(ipaddress.IPv4Address(base_o + r)) in taken):
+                return None
+            if not _claim_group(ip, port, owner_ref):
+                return None
+        db_release_mcast_owner(owner_ref, keep=(ip, port))
+        return (ip, port)
+
+    off = _plan_offset(view, essence, slot, sub_index, 0)
+    if off is not None and first <= off < end:
+        got = try_rank(off)
+        if got:
+            return got
+        log.info("multicast plan %s: rank %s held by another flow — scanning", owner_ref, off)
+    elif off is not None:
+        from .database import db_add_alert
+        db_add_alert("alert.net.plan_multicast_hors_plage", "warning", kind="net",
+                     params={"label": view["label"], "base": view.get("base_ip"),
+                             "size": view.get("size"), "essence": essence, "off": off})
+    own = db_mcast_for_owner(owner_ref)            # anti-leak: keep this leg's own reservation
+    if own and int(own[1]) == port:
+        r = _rank_in(view, fab, own[0])
+        if r is not None and first <= r < end:
+            got = try_rank(r)
+            if got:
+                return got
+    for r in range(first, end):
+        got = try_rank(r)
+        if got:
+            return got
+    from .database import db_add_alert
+    db_add_alert("alert.net.plage_multicast_epuisee", "error", kind="net",
+                 params={"label": view["label"], "base": _fabric_addr(view, fab, 0),
+                         "size": view.get("size"), "port": port})
+    return (None, None)
+
+
+def _flow_audio_fmt(owner_ref, sub_index, fmt):
+    """Audio format of the flow `owner_ref` ('tx:{vmid}:{slot}:audio:{aidx}:…') read from its engine
+    (`io2110_flows.audio_format`), overriding the caller's `fmt`; if the engine or the entry cannot
+    be found, the caller's `fmt` completed with the defaults."""
+    from . import io2110_flows as _iof
+    parts = (owner_ref or "").split(":")
+    if len(parts) >= 5 and parts[0] == "tx" and parts[3] == "audio":
+        try:
+            from .database import db_get_container
+            vmid, slot_i, aidx = int(parts[1]), int(parts[2]), int(parts[4])
+            c = db_get_container(vmid) or {}
+            params = (json.loads(c.get("deploy_config") or "{}") or {}).get("params") or {}
+            if c and params:
+                return dict(fmt or {}, **_iof.audio_format(
+                    _audio_entry(params, slot_i, sub_index, aidx), params))
+        except (ValueError, TypeError) as e:
+            log.debug("audio format of %s: %s", owner_ref, e)
+    return dict(_iof.audio_format({}), **(fmt or {}))
+
+
+def _audio_entry(params, slot_i, ai, aidx):
+    """Declared format fields of audio `ai` (flat index `aidx`) of TX slot `slot_i`: its `tx_flows`
+    entry overlaid by its `tx_slots[].audios[]` entry."""
+    out = {}
+    flow = next((f for f in (params.get("tx_flows") or [])
+                 if f.get("essence") == "audio" and f.get("idx") == aidx), None)
+    out.update(flow or {})
+    slots = params.get("tx_slots") or []
+    auds = (slots[slot_i] or {}).get("audios") or [] if 0 <= slot_i < len(slots) else []
+    if 0 <= int(ai or 0) < len(auds):
+        out.update(auds[int(ai or 0)] or {})
+    return out
+
+
+def plan_dest_check(node_id, params, slot_i, leg, essence, ip):
+    """Operator-typed destination under a plan: `(applies, error)`. `applies` is False when no plan
+    addresses this slot (the legacy range check then runs); otherwise `error` is None when `ip` lies
+    in one of the plan's blocks for the fabric of that leg's interface."""
+    ifn, net = _egress_iface(node_id, params, slot_i, leg=leg)
+    plan = _flow_plan(node_id, ifn, net)
+    if plan is None:
+        return False, None
+    fab = fabric_of(node_id, ifn)
+    for line in plan.get("lines") or []:
+        if _rank_in(_line_view(line, plan), fab, ip) is not None:
+            return True, None
+    return True, "adresse hors des blocs du plan « %s » sur la fabric %s (%s)" % (
+        plan.get("label") or plan.get("id"), fab.upper(), ifn or "?")
+
+
+def set_manual_dest(entry, ip_key, port_key, mcast, port):
+    """Write an operator-typed destination into a `tx_slots` entry (a slot, or one of its `audios`).
+    An address that differs from the stored one is marked `<ip_key>_manual`: the plan never
+    rewrites it (`plan_tx_multicast` reports it as 'manuel'). The same address submitted again
+    (the page echoing the current value) leaves the marker as it was."""
+    if entry.get(ip_key) != mcast:
+        entry[ip_key + "_manual"] = True
+    entry[ip_key] = mcast
+    entry[port_key] = port
+    return entry
+
+
 def allocate_multicast_for(node_id, ifname, media_network_id=None, essence=None, leg=0, port=None,
                            fmt=None, owner_ref=None, slot=None, sub_index=0):
-    """Alloue (ip, port) pour un flux qui va égresser sur ce port physique précis. Si une règle
-    (réseau ou interface) existe pour ce port → allocation STRICTEMENT dans cette plage (jamais de
-    repli au pool global). Sans règle du tout → comportement historique (allocate_multicast).
-    `owner_ref` : voir allocate_multicast — réservation ATOMIQUE en base (ferme la fenêtre de course
-    entre deux flux/containers dont les calculs se chevauchent, avant que l'un ou l'autre ne soit
-    enregistré au registre NMOS). Retourne (None, None) si la plage/le pool est épuisé — une alerte
-    est postée dans les deux cas."""
-    from .database import db_reserve_mcast, db_add_alert
+    """Allocate (ip, port) for a flow that will egress on this exact physical port. If a rule
+    (network or interface) exists for that port → allocation STRICTLY inside that range (never a
+    fallback to the global pool). No rule at all → historical behaviour (allocate_multicast).
+    `owner_ref`: see allocate_multicast — ATOMIC reservation in the database (closes the race window
+    between two flows/containers whose computations overlap before either is registered in the NMOS
+    registry). Whether planned or scanned, a new address is a GROUP no other flow holds on any port
+    (see `_claim_group`). Returns (None, None) if the range/pool is exhausted — an alert is posted
+    in both cases.
+
+    Per-range plan axes (all NULL = the behaviour above): `rank_mode='counter'` skips the plan,
+    `port_mode='fixed'` imposes the rule's essence port whatever `port` says, `reserve_last` never
+    allocates the last address, and `base_ip_b` makes a leg-1 address DERIVED from its leg 0 (see
+    `_allocate_leg_b`) instead of allocated.
+
+    A multicast PLAN covering the port (`_flow_plan`) takes precedence over every rule and over the
+    pool, and addresses by fabric (`_allocate_in_plan`). An audio flow's format is read from its
+    engine when `owner_ref` identifies it (`_flow_audio_fmt`), whatever `fmt` the caller passed."""
+    from .database import db_add_alert
+    if essence == "audio" and owner_ref:
+        fmt = _flow_audio_fmt(owner_ref, sub_index, fmt)
+    plan = _flow_plan(node_id, ifname, media_network_id)
+    if plan is not None:
+        if not owner_ref:
+            log.warning("allocate_multicast_for() called without owner_ref — no reservation possible")
+            return (None, None)
+        return _allocate_in_plan(plan, node_id, ifname, essence, port, fmt, owner_ref, slot, sub_index)
+    if int(leg or 0) == 1 and owner_ref:
+        derived = _allocate_leg_b(node_id, ifname, media_network_id, essence, fmt, owner_ref, sub_index)
+        if derived is not None:
+            return derived
     rule = _plage_applicable(node_id, ifname, media_network_id, essence, leg, fmt)
     if rule is None:
         return allocate_multicast(port=port, owner_ref=owner_ref)
@@ -601,39 +1390,47 @@ def allocate_multicast_for(node_id, ifname, media_network_id=None, essence=None,
     size = int(rule.get("size") or 0)
     port = int(port or (essence and rule.get(f"port_default_{essence}"))
                or rule.get("port_default") or settings.get("mcast_port_default") or 5000)
+    port = rule_port(rule, essence, port)
+    first, end = _alloc_span(rule)
     try:
         a = int(ipaddress.IPv4Address(base))
     except Exception as e:
         log.warning(f"mcast_ranges#{rule.get('id')} base_ip invalide ({base}): {e}")
         return (None, None)
-    # ── PLAN d'adressage (une adresse par flux, déduite du rang) — prioritaire sur le scan.
-    # On RÉSERVE d'abord l'adresse planifiée, on rend l'ancienne ENSUITE (keep=) : l'inverse
-    # ouvrirait une fenêtre où un autre flux souffle l'adresse qu'on vient de lâcher. Adresse
-    # planifiée déjà tenue par un AUTRE flux → on garde l'existante / on retombe sur le scan
-    # (jamais de vol : le plan converge au prochain passage, une fois l'occupant replanifié).
+    # ── ADDRESSING PLAN (one address per flow, derived from its rank) — takes precedence over the
+    # scan. The planned address is RESERVED first and the old one released AFTERWARDS (keep=): the
+    # reverse would open a window where another flow grabs the address just let go. Planned group
+    # already held by ANOTHER flow, on any port → keep the existing one / fall back to the scan
+    # (never steal: the plan converges on a later pass, once the occupant has been replanned).
+    # An owner that already holds exactly (ip_plan, port) keeps it as before, even if an older
+    # allocation shares its group: existing allocations are not rewritten here.
     off = _plan_offset(rule, essence, slot, sub_index, leg)
-    if off is not None and 1 <= off < max(size, 0):
+    if off is not None and first <= off < end:
         ip_plan = str(ipaddress.IPv4Address(a + off))
-        if db_reserve_mcast(ip_plan, port, owner_ref):
-            from .database import db_release_mcast_owner
+        from .database import db_release_mcast_owner
+        already = any(ip == ip_plan and p == port and o == owner_ref
+                      for _rid, ip, p, o in _ledger_rows(ip_plan))
+        if already or (ip_plan not in _groups_held_by_others(owner_ref)
+                       and _claim_group(ip_plan, port, owner_ref)):
             db_release_mcast_owner(owner_ref, keep=(ip_plan, port))
             return (ip_plan, port)
-        log.info("plan multicast %s: %s:%s déjà pris pour %s — repli scan",
-                 owner_ref, ip_plan, port, essence)
+        log.info("multicast plan %s: group %s already held by another flow for %s — falling back to scan",
+                 owner_ref, ip_plan, essence)
     elif off is not None:
         label = rule.get("label") or f"{rule.get('scope')}#{rule.get('id')}"
         db_add_alert("alert.net.plan_multicast_hors_plage", "warning", kind="net",
                      params={"label": label, "base": base, "size": size, "essence": essence, "off": off})
-    reused = _reuse_owner_reservation(owner_ref, port, in_range=(a, max(size, 0)))
+    reused = _reuse_owner_reservation(owner_ref, port, in_range=(a, end))
     if reused:
         return reused
-    used = _used_multicasts()
-    for i in range(1, max(size, 0)):   # i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
+    # Scan: first GROUP no other flow holds on any port (a leg-1 flow on a range shared by both
+    # legs lands here, and used to pile onto the leg-0 video group when only `ip:port` was checked).
+    taken = _groups_held_by_others(owner_ref)
+    for i in range(first, end):   # rank 0 (network address of the block, e.g. .0) never allocated
         ip = str(ipaddress.IPv4Address(a + i))
-        key = f"{ip}:{port}"
-        if key in used:
+        if ip in taken:
             continue
-        if db_reserve_mcast(ip, port, owner_ref):
+        if _claim_group(ip, port, owner_ref):
             return (ip, port)
     label = rule.get("label") or f"{rule.get('scope')}#{rule.get('id')}"
     db_add_alert("alert.net.plage_multicast_epuisee", "error", kind="net",
@@ -733,14 +1530,17 @@ def _egress_iface(node_id, params, slot_i, leg=0):
 
 
 def plages_epuisees(transports=None):
-    """Règles `mcast_ranges` actuellement à 0 adresse libre (état LIVE) — alimente le panneau
-    Points d'attention. Vérifie sur le `port_default` de la règle si posé, sinon sur le port par
-    défaut global (simplification déjà présente dans `allocate_multicast()` : l'épuisement réel
-    est de toute façon signalé en direct par une alerte au moment de l'allocation qui échoue)."""
-    from .database import db_get_mcast_ranges
-    used = _used_multicasts(transports)
+    """`mcast_ranges` rules that currently have 0 free address (LIVE state) — feeds the Points
+    d'attention panel. Same notion of "free" as the allocators: a GROUP no flow holds on any port
+    (see `_claim_group`), from rank 1 (rank 0, the block's network address, is never allocated —
+    counting it made a full range look free forever)."""
+    from .database import db_get_mcast_ranges, db_get_mcast_plans
+    taken = _groups_held_by_others(None, transports)
     out = []
-    for r in db_get_mcast_ranges():
+    rules = list(db_get_mcast_ranges())
+    for p in db_get_mcast_plans():                     # plan lines: their A block, plan label
+        rules += [_line_view(ln, p) for ln in p.get("lines") or []]
+    for r in rules:
         size = int(r.get("size") or 0)
         if size <= 0:
             continue
@@ -748,8 +1548,8 @@ def plages_epuisees(transports=None):
             a = int(ipaddress.IPv4Address(r["base_ip"]))
         except Exception:
             continue
-        port = int(r.get("port_default") or settings.get("mcast_port_default") or 5000)
-        libre = any(f"{ipaddress.IPv4Address(a + i)}:{port}" not in used for i in range(size))
+        first, end = _alloc_span(r)
+        libre = any(str(ipaddress.IPv4Address(a + i)) not in taken for i in range(first, end))
         if not libre:
             out.append(r)
     return out
@@ -757,42 +1557,106 @@ def plages_epuisees(transports=None):
 
 # ─── Re-planification d'un moteur 2110 déjà adressé ───────────────────────────────────────────────
 
-def _plan_ip_flux(node_id, params, slot_i, essence, sub_index=0, fmt=None):
-    """Adresse que le PLAN impose à ce flux (slot/essence/rang d'audio), ou None si le plan ne
-    s'applique pas (aucune règle de plage sur le port d'égression, rang hors plage…)."""
+def _flow_rule0(node_id, params, slot_i, essence, fmt=None):
+    """Rule applicable to leg 0 of a flow of TX slot `slot_i` (its egress port), or None."""
     ifn, netid = _egress_iface(node_id, params, slot_i, leg=0)
-    rule = _plage_applicable(node_id, ifn, media_network_id=netid, essence=essence, leg=0, fmt=fmt)
+    return _plage_applicable(node_id, ifn, media_network_id=netid, essence=essence, leg=0, fmt=fmt)
+
+
+def _plan_ip_flux(node_id, params, slot_i, essence, sub_index=0, fmt=None, rule=None):
+    """Address the PLAN imposes on this flow (slot/essence/audio rank), or None if the plan does
+    not apply (no range rule on the egress port, 'counter' range, rank outside the range…)."""
+    rule = rule if rule is not None else _flow_rule0(node_id, params, slot_i, essence, fmt)
     if rule is None:
         return None
     off = _plan_offset(rule, essence, slot_i, sub_index, leg=0)
-    size = int(rule.get("size") or 0)
-    if off is None or not (1 <= off < size):
+    first, end = _alloc_span(rule)
+    if off is None or not (first <= off < end):
         return None
     try:
         return str(ipaddress.IPv4Address(int(ipaddress.IPv4Address(rule["base_ip"])) + off))
     except Exception as e:
-        log.warning("plan multicast slot %s/%s: base_ip invalide: %s", slot_i, essence, e)
+        log.warning("multicast plan slot %s/%s: invalid base_ip: %s", slot_i, essence, e)
         return None
 
 
+def _plan_rank(view, fabric, essence, slot, sub, ip_cur):
+    """Rank a plan line gives a flow at re-planning: `rank_mode='slot'` the planned rank (None if
+    outside the block); 'counter' keeps the rank the flow holds, read in its fabric's block, or in
+    the OTHER fabric's block (a flow addressed on the wrong fabric is moved to its own)."""
+    first, end = _alloc_span(view)
+    if view.get("rank_mode") != "counter":
+        r = _plan_offset(view, essence, slot, sub, 0)
+        return r if r is not None and first <= r < end else None
+    r = _rank_in(view, fabric, ip_cur)
+    return r if r is not None else _rank_in(view, _other_fabric(fabric), ip_cur)
+
+
+def _tx_flows_of(vmid, params, slots):
+    """Every TX flow of an engine: `(slot, essence, sub, entry, ip_key, port_key, ref_base, fmt)`.
+    `entry` is the dict (slot, or one of its `audios`, copied in place) the flow's keys live in;
+    `ref_base + ':leg0'` / `':leg1'` are its ledger owner refs — audio indexed by its FLAT flow index,
+    as the deploy hook does, so a replanned reservation lands on the key of the next deployment."""
+    from . import io2110_flows as _iof
+    out = []
+    for i, t in enumerate(slots):
+        fmt_v = {"scan": t.get("scan"), "width": t.get("width"),
+                 "height": t.get("height"), "fps": t.get("fps")}
+        out.append((i, "video", 0, t, "multicast_ip", "dest_port", f"tx:{vmid}:{i}:video", fmt_v))
+        aud_idxs = _iof.tx_slot_audio_idxs(params.get("tx_flows") or [], i)
+        if t.get("audios"):
+            t["audios"] = [dict(a or {}) for a in t["audios"]]
+            for ai, a in enumerate(t["audios"]):
+                aidx = aud_idxs[ai] if ai < len(aud_idxs) else ai
+                fmt_a = _iof.audio_format(dict(_audio_entry(params, i, ai, aidx), **a), params)
+                out.append((i, "audio", ai, a, "multicast_ip", "dest_port",
+                            f"tx:{vmid}:{i}:audio:{aidx}", fmt_a))
+        out.append((i, "anc", 0, t, "anc_multicast_ip", "anc_dest_port", f"tx:{vmid}:{i}:anc", None))
+    return out
+
+
+def _apply_leg_b(vmid, ref1, sub, ip_b_cur, port_b, ip_b_new, ip_a):
+    """Move leg B of a flow to `ip_b_new` in the ledger (re-planning). False if another flow holds
+    that group. Same group as leg 0 → no leg-1 row (see `_allocate_leg_b`). The old leg-B row is
+    released only if it belongs to this flow's leg 1 (never the leg-0 row, never another flow)."""
+    from .database import db_reserve_mcast, db_release_mcast_owner
+    refs = _flow_refs(ref1, sub)
+    if ip_b_new in _groups_held_by_others(refs):
+        return False
+    if ip_b_new == ip_a:
+        db_release_mcast_owner(ref1)
+    else:
+        if not db_reserve_mcast(ip_b_new, port_b, ref1):
+            return False
+        db_release_mcast_owner(ref1, keep=(ip_b_new, port_b))
+    for _rid, _ip, p, o in _ledger_rows(ip_b_cur):
+        if p == int(port_b) and o in refs and o.endswith(":leg1") and ip_b_cur != ip_b_new:
+            _release_exact(ip_b_cur, p, o)
+    return True
+
+
 def plan_tx_multicast(vmid, appliquer=False):
-    """Recalcule les adresses multicast des sorties TX d'un moteur 2110 selon le PLAN (cf.
-    _plan_offset) et retourne le diff `[{slot, essence, audio_idx, port, de, vers, etat}]`.
+    """Recompute the multicast addresses of a 2110 engine's TX outputs according to the PLAN (see
+    _plan_offset) and return the diff `[{slot, essence, audio_idx, leg, fabric, port, de, vers,
+    etat}]` (`fabric` 'a'|'b' = fabric of that leg's interface, see `fabric_of`).
 
-    `appliquer=False` (défaut) = SIMULATION : rien n'est réservé, rien n'est persisté, rien n'est
-    poussé au moteur. `appliquer=True` réserve les nouvelles adresses (owner_ref identique à
-    l'allocation automatique → la libération à la destruction du conteneur les ramasse), réécrit
-    `tx_slots`, persiste, puis pousse EN UN SEUL LOT (`push_tx_slots`) — les changements de
-    destination changent la signature des sessions, donc un commit TM = **un seul blip** au lieu
-    d'un par flux. Les ports ne sont PAS touchés : seule l'adresse de groupe est replanifiée.
+    `appliquer=False` (default) = SIMULATION: nothing reserved, persisted or pushed.
+    `appliquer=True` reserves the new addresses (same owner_ref as the automatic allocation → the
+    release on container destruction collects them), rewrites `tx_slots`, persists, then pushes IN
+    ONE BATCH (`push_tx_slots`) — destination changes change the session signature, so a TM commit
+    = **one blip** instead of one per flow. Ports are NOT touched: only the group address is
+    replanned. A flow whose port differs from a `port_mode='fixed'` rule carries `port_rule` (the
+    rule's port) as information.
 
-    Le plan ne renumérote QUE les flux qui ont déjà une destination (renumérotation, pas
-    provisionnement) et laisse en place tout flux dont l'adresse planifiée est tenue par un autre
-    (`etat='conflit'`) — jamais de vol d'adresse."""
+    The plan only renumbers flows that already have a destination (renumbering, not provisioning)
+    and leaves in place any flow whose planned address is held by another one (`etat='conflit'`) —
+    never an address theft. An address typed by an operator (`<key>_manual`) is never rewritten:
+    `etat='manuel'`. Leg B (2022-7) follows leg A when a rule derives it (`base_ip_b`); a
+    'counter' range has no plan, so only its leg B can be re-derived. Under a multicast PLAN both
+    legs follow the flow's rank, each on its own fabric's block (`_plan_rank`)."""
     import json as _json
     from .database import (db_get_container, db_update_deploy_config, db_reserve_mcast,
                            db_release_mcast_owner, db_release_mcast_addr, db_add_alert)
-    from . import io2110_flows as _iof
 
     c = db_get_container(vmid) or {}
     if not c:
@@ -809,52 +1673,89 @@ def plan_tx_multicast(vmid, appliquer=False):
     node_id = c.get("node_id")
 
     diff = []
-    for i, t in enumerate(slots):
-        fmt_v = {"scan": t.get("scan"), "width": t.get("width"),
-                 "height": t.get("height"), "fps": t.get("fps")}
-        cibles = []
-        if t.get("multicast_ip"):
-            cibles.append(("video", 0, t.get("multicast_ip"), t.get("dest_port"),
-                           f"tx:{vmid}:{i}:video:leg0", fmt_v))
-        # owner_ref audio : indexé par l'idx FLAT du flux (comme l'allocation automatique du hook
-        # 2110_io) — pas par le rang dans le slot, sinon la réservation replanifiée ne retomberait
-        # pas sur la même clé que celle du prochain déploiement (ledger dédoublé).
-        aud_idxs = _iof.tx_slot_audio_idxs(params.get("tx_flows") or [], i)
-        for ai, a in enumerate(t.get("audios") or []):
-            if a.get("multicast_ip"):
-                aidx = aud_idxs[ai] if ai < len(aud_idxs) else ai
-                cibles.append(("audio", ai, a.get("multicast_ip"), a.get("dest_port"),
-                               f"tx:{vmid}:{i}:audio:{aidx}:leg0", {"channels": 8}))
-        if t.get("anc_multicast_ip"):
-            cibles.append(("anc", 0, t.get("anc_multicast_ip"), t.get("anc_dest_port"),
-                           f"tx:{vmid}:{i}:anc:leg0", None))
-
-        for essence, sub, ip_cur, port, owner_ref, fmt in cibles:
-            ip_plan = _plan_ip_flux(node_id, params, i, essence, sub, fmt)
-            if not ip_plan:
-                continue
-            ligne = {"slot": i, "essence": essence, "audio_idx": sub, "port": port,
-                     "de": ip_cur, "vers": ip_plan,
-                     "etat": "inchange" if ip_plan == ip_cur else "a_changer"}
-            if appliquer and ligne["etat"] == "a_changer":
+    slot_ctx = {}                         # slot → (plan context, fabric of leg 0, fabric of leg 1)
+    for i, essence, sub, e, kip, kport, ref_base, fmt in _tx_flows_of(vmid, params, slots):
+        ip_cur = e.get(kip)
+        if not ip_cur:
+            continue
+        port = e.get(kport)
+        owner_ref = ref_base + ":leg0"
+        if i not in slot_ctx:
+            ifn0, _n0 = _egress_iface(node_id, params, i, leg=0)
+            ifn1, _n1 = _egress_iface(node_id, params, i, leg=1)
+            slot_ctx[i] = (_slot_plan(node_id, params, i),
+                           fabric_of(node_id, ifn0), fabric_of(node_id, ifn1))
+        sp, fab0, fab1 = slot_ctx[i]
+        if sp is not None:
+            # Under a plan: the rank is the flow's, the address its fabric's (see _allocate_in_plan).
+            rule0 = _plan_line(sp[0], essence, fmt)
+            if rule0 is None:
+                continue                  # no line for this flow: the allocator refuses it too
+            ip_plan = _fabric_addr(rule0, fab0, _plan_rank(rule0, fab0, essence, i, sub, ip_cur))
+        else:
+            rule0 = _flow_rule0(node_id, params, i, essence, fmt)
+            ip_plan = _plan_ip_flux(node_id, params, i, essence, sub, fmt, rule=rule0)
+        ligne = {"slot": i, "essence": essence, "audio_idx": sub, "leg": 0, "fabric": fab0,
+                 "port": port, "de": ip_cur, "vers": ip_cur}
+        fixed = rule_port(rule0, essence, None) if rule0 else None
+        if fixed and port and int(port) != int(fixed):
+            ligne["port_rule"] = int(fixed)
+        ip_a = ip_cur                     # the leg-0 address leg B must follow
+        if e.get(kip + "_manual"):
+            ligne["etat"] = "manuel"
+        elif ip_plan:
+            ligne["vers"] = ip_plan
+            ligne["etat"] = "inchange" if ip_plan == ip_cur else "a_changer"
+            if ligne["etat"] == "a_changer" and not appliquer:
+                ip_a = ip_plan
+            elif ligne["etat"] == "a_changer":
+                if sp is not None:
+                    # Under a plan, a flow addressed before it can hold its two addresses on the
+                    # wrong fabrics (leg 0 pinned to the second fabric got the A address): leg 0's
+                    # planned address is then held by this flow's own leg 1, which moves right
+                    # after to the address leg 0 leaves. Release that leg-1 row first.
+                    for _rid, _ip, _p, _o in _ledger_rows(ip_plan):
+                        if _o in _flow_refs(owner_ref, sub) and _o.endswith(":leg1"):
+                            _release_exact(_ip, _p, _o)
                 if not db_reserve_mcast(ip_plan, port, owner_ref):
-                    ligne["etat"] = "conflit"     # tenue par un autre flux → on ne touche à rien
+                    ligne["etat"] = "conflit"     # held by another flow → leave it alone
                 else:
                     db_release_mcast_owner(owner_ref, keep=(ip_plan, port))
-                    # Rendre l'ANCIENNE adresse : son owner_ref historique peut différer de celui
-                    # de l'allocation courante (':layout', ancien index de flux…) — sans ça elle
-                    # resterait marquée occupée par un flux qui ne l'émet plus.
+                    # Release the OLD address: its historical owner_ref may differ from the
+                    # current one (':layout', an older flow index…) — otherwise it would stay
+                    # marked as held by a flow that no longer sends it.
                     db_release_mcast_addr(ip_cur, port, owner_prefix=f"tx:{vmid}:")
-                    if essence == "video":
-                        t["multicast_ip"] = ip_plan
-                    elif essence == "anc":
-                        t["anc_multicast_ip"] = ip_plan
-                    else:
-                        auds = list(t.get("audios") or [])
-                        auds[sub] = dict(auds[sub]); auds[sub]["multicast_ip"] = ip_plan
-                        t["audios"] = auds
+                    e[kip] = ip_a = ip_plan
                     ligne["etat"] = "applique"
+        elif "port_rule" in ligne:
+            ligne["etat"] = "inchange"
+        else:
+            ligne = None
+        if ligne:
             diff.append(ligne)
+
+        ip_b = e.get(kip + "_leg1")
+        if not ip_b:
+            continue
+        port_b = e.get(kport + "_leg1") or port
+        lb = {"slot": i, "essence": essence, "audio_idx": sub, "leg": 1, "fabric": fab1,
+              "port": port_b, "de": ip_b, "vers": ip_b}
+        if e.get(kip + "_leg1_manual"):
+            lb["etat"] = "manuel"
+            diff.append(lb)
+            continue
+        exp = _expected_leg_b(node_id, params, i, essence, fmt, ip_a)
+        if not exp:
+            continue
+        lb["vers"] = exp
+        lb["etat"] = "inchange" if exp == ip_b else "a_changer"
+        if appliquer and lb["etat"] == "a_changer":
+            if _apply_leg_b(vmid, ref_base + ":leg1", sub, ip_b, port_b, exp, ip_a):
+                e[kip + "_leg1"] = exp
+                lb["etat"] = "applique"
+            else:
+                lb["etat"] = "conflit"
+        diff.append(lb)
 
     if not appliquer:
         return diff, None
@@ -881,9 +1782,37 @@ def plan_tx_multicast(vmid, appliquer=False):
     return diff, None
 
 
+def leg_b_mismatches(vmid, node_id, params):
+    """Flows whose leg-B address does not follow its derivation rule (`base_ip_b`) given the CURRENT
+    leg-0 address: `[{slot, essence, sub, ip, expected}]`. Manual leg-B addresses are skipped."""
+    out = []
+    slots = [dict(s or {}) for s in ((params or {}).get("tx_slots") or [])]
+    for i, essence, sub, e, kip, _kp, _ref, fmt in _tx_flows_of(vmid, params or {}, slots):
+        ip_a, ip_b = e.get(kip), e.get(kip + "_leg1")
+        if not ip_a or not ip_b or e.get(kip + "_leg1_manual"):
+            continue
+        exp = _expected_leg_b(node_id, params, i, essence, fmt, ip_a)
+        if exp and exp != ip_b:
+            out.append({"slot": i, "essence": essence, "sub": sub, "ip": ip_b, "expected": exp})
+    return out
+
+
+def leg_b_mismatches_for(vmid):
+    """`leg_b_mismatches` of an engine read from the database ([] if absent)."""
+    import json as _json
+    from .database import db_get_container
+    c = db_get_container(vmid) or {}
+    try:
+        params = (_json.loads(c.get("deploy_config") or "{}") or {}).get("params") or {}
+    except Exception:
+        params = {}
+    return leg_b_mismatches(vmid, c.get("node_id"), params) if c else []
+
+
 def preview_plan_params(vmid, params):
-    """Params RÉSULTANTS d'une re-planification (rien n'est réservé ni persisté) — sert au verdict
-    de pré-vol de `tx_maintenance` (quelles sorties vont figer le temps du commit TM)."""
+    """Params RESULTING from a re-planning (nothing reserved or persisted) — feeds the
+    `tx_maintenance` pre-flight verdict (which outputs will freeze during the TM commit). Leg-B
+    rows (`leg=1`) land in the `_leg1` keys."""
     diff, _err = plan_tx_multicast(vmid, appliquer=False)
     out = dict(params or {})
     slots = [dict(s or {}) for s in (out.get("tx_slots") or [])]
@@ -891,14 +1820,15 @@ def preview_plan_params(vmid, params):
         if d.get("etat") != "a_changer" or not (0 <= d["slot"] < len(slots)):
             continue
         t = slots[d["slot"]]
+        sfx = "_leg1" if d.get("leg") else ""
         if d["essence"] == "video":
-            t["multicast_ip"] = d["vers"]
+            t["multicast_ip" + sfx] = d["vers"]
         elif d["essence"] == "anc":
-            t["anc_multicast_ip"] = d["vers"]
+            t["anc_multicast_ip" + sfx] = d["vers"]
         else:
             auds = [dict(a or {}) for a in (t.get("audios") or [])]
             if d["audio_idx"] < len(auds):
-                auds[d["audio_idx"]]["multicast_ip"] = d["vers"]
+                auds[d["audio_idx"]]["multicast_ip" + sfx] = d["vers"]
                 t["audios"] = auds
     out["tx_slots"] = slots
     return out

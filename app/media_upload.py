@@ -49,7 +49,7 @@ EXTS = tuple(mr.BROWSE_EXTS)     # ce que le relevé du volume reconnaît : un a
 KIND_EXTS = {
     "video": (".mxf", ".mov", ".mp4", ".mkv", ".avi", ".ts", ".mts", ".m2ts", ".m4v", ".webm"),
     "audio": (".wav", ".mp3", ".aac", ".flac", ".m4a"),
-    "image": (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"),
+    "image": (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".heic", ".heif"),
 }
 _SAFE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 _inited = set()

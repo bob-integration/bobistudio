@@ -246,6 +246,25 @@ def _gen_packages_index(debs_dir):
 
 # ─── Images Docker runtime ───────────────────────────────────────────────────
 
+def _to_oci_layout(path, tag):
+    """Rewrite the `docker save` tar at `path` as an OCI image layout (in place).
+    → (ok, manifest digest, message)."""
+    import shutil
+    import tempfile
+    from . import oci_push
+    work = tempfile.mkdtemp(prefix="bobi-oci-", dir=os.path.dirname(path))
+    try:
+        img = oci_push.build(path, work, tag)
+        tmp = path + ".oci"
+        oci_push.write_layout(img, tmp, tag)
+        os.replace(tmp, path)
+        return True, img["digest"], "ok"
+    except Exception as ex:
+        return False, None, "OCI: %s" % ex
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def ensure_images(which_list=None, log=None):
     """`docker save` chaque image runtime dans vendor/images/<which>.tar + manifeste.
 
@@ -283,9 +302,15 @@ def ensure_images(which_list=None, log=None):
             ok, msg = img_routes._materialize_image_tar(which, tag, dest)
         except Exception as ex:
             ok, msg = False, str(ex)
+        digest = None
+        if ok and os.path.exists(dest) and os.path.getsize(dest) > 0:
+            # OCI form (2026-11-28, image registry): the same image as the registry publishes it —
+            # same digest — written as an OCI image layout plus Docker's compatibility manifest,
+            # so `docker load` on the node takes it as before and any OCI tool can read it.
+            ok, digest, msg = _to_oci_layout(dest, tag)
         size = os.path.getsize(dest) if os.path.exists(dest) else 0
         if ok and size > 0:
-            manifest.append({"which": which, "tag": tag, "file": fname,
+            manifest.append({"which": which, "tag": tag, "file": fname, "digest": digest,
                              "capability": IMAGE_CAPS.get(which, which), "size": size})
             _log(f"  {tag} embarquée ({size // (1024*1024)} Mo)")
         else:

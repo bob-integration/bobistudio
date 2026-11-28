@@ -19,7 +19,10 @@
 # ---------------------------------------------------------------- étage builder : compiler libmxl
 # ⚠ DOIT rester byte-identique au builder de plugins/_compute_runtime/Dockerfile (cache partagé).
 FROM debian:trixie-slim AS mxl-builder
-ARG MXL_REF=v1.1.0
+# MXL_REF = a tag OR a commit (fetched by name, so both work). 2026-11-28: maintenance branch
+# release/v1.1 pinned on its commit of 2026-11-26 (90 commits past v1.1.0: initiator cqDepth #736,
+# RC/RDM queue drain and shutdown, #844, slice fixes). Switch to the v1.1.1 tag once published.
+ARG MXL_REF=a45b647db58b1a288a460c79a259a93def1a187c
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VCPKG_ROOT=/opt/vcpkg
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -51,7 +54,10 @@ RUN LD_LIBRARY_PATH=/opt/libfabric/lib /opt/libfabric/bin/fi_info -l > /tmp/fi_p
 ENV PKG_CONFIG_PATH=/opt/libfabric/lib/pkgconfig
 RUN git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" \
  && "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-RUN git clone --depth 1 --branch "${MXL_REF}" https://github.com/dmf-mxl/mxl.git /src/mxl
+RUN git init -q /src/mxl \
+ && git -C /src/mxl remote add origin https://github.com/dmf-mxl/mxl.git \
+ && git -C /src/mxl fetch -q --depth 1 origin "${MXL_REF}" \
+ && git -C /src/mxl -c advice.detachedHead=false checkout -q FETCH_HEAD
 WORKDIR /src/mxl
 RUN for a in v2 v3; do \
       { echo '#!/bin/sh'; echo "exec /usr/bin/gcc \"\$@\" -march=x86-64-$a"; } > /usr/local/bin/cc-$a; \
@@ -85,10 +91,15 @@ COPY plugins/_compute_runtime/patches/mxl-fabrics-slice-reset.patch /tmp/mxl-fab
 # sans FI_FENCE rien n'ordonne les écritures RMA d'un lot multi-plans, la cible publie des
 # tranches dont les octets sont encore en vol. SECONDE cause des bandes déchirées.
 COPY plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch /tmp/mxl-fabrics-fence-notification.patch
+# mxl-fabrics-demo hands JSON setup options (`--fabrics-options`, e.g. cqDepth) to the initiator
+# and the target. Upstream passes nullptr: without it, an audio flow wider than 31 channels
+# overflows the initiator completion queue even on a release that has #736.
+COPY plugins/_compute_runtime/patches/mxl-fabrics-demo-options.patch /tmp/mxl-fabrics-demo-options.patch
 RUN git apply --verbose /tmp/mxl-planar-type.patch \
  && git apply --verbose /tmp/mxl-planar-slices.patch \
  && git apply --verbose /tmp/mxl-fabrics-slice-reset.patch \
  && git apply --verbose /tmp/mxl-fabrics-fence-notification.patch \
+ && git apply --verbose /tmp/mxl-fabrics-demo-options.patch \
  && cmake --build build -j"$(nproc)" \
  && cmake --install build
 RUN cmake -S . -B build-v3 $MXL_CMAKE_ARGS \

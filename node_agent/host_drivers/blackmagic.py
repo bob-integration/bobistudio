@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 KIND = "blackmagic"
-SCRIPT_VERSION = "1.4.0"
+SCRIPT_VERSION = "1.5.0"
 
 EXIT_OK, EXIT_REBOOT, EXIT_SHUTDOWN = 0, 10, 11
 
@@ -106,6 +106,14 @@ PROBES = {
     "pci":     "grep -l 0xbdbd /sys/bus/pci/devices/*/vendor 2>/dev/null | wc -l",
     "built":   "find /lib/modules/$(uname -r) -name 'blackmagic*.ko*' 2>/dev/null | wc -l",
     "kernel":  "uname -r",
+    # ★ ADDED 2026-11-28. Desktop Video 16.4a1 and 16.5a1 install, build and load cleanly on a
+    #   PREEMPT_RT kernel, then fault in `bmio_notify_add` on the FIRST frame, output or input.
+    #   Reproduced with the SDK alone on two machines (Precision 7910 + Duo 2, HP Z8 G4 + Quad 2),
+    #   clean on the non-RT kernel of the same machines. Nothing in the install says so: the job
+    #   ends « DONE », the card enumerates, and the node is lost at the first frame — the card
+    #   stays unusable and the shutdown hangs until a forced reboot.
+    #   `/sys/kernel/realtime` exists on RT kernels only; `uname -v` is the fallback.
+    "preempt_rt": "grep -qx 1 /sys/kernel/realtime 2>/dev/null || uname -v | grep -q PREEMPT_RT",
 }
 
 
@@ -242,6 +250,7 @@ def gather_facts(probe=live_probe):
     rc_pci, pci = probe("pci")
     rc_bt, built = probe("built")
     _, noyau = probe("kernel")
+    rc_rt, _rt = probe("preempt_rt")
     try:
         noeuds = int((devdir or "0").strip() or 0)
     except ValueError:
@@ -265,6 +274,7 @@ def gather_facts(probe=live_probe):
             "pci": _count(pci) if rc_pci == 0 else 0,
             "built": _count(built) if rc_bt == 0 else 0,
             "kernel": (noyau or "").strip(),
+            "preempt_rt": rc_rt == 0,
             "flashed_boot": _marqueur_lu()}
 
 
@@ -450,11 +460,25 @@ def rows_for_ui(f, plan):
     return rows
 
 
+def warnings(f):
+    """Codes the UI shows ABOVE the plan, whatever the plan is. Not a refusal: the install works,
+    and a fixed driver would make the warning wrong, not the install."""
+    if f.get("preempt_rt"):
+        return [{"code": "preempt_rt", "params": {"kernel": f.get("kernel") or "?"}}]
+    return []
+
+
+RT_WARNING = ("WARNING: this node runs a PREEMPT_RT kernel (%s). Desktop Video 16.4a1 and 16.5a1 "
+              "install and load fine on it, then crash in the kernel on the FIRST frame played or "
+              "captured (bmio_notify_add): the card stays unusable and the node needs a forced "
+              "reboot. Boot a non-RT kernel to use DeckLink cards on this node.")
+
+
 def state(probe=live_probe):
     f = gather_facts(probe)
     plan = decide(f)
     return {"kind": KIND, "version": SCRIPT_VERSION, "status": plan["status"], "plan": plan,
-            "rows": rows_for_ui(f, plan), "facts": f,
+            "rows": rows_for_ui(f, plan), "facts": f, "warnings": warnings(f),
             "can_run": plan["status"] in ("update", "install", "upgrade", "missing_prereqs",
                                           "module_missing"),
             # Ce que l'interface doit proposer de déposer, et où ça atterrit. `install_needs_file`
@@ -691,6 +715,20 @@ def load_modules(sh=None):
 
 
 def run(probe=live_probe):
+    """Said at the START, so it is read before the work, and at the END, where the operator looks
+    once the job says DONE."""
+    rt = probe("preempt_rt")[0] == 0
+    if rt:
+        say(RT_WARNING % (probe("kernel")[1] or "?").strip())
+        say("")
+    rc = _run(probe)
+    if rt:
+        say("")
+        say(RT_WARNING % (probe("kernel")[1] or "?").strip())
+    return rc
+
+
+def _run(probe=live_probe):
     f = gather_facts(probe)
     plan = decide(f)
     besoin_redemarrage = False

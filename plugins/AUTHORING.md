@@ -343,6 +343,58 @@ Declare the image your plugin needs at least in `requires.image_min` (e.g. `"bob
 A node holding an older image is then left out of placement and migration, and a deploy there is
 refused with an alert naming both versions. A tag that cannot be compared never blocks anything.
 
+### `resources.realtime` — a thread that has a deadline
+
+A plugin whose thread must deliver every frame or every audio block on time declares the **role**
+of that thread; it never chooses a number, and asks for no capability itself.
+
+```json
+"resources": {"realtime": "program"}
+```
+
+| Role | Priority | For |
+|---|---|---|
+| `audio` | 10 | audio blocks (console, cart player) |
+| `output` | 8 | a physical output (SDI, ST 2110 TX) |
+| `program` | 5 | the programme picture (mixer PGM, stills, player) |
+| `monitoring` | 3 | what is watched, not aired (multiview) |
+
+The orchestrator grants the container `CAP_SYS_NICE` and an rtprio limit, and passes the number in
+`CONFIG["rt_priority"]`. From the deadline thread, before its first deadline:
+
+```python
+bobimxl.rt_promote(bobimxl.rt_priority(CONFIG))   # SCHED_FIFO for the CALLING thread only
+metrics.update(bobimxl.rt_state())                # rt_priority (obtained) + rt_priority_error on :8080
+```
+
+- A thread inherits the policy of the thread that starts it. A helper started by the promoted
+  thread (preview, prefetch, a builder) calls `bobimxl.rt_release()` first; threads started
+  before the promotion (HTTP servers) stay normal. Model: `mixer`.
+- The container panel shows the priority **obtained**, read from `:8080`, never the one asked.
+  A refusal is published and changes nothing else.
+- Never call `os.sched_setscheduler(..., SCHED_FIFO, ...)` from the script: the guard
+  `tests/verif_priorite_temps_reel.py` refuses it.
+
+### `deadline` on `:8080` — the proof that the cadence is held
+
+A Dedicated container is **guaranteed** only if it holds its cores, publishes this block, and missed
+no deadline in 24 h. No block = no proof = not guaranteed. The controller reads it at every poll and
+keeps one row per hour.
+
+```python
+witness = bobimxl.DeadlineWitness(period_s)          # once, at start
+witness.done(deadline_ns)                            # end of each cycle: its output was due then
+witness.skipped(n)                                   # slots of the cadence not produced at all
+metrics["deadline"] = witness.report()               # in the :8080 JSON
+```
+
+- A deadline is **missed** when the output is ready after it, or when a slot is skipped.
+- Call `done` with the deadline of the cycle, not the time it started: the block reports lateness
+  (negative = margin).
+- Warm up before the first deadline (compile, allocate, first frame): a restart counts its misses
+  like any other, and a wall restarted cold is not guaranteed for 24 h.
+- Models: `mixer`, `stills`; the player reports skips only (its deadline lives in Rust).
+
 ---
 
 ## Published ports (`ports`)

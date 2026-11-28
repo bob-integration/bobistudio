@@ -23,6 +23,7 @@ Compilés ou installés dans les images Docker distribuées avec le produit.
 | **x264** | `0.164.3108` (Debian trixie) | Encodage H.264 | **GPL-2.0+**, *Copyright 2003-2022 x264 project* | <https://www.videolan.org/developers/x264.html> |
 | **x265** | `4.1-2` (Debian trixie) | Encodage H.265 / HEVC | **GPL-2.0+** | <https://www.videolan.org/developers/x265.html> |
 | **libsrt** | paquet Debian | Transport SRT | **MPL-2.0** | <https://github.com/Haivision/srt> |
+| **libheif** (avec **libde265** et **libaom**) | paquets Debian trixie | Décodage des photos HEIC/HEIF du plugin Images fixes (`heif-dec`, processus séparé) — image compute | **LGPL-3.0+** (libheif, libde265), **BSD-2-Clause** (libaom) | <https://github.com/strukturag/libheif> |
 | **CuPy** (`cupy-cuda12x`) | `13.4.1` | Calcul GPU (image `_compute_gpu_runtime`) | **MIT** — ⚠️ voir ci-dessous | <https://github.com/cupy/cupy> |
 | **NumPy** | via pip | Calcul numérique dans les scripts de plugin | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | <https://numpy.org/> |
 

@@ -116,7 +116,8 @@ console.log(JSON.stringify(out));
 
 node = shutil.which("node")
 if not (node and os.path.isfile(CJS)):
-    print("  (node or the console plugin absent: not checked)")
+    print("SKIP(%s): %s absent - nothing checked"
+          % (("tool", "node") if not node else ("component", "the console plugin")))
     sys.exit(0)
 tmp = tempfile.mkdtemp(prefix="bobi_fiche_")
 try:

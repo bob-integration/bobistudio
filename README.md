@@ -76,6 +76,17 @@ AF-XDP). Chaque sortie porte sa classe d'émission — ici narrow, sous rate lim
 description de session et son enregistrement NMOS. La carte est à 6,8 des 200 Gb/s qu'elle
 agrège.
 
+## Limitations connues
+
+- **Testé surtout en 1080p50.** Les autres formats ont été peu essayés, et l'entrelacé peut poser
+  problème.
+- **Traitement interne en 8 bits par défaut.** Le moteur ST 2110 reçoit et émet en 10 bits, mais le
+  bus interne ramène l'image en 8 bits avant les traitements. Un mode 10 bits existe (Réglages → MXL
+  → « Profondeur du pipeline shm ») : il double la mémoire du bus, et tous les plugins n'y ont pas
+  été vérifiés.
+- **Sortie ST 2110 annoncée en BT.709 SDR.** Le SDP émis déclare toujours BT.709 SDR, quelle que
+  soit la colorimétrie du format. Le BT.2020 et le HDR ne sont pas pris en charge de bout en bout.
+
 ## Essayer
 
 Sur une machine Debian 13 vierge :

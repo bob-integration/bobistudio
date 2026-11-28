@@ -1430,7 +1430,7 @@ def api_node_cores_release(node_id):
 
 
 # ─── Poids CPU : la PART de CPU sous saturation, réglée depuis la fenêtre des cœurs ────────────
-# Quatre niveaux NOMMÉS (cf. app/cpu_weight.py), appliqués À CHAUD : changer un poids ne doit pas
+# Trois niveaux NOMMÉS (cf. app/cpu_weight.py), appliqués À CHAUD : changer un poids ne doit pas
 # couper une antenne. Le poids POSÉ est mesuré sur l'hôte et confronté au voulu dans la vue.
 
 @bp.route("/api/nodes/<int:node_id>/cores/weight", methods=["POST"])
@@ -1457,7 +1457,7 @@ def api_node_cores_weight(node_id):
     if not reset and not cpu_weight.niveau_valide(d.get("niveau")):
         return jsonify({"error": "niveau inconnu : %r (attendu %s)"
                                  % (d.get("niveau"), ", ".join(cpu_weight.LEVELS))}), 400
-    r = cpu_weight.regler(vmid, d.get("niveau"), reset=reset)
+    r = cpu_weight.regler(vmid, d.get("niveau"), reset=reset, confirme_rt=bool(d.get("confirme_rt")))
     if not r.get("ok") and isinstance(r.get("err"), dict):
         # Dedicated refused for lack of cores: say what is missing, as the project view does.
         return jsonify(dict(r["err"], ok=False)), 409

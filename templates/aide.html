@@ -451,6 +451,7 @@
 <table>
 <tr><th>Couche</th><th>Composant</th></tr>
 <tr><td>Orchestrateur</td><td>Flask + SQLite. Gère conteneurs, nœuds et projets ; expose NMOS (IS-04/05, IS-12, IS-14), Ember+, TSL, SNMP et SAP. Peut tourner en paire HA (actif/standby)</td></tr>
+<tr><td>Pupitres</td><td>Surfaces matérielles reliées à l'orchestrateur, chacune par un service optionnel : pupitres ATEM, Skaarhoj et EVS Dyvi pour la vidéo, surfaces à faders MCU / HUI pour la console audio</td></tr>
 <tr><td>Pipeline vidéo</td><td>Conteneurs Docker partageant la mémoire (<code>/dev/shm</code> / MXL) de leur nœud</td></tr>
 <tr><td>Nœud</td><td>Hôte Docker piloté par un <em>agent de nœud</em> (jeton HTTP) — aucun accès SSH root requis</td></tr>
 <tr><td>Infrastructure</td><td>NIC dédiée (PF E810, AF-XDP/DPDK) pour le 2110, PTP pour la synchro</td></tr>
@@ -1892,7 +1893,47 @@ installation, pas un état de la flotte.</p>
 <div class="wiki-note">Le moteur ST 2110 n'a pas d'entrée Recréer : il est refait à chaque Restart, donc il adopte déjà la nouvelle image.</div>
 </template>
 
+<template id="wiki-art-rapport-probleme">
+<p>Quand quelque chose ne marche pas, le plus long n'est pas de corriger : c'est de savoir ce qui s'est passé. Réglages → Système → <a href="/settings#report"><strong>Rapport de problème</strong></a> rassemble en <strong>un seul fichier texte</strong> ce qu'il faut pour comprendre, au lieu de vous faire taper des commandes dans un terminal.</p>
+
+<div class="wiki-note">L'onglet n'apparaît que pour un compte autorisé à modifier les réglages : le rapport porte les réglages et les journaux de l'instance.</div>
+
+<h2>Comment ça se passe</h2>
+<ol>
+<li>Décrivez ce qui se passe <strong>dans vos mots</strong> — ce que vous faisiez, ce que vous attendiez, ce que vous avez vu. C'est souvent ce paragraphe qui désigne la bonne rubrique du rapport.</li>
+<li><strong>Produire le rapport</strong>. Quelques secondes, plus quelques secondes par nœud interrogé.</li>
+<li><strong>Relisez-le</strong> : il s'affiche en entier dans la page, rubrique par rubrique.</li>
+<li><strong>Télécharger le fichier</strong>, puis envoyez-le à <a href="mailto:contact@bob-i.tv">contact@bob-i.tv</a>.</li>
+</ol>
+<p>Rien ne part tout seul : l'instance ne nous contacte pas. C'est vous qui envoyez le fichier, après l'avoir lu.</p>
+
+<h2>Ce que le rapport contient</h2>
+<table>
+<tr><th>Rubrique</th><th>Contenu</th></tr>
+<tr><td>Instance</td><td>nom, version, identifiant de build, date de déploiement, rôle (actif ou secours), système, machine, taille de la base, nombre de conteneurs et de nœuds</td></tr>
+<tr><td>Espace et mémoire</td><td>le dossier de transit des téléversements et la place qui y reste, <code>df</code>, la mémoire, la taille du journal applicatif</td></tr>
+<tr><td>Journal de l'application</td><td>les 400 dernières lignes du journal de l'orchestrateur</td></tr>
+<tr><td>Alertes récentes</td><td>les 150 dernières alertes, rendues en phrases</td></tr>
+<tr><td>Conteneurs</td><td>vmid, nom, type, statut, nœud</td></tr>
+<tr><td>Plugins installés</td><td>type, version, version de cœur exigée — et ceux qui ont été <strong>écartés</strong> au scan, qu'on ne voit nulle part ailleurs</td></tr>
+<tr><td>Réglages</td><td>tous, valeurs secrètes exceptées (voir ci-dessous)</td></tr>
+<tr><td>Nœuds</td><td>pour chacun : adresse, statut, capacités, puis le résultat de sept commandes de lecture — noyau, uptime, disques, mémoire, <code>/tmp</code>, état et journal de l'agent</td></tr>
+</table>
+
+<h2>Ce qu'il ne contient jamais</h2>
+<ul>
+<li><strong>Aucun mot de passe, aucun jeton.</strong> Ils sont <em>nommés</em>, avec « retiré du rapport » à la place de leur valeur : vous voyez donc aussi ce que nous ne prenons pas. Et toute ligne du rapport, d'où qu'elle vienne, passe par un masquage avant d'être affichée — un secret trouvé au milieu d'un journal est remplacé, son nom conservé.</li>
+<li><strong>Les valeurs propres à votre site</strong> tenues hors de la base (fichier <code>config_local.py</code>) : elles ne sont pas lues.</li>
+<li><strong>Le contenu de la base de données.</strong> Seule sa taille est donnée. Ni vos médias, ni vos projets.</li>
+<li><strong>Aucune commande qui modifie un nœud.</strong> Les sept commandes listées ci-dessus sont les seules, elles sont écrites en dur dans le produit, et elles lisent.</li>
+</ul>
+<p>Deux compteurs en tête du fichier disent combien de valeurs ont été <strong>retirées</strong> (des réglages secrets, nommés à leur place) et combien ont été <strong>masquées</strong> (trouvées au milieu d'un texte). Un nœud qui ne répond pas est écrit comme tel, jamais omis.</p>
+
+<div class="wiki-note">Ce qui s'affiche dans la page est exactement ce que contient le fichier, octet pour octet : le téléchargement ne recollecte rien. Les quatre derniers rapports restent en mémoire ; passé cela, l'écran demande d'en produire un nouveau plutôt que de servir un fichier différent de celui qui a été relu.</div>
+</template>
+
 <template id="wiki-art-depannage">
+<p>Avant de chercher : produisez un <a href="#rapport-probleme">rapport de problème</a>. Il rassemble en un fichier l'état de l'instance, l'espace disque, les journaux, les alertes et l'état de chaque nœud — c'est-à-dire la plupart des réponses, et de quoi nous écrire si elles n'y sont pas.</p>
 <h2>Receivers NMOS invisibles côté VSM</h2>
 <ul>
 <li>Vérifier <code>nmos_receivers_count &gt; 0</code> sur le container</li>
@@ -1990,6 +2031,28 @@ installation, pas un état de la flotte.</p>
 <h2>Référence d'intégration</h2>
 <p class="meta">Contenu chargé depuis <code>docs/reference/SNMP_MIB.md</code> — <span class="wiki-doc-mtime" data-doc="snmp-mib">…</span></p>
 <div class="wiki-doc-content" data-doc="snmp-mib">Chargement…</div>
+</template>
+
+<template id="wiki-art-multicast-plans">
+<p>Un <strong>plan d'adressage</strong> dit quelle adresse multicast porte quel flux ST 2110. Chaque site a le sien : un bloc par équipement, ou une plage par type de flux. Le plan se règle dans Réglages → <em>Multicast</em>.</p>
+
+<div class="wiki-note">Un plan vise un réseau média, une paire ST 2022-7 ou une interface sans paire. <strong>Enregistrer un plan ne déplace aucun flux.</strong> Seule la re-planification d'un moteur (Sorties 2110 → <em>Plan multicast</em>) change des adresses.</div>
+
+<h2>En bref</h2>
+<ul>
+<li>Chaque <strong>ligne</strong> associe un type de flux (vidéo, audio, ANC) à une plage, saisie en <code>/xx</code> ou en première – dernière adresse.</li>
+<li>Le <strong>fabric B</strong> se déduit du A : un octet décalé, le même groupe, ou une saisie à la main. Le premier fabric, rouge ou bleu, se règle par réseau média.</li>
+<li>L'adresse suit la <strong>couleur de l'interface</strong>, pas l'ordre des jambes. Les deux jambes d'un flux gardent le même rang.</li>
+<li>Un <strong>groupe par flux</strong> : un abonnement IGMP porte sur le groupe, pas sur le port.</li>
+<li>Un flux que le plan ne couvre pas est <strong>refusé</strong>, avec une alerte. Il ne retombe pas sur une autre adresse.</li>
+<li>Une adresse saisie à la main est marquée : la re-planification la laisse en place.</li>
+</ul>
+
+<div class="wiki-warn"><strong>Pas encore fait.</strong> L'ordre des jambes annoncé dans le SDP et dans NMOS ne suit pas le premier fabric. Le TTL, l'abonnement SSM en réception et le nombre de canaux audio par flux ne sont pas traités. Les émetteurs créés par NMOS prennent leur adresse dans le pool global.</div>
+
+<h2>Référence</h2>
+<p class="meta">Contenu chargé depuis <code>docs/reference/MULTICAST.md</code> — <span class="wiki-doc-mtime" data-doc="multicast">…</span></p>
+<div class="wiki-doc-content" data-doc="multicast">Chargement…</div>
 </template>
 
 <template id="wiki-art-installation">
@@ -2270,6 +2333,7 @@ chemin, ou quand la réconciliation crée des liens d'elle-même.</p>
 <li>Site : <a href="https://www.bobi.studio" target="_blank" rel="noopener">www.bobi.studio</a></li>
 <li>Contact : <a href="mailto:contact@bob-i.tv">contact@bob-i.tv</a></li>
 </ul>
+<p>Pour nous écrire au sujet d'un problème, joignez un <a href="#rapport-probleme">rapport de problème</a> : il porte la version, les journaux, les alertes et l'état des nœuds, vous le relisez en entier avant de l'envoyer, et il nous évite de vous faire taper des commandes dans un terminal.</p>
 </template>
 
 <template id="wiki-art-securite-acces">
@@ -2391,9 +2455,11 @@ const CORE_ARTICLES = [
   { id: 'paquets-audio',        title: 'Paquets audio sur le bus',    cat: 'sync' },
   { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'sync' },
   { id: 'reseau-conteneurs',    title: 'Réseau des conteneurs (site / interne)', cat: 'network' },
+  { id: 'multicast-plans',       title: 'Plans d\'adressage multicast', cat: 'network' },
   { id: 'securite-acces',       title: 'Sécurité et accès (mode web, jetons, MCP)', cat: 'admin' },
   { id: 'haute-dispo',          title: 'Haute disponibilité (paire de contrôleurs)', cat: 'admin' },
   { id: 'agent-noeud',          title: 'Agent-nœud (contrat et sécurité)', cat: 'admin' },
+  { id: 'rapport-probleme',     title: 'Nous envoyer un rapport de problème', cat: 'debug' },
   { id: 'depannage',            title: 'Dépannage courant',           cat: 'debug' },
   { id: 'dev-orientation',      title: "S'orienter dans le code",     cat: 'dev' },
   { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },

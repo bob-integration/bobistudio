@@ -1,8 +1,12 @@
 {
-  "version": "0.28.2",
-  "date": "2026-10-28",
-  "image_tag": "bobi-media:0.28.2",
+  "version": "0.28.3",
+  "date": "2026-11-28",
+  "image_tag": "bobi-media:0.28.3",
   "changes": {
+    "libmxl release/v1.1 a45b647 + mxl-fabrics-demo-options (0.28.3)": [
+      "libmxl passe de v1.1.0 à la branche de maintenance release/v1.1, épinglée sur le commit a45b647 du 26/11 (90 commits après v1.1.0) : file de complétion de l'initiateur réglable (#736), vidange et arrêt des files RC/RDM, correctifs de tranches.",
+      "mxl-fabrics-demo accepte `--fabrics-options '<json>'` (cqDepth) côté émetteur et récepteur : sans lui, un flux audio de plus de 31 canaux débordait la file de complétion de l'initiateur, même avec #736."
+    ],
     "bobiplayout 0.3.4 : sortie KEY, la couche alpha au créneau du fill (0.28.2)": [
       "★ Nouvelle sortie de l'élément bobiplayout (`key-flow-def`, même géométrie que le flux vidéo, vérifiée) : une trame avec alpha (A420/A422/A444, 8 ou 10/12 bits) donne son image au flux vidéo et sa couche alpha au flux key, Y = alpha pleine échelle, chroma neutre, écrit juste après le fill AU MÊME CRÉNEAU. Trame sans alpha → key opaque ; noir → key transparent. Propriété `key-alpha` (lecture seule). La réduction 10/12 → 8 bits couvre aussi les formats avec alpha.",
       "Mesuré le 2026-10-28 sur dl360-1 (bobi-rust-dev, tools/bancs/banc_player_key.py) : key = alpha de la source au pixel près en 8 bits, ±1 en 10 bits ; même index que le fill en 1080p50 et 1080i25 ; sans `key-flow-def`, comportement inchangé. Requis par player 0.41.15."

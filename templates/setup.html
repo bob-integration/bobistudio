@@ -119,7 +119,7 @@
         <div class="field">
             <label for="su_profil">{{ _('settings.securite.pwd_title') }}</label>
             <select name="pwd_profil" id="su_profil">
-                {% for nom in ['souple', 'standard', 'stricte'] %}
+                {% for nom in ['aucune', 'souple', 'standard', 'stricte'] %}
                 <option value="{{ nom }}" {{ 'selected' if nom == pwd_profil }}>{{ _('settings.securite.pwd_' ~ nom) }}</option>
                 {% endfor %}
             </select>
@@ -154,7 +154,8 @@
     </form>
     <script>window.PWD_EXIGENCES = {{ pwd_exigences|tojson }};
              window.PWD_PROFILS = {{ pwd_profils|tojson }};
-             window.PWD_PROFIL_DESC = {{ {'souple': _('settings.securite.pwd_souple_d'),
+             window.PWD_PROFIL_DESC = {{ {'aucune': _('settings.securite.pwd_aucune_d'),
+                                          'souple': _('settings.securite.pwd_souple_d'),
                                           'standard': _('settings.securite.pwd_standard_d'),
                                           'stricte': _('settings.securite.pwd_stricte_d')}|tojson }};
              window.PWD_DISCORDANT = {{ _('compte.pwd_discordant')|tojson }};</script>

@@ -5,6 +5,144 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.1 — 2026-11-28
+
+La 1.1 porte surtout sur la garantie des ressources et le temps réel. Un conteneur Dédié tient ses cœurs et le prouve par son témoin d'échéance ; l'orchestrateur lui donne sa priorité temps réel ; un nœud peut passer en noyau temps réel, le défaut d'un nouveau nœud. La version ajoute aussi les plans d'adressage multicast, un registre d'images interne et le rapport de problème.
+
+**Garantir les ressources.**
+
+- Trois niveaux par conteneur : Dédié, Partagé, Arrière-plan (l'ancien « Batch » ; les anciens noms sont repris).
+- Un Dédié est garanti s'il tient ses cœurs et publie son témoin d'échéance ; sa fiche montre ses échéances.
+- Un Dédié sans cœurs libres est refusé au lieu d'être replié en silence sur le pool partagé, sauf si l'on a choisi « au mieux ».
+- La charge temps réel du pool partagé est bornée à la moitié de ses cœurs.
+- La somme des limites mémoire d'un nœud est bornée à 90 % de sa RAM.
+- Au-delà de ces bornes, la création demande un choix explicite.
+- Pic mémoire par conteneur (24 h) et par plugin (7 jours), alerte à 70 % de la limite.
+
+**Éprouver un projet.**
+
+- Projets → Ressources sature 5 minutes le pool partagé de ses nœuds.
+- Le résultat dit si ses conteneurs Dédiés tiennent, ou lequel a lâché.
+
+**Aptitude du nœud.**
+
+- La fiche du nœud dit, mesuré, ce qui peut empêcher une garantie : noyau, fréquence en rafales, gouverneur, frères HT, interruptions sur les cœurs dédiés, bande mémoire.
+- « Dédié = cœur physique » s'active par nœud, depuis la fenêtre Cœurs, sans coupure des conteneurs partagés.
+- Un bouton pose sur la ligne de démarrage le paramètre qui rend déplaçables les interruptions gérées par le noyau (megaraid_sas, mpt3sas, smartpqi) ; le redémarrage reste à faire.
+- Agent-nœud 0.32.9.
+
+**Noyau temps réel.**
+
+- Une case à l'enrôlement, ou un bouton sur la fiche du nœud, installe le noyau PREEMPT_RT de Debian et y recompile les pilotes (NVIDIA, carte réseau ST 2110).
+- C'est le défaut d'un nouveau nœud.
+- Mesuré sur une console audio à cœur isolé : 7 360 blocs manqués en une nuit sous noyau normal, aucun sur 217 millions sous noyau temps réel.
+
+**Priorité temps réel donnée par l'orchestrateur.**
+
+- Un plugin déclare le rôle de son fil (audio, sortie, programme, surveillance) ; l'orchestrateur en déduit la priorité et la lui donne.
+- Aucun réglage.
+- La fiche du conteneur affiche la priorité obtenue, ou le refus et sa raison.
+
+**Noyau temps réel : ce qui est essayé.**
+
+- Moteur 2110 essayé sous noyau temps réel en DPDK sur une carte E810 : 8 h sans perte, PTP tenu.
+- Pas essayé dans cette version sous RT en AF-XDP, ni en ST 2022-7.
+
+**Nœuds à carte DeckLink : restez en noyau normal.**
+
+- Le pilote Blackmagic (16.4a1 et 16.5a1) plante sous noyau temps réel.
+- Le bouton « Noyau temps réel » refuse un nœud à carte DeckLink.
+- L'installation d'un tel nœud garde le noyau normal.
+- Le pilote Blackmagic 1.5.0 avertit s'il est installé sous noyau temps réel.
+
+**Plans d'adressage multicast.**
+
+- Réglages → Multicast dit quelle adresse porte quel flux, par réseau ou par paire 2022-7.
+- Le fabric B peut se déduire du A.
+- Un groupe par flux.
+- Un flux que le plan ne couvre pas est refusé, avec une alerte.
+- Enregistrer un plan ne déplace aucun flux.
+
+**Registre d'images.**
+
+- Réglages → Images : un registre sur le contrôleur (Zot, compatible OCI), désactivé par défaut.
+- Une image est construite et publiée une fois, puis tirée par les nœuds par son empreinte : seules les couches manquantes voyagent.
+- Lecture par le certificat de l'agent, sans mot de passe.
+- Emplacement au choix (disque dédié, NFS, disque système, S3), répliqué ou repris par le contrôleur de secours.
+- Retour arrière vers une version gardée.
+- Un nœud qui détient une image différente sous le même nom est signalé.
+- Sans registre, l'archive est copiée comme avant.
+- Le paquet hors ligne passe au format OCI.
+
+**Rapport de problème.**
+
+- Réglages → Système → Rapport de problème produit un fichier texte à joindre à une demande d'aide : journal, alertes, conteneurs, plugins, réglages, état des nœuds.
+- Les secrets en sont retirés.
+- Le rapport s'affiche en entier avant d'être téléchargé.
+
+**Bibliothèque des médias.**
+
+- Un dossier d'un serveur réseau s'importe en une seule tâche, vers un bin ou une grille d'Images fixes.
+- Sous-dossiers compris (quatre niveaux), rangés en sous-bins.
+- L'import peut être annulé.
+- La recherche ignore les accents et la casse ; Entrée prend le premier résultat.
+- Les métadonnées d'une sélection se changent en une fois.
+- Les mots-clés sont proposés à la saisie.
+- Nouveaux champs Crédit, Droits jusqu'au et Photo principale ; des droits expirés sont signalés.
+- Les photos HEIC sont acceptées.
+
+**Mises à jour.**
+
+- Le contrôle part à l'heure choisie, et un jour choisi en hebdomadaire.
+- Un contrôle manqué est rattrapé au démarrage.
+- Chaque administrateur peut recevoir par e-mail, dans sa langue, l'annonce d'une nouvelle version.
+- Un seul serveur d'envoi pour tout le produit, dans Réglages → Système → E-mail ; celui de l'onglet Alertes y est recopié une fois.
+- Une archive de mise à jour qui écrirait hors de l'installation est refusée en entier, avant toute écriture.
+
+**Recette.**
+
+- Un message du fil peut porter des fichiers texte (patch, diff, journal) en plus des images.
+- Ils se téléchargent et ne s'affichent jamais dans la page.
+
+**Mots de passe.**
+
+- Profil « Aucune contrainte » dans Réglages → Sécurité et au premier démarrage.
+- Un refus nomme la règle enfreinte.
+
+**Aussi corrigé.**
+
+- Conteneurs GPU : ils repartent après un redémarrage du nœud (21 s après l'agent au lieu de 2 min 23 s, mesuré à 22 conteneurs), et ne perdent plus leur carte au rechargement de systemd. Agent-nœud 0.32.8.
+- Noyau temps réel sur un nœud NVIDIA : l'installation aboutit, et ne fixe jamais un noyau sans initramfs.
+- Moteur 2110 en DPDK : un port sans adresse PCI est refusé, avec la raison (le moteur s'arrêtait sur `mtl_init fail`). `ptp4l` du nœud est arrêté au passage en DPDK, puis relancé au retour.
+- « Redéployer » passe à la version courante du plugin ; avant, il redéployait l'ancienne et l'écart restait.
+- Le bandeau de mise à jour ne propose plus la version déjà installée.
+- Le disque du contrôleur alerte à 85 et 95 %, comme celui d'un nœud. Celui du contrôleur de secours aussi, jugé par l'actif à chaque copie de la base.
+- Création : « Ajouter à la liste » ne restait plus sans effet quand le navigateur bloque les boîtes de dialogue.
+- Un plugin s'exporte sans son dépôt git (un export dépassait le plafond d'import).
+- DeckLink : une liste de périphériques illisible n'est plus dite « aucun périphérique ».
+- Un nœud de construction indisponible est signalé au lieu d'être ignoré.
+- Une réapplication du pool partagé ne défait plus une réservation de cœurs faite entre-temps.
+- Médias : tri dans la barre, retenu ; la bibliothèque se met à jour seule.
+- Une partition de cœurs refusée par le noyau est retentée après 5 minutes au lieu de rester invalide (un nœud s'était figé). Agent-nœud 0.32.7.
+- Frères HT des cœurs dédiés : une alerte quand la situation change, plus toutes les 5 minutes (541 alertes en 3 jours sur un nœud).
+- Un conteneur DeckLink n'est plus créé sur un nœud qui n'a pas la capacité DeckLink : il était refusé plus tard, au déploiement.
+- Câbles : câbler une fenêtre de multiview à chaud ne donne plus une image puis du noir.
+- Moniteur : il dit ce qui manque (plugin streamer, passerelle WebRTC) au lieu de créer quoi que ce soit.
+- Composition : la liste des instances se trie (déploiement, nom, projet, capacité) et se groupe par projet ou par capacité.
+- Onglets : l'onglet allumé ne s'élargit plus en passant en gras, et ne pousse plus ses voisins à chaque clic.
+
+**Publiés hors du cœur.** Ces plugins et services ne sont pas dans la 1.1. Ils s'installent par Réglages → Mises à jour.
+
+- **Témoin d'échéance** : cartouchier 0.1.16, color_corrector 0.15.5, delay 0.14.9, mixer 0.23.73, multiview 0.116.38, split 0.24.16, stills 0.19.39.
+- **Priorité temps réel** : cartouchier 0.1.16, decklink_io 0.29.59, mixer 0.23.73, multiview 0.116.38, stills 0.19.39.
+- **mixer 0.23.73** : keyers chroma et linear/luma en C, avec l'image bobi-compute 0.85 ; sur une image plus ancienne, il garde le calcul précédent et le dit.
+- **multiview 0.116.38** : écran de démarrage pendant l'ouverture des entrées, et câblage à chaud depuis la page Câbles.
+- **2110_io 0.108.2** : l'image ne dépend plus du processeur de la machine qui l'a construite.
+- **tsl 0.2.4** : un nom reçu en TSL n'écrase plus le nom d'un port de projet, sauf si le port l'accepte.
+- **hello_world 0.10.6**, **emberplus 0.4.2** : version minimale du cœur déclarée.
+
+---
+
 ## Bobi.Studio 1.0.4 — 2026-11-22
 
 **Suppression d'un conteneur : plus d'IP donnée deux fois.** Quand `docker rm` échouait, la fiche était effacée quand même. Le conteneur continuait de tourner avec son IP, et le déploiement suivant recevait cette IP : il échouait sur « Address already in use », sans dire pourquoi. La fiche n'est maintenant effacée qu'une fois que le nœud confirme que le conteneur est parti. Sinon, une alerte le signale. L'allocation saute aussi les IP que le nœud donne déjà, et nomme le conteneur inconnu qui en tient une.
@@ -32,6 +170,8 @@ Le contenu est rendu dynamiquement sur la page Aide.
 - **decklink_io 0.29.58** : le port de sortie déclare son format, ce qui permet le contrôle au câblage décrit plus haut.
 - **streamer 0.19.11** : moniteur plafonné à 960×540, un seul champ sur une source entrelacée. L'image noire de repli a la bonne taille sur une source 10 bits.
 
+---
+
 ## Bobi.Studio 1.0.3 — 2026-11-18
 
 **Carte DeckLink : plus de carte perdue au redémarrage.** Le pilote installé compilait son module pour le seul noyau en cours. Si l'installation tirait un noyau plus récent, le nœud redémarrait dessus sans module, et l'écran disait « Aucune carte ». Le module est maintenant compilé pour chaque noyau installé, avant de demander le redémarrage. Un nœud déjà dans ce cas affiche « Module noyau absent », avec un bouton qui compile et charge le module, sans redémarrer. Le journal de la dernière opération est daté et replié, pour ne plus se lire comme l'état actuel.
@@ -47,6 +187,8 @@ la 1.0.3 ne contient pas. Ils s'installent par Réglages → Mises à jour.
   sauté, et la sortie SDI envoyait du noir.
 - **streamer 0.19.10** : un moniteur déployé directement sur une source entrelacée affichait du noir.
 - **Service WebRTC 0.3.6** : nécessaire au déploiement automatique de la passerelle décrit plus haut.
+
+---
 
 ## Bobi.Studio 1.0.2 — 2026-11-14
 

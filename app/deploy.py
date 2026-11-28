@@ -624,6 +624,77 @@ def _multiview_startup_keys():
     return keys
 
 
+def _shard_running(ref):
+    try:
+        return (db_get_container(int(ref)) or {}).get("status") == "running"
+    except (TypeError, ValueError):
+        return False
+
+
+def _render_send(vmid, type_script, params):
+    """What the script is rendered with: the stored params made FAT (fonts, cf. `_gras`), a sharded
+    wall's saved assembler config (compositor_fabric.saved_assembler), the startup splash. None of
+    the three is persisted in `deploy_config`, which keeps the logical wall."""
+    base = params
+    if type_script == "multiview":
+        try:
+            from . import compositor_fabric as _cf
+            _asm = _cf.saved_assembler(vmid, params, running=_shard_running)
+            if _asm is not None:
+                base = {**params, **_asm}
+                log.info("deploy %s: rendered as the assembler of its shards", vmid)
+        except Exception as _e:                                            # noqa: BLE001
+            log.warning("deploy %s: saved assembler not read (%s) — rendered logical", vmid, _e)
+    _send = _gras(base)
+    # Startup splash: resolved for THIS container at render time, never persisted (app/splash.py).
+    try:
+        from . import splash as _splash
+        _sp = _splash.for_container(db_get_container(vmid), type_script)
+        if _sp is not None:
+            _send = dict(_send, splash=_sp)
+    except Exception as _e:                                                # noqa: BLE001
+        log.warning("deploy %s: splash not resolved: %s", vmid, _e)
+    return _send
+
+
+def rewrite_wall_script(vmid, start=False):
+    """The fabric changed what a wall is (assembler <-> monolith) at hot: its script FILE is
+    rewritten to match, without restarting it, so the next start (`docker start`, agent relaunch,
+    restart) starts in the right shape. Rendered at the version the container RUNS, never another;
+    unknown → nothing written (the next deploy renders it right anyway).
+    `start`: the wall was stopped for a cut-over — rendered at the version in its config, then
+    started."""
+    import json as _json_rw
+    c = db_get_container(vmid) or {}
+    ip = c.get("ip") or get_container_ip(vmid)
+    try:
+        dc = _json_rw.loads(c.get("deploy_config") or "{}") or {}
+    except ValueError:
+        return False
+    if not ip or dc.get("type") != "multiview":
+        return False
+    ver = ((dc.get("params") or {}).get("plugin_version") if start else None) or version_en_cours(ip, vmid)
+    if not ver:
+        log.info("fabric: wall %s script file not rewritten — running version unknown", vmid)
+        return False
+    params = _fresh_stored_params(vmid, "multiview", dc.get("params") or {})
+    content = generer_script("multiview", _render_send(vmid, "multiview", params), ver)
+    try:
+        r = agent_session().post(agent_url(ip, "/deploy"),
+                                 json={"path": c.get("script") or "/opt/script/main.py",
+                                       "content": content},
+                                 headers=agent_headers(vmid), timeout=10)
+        ok = r.status_code == 200
+        if ok and start:
+            ok = agent_session().post(agent_url(ip, "/start"), headers=agent_headers(vmid),
+                                      timeout=10).status_code == 200
+    except Exception as _e:                                                # noqa: BLE001
+        log.warning("fabric: wall %s script file not rewritten: %s", vmid, _e)
+        return False
+    log.info("fabric: wall %s script file rewritten (%s)", vmid, "ok" if ok else "HTTP %s" % r.status_code)
+    return ok
+
+
 def _multiview_only_hot_changed(old_params, new_params):
     """True si aucun param structurel n'a changé → hot-apply possible.
     Structurel = la liste historique, PLUS tout ce que le script lit au démarrage et que l'envoi à
@@ -1784,6 +1855,8 @@ def deployer_script(vmid, type_script, params, script_path="/opt/script/main.py"
         params = project_ports.prepare_send(vmid, type_script, params)
         if not hot_only_keys:
             db_set_desired_state(vmid, "running")   # un déploiement = intention « ça doit tourner »
+            from . import deadlines                 # its startup is not a missed deadline
+            deadlines.mark_starting(vmid)
             # Pilote hôte requis PROUVÉ absent (decklink_io sans Desktop Video) : enregistrer sans
             # lancer, plutôt qu'un conteneur qui meurt en 4 s — cf. app/host_driver_gate.py.
             from . import host_driver_gate
@@ -2019,9 +2092,11 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
             return False
 
     if script_content is None:
+        if type_script == "multiview":
+            _prestart_fabric(vmid, params)
         # Rendu du script = params GRAS (polices en base64) ; `params` reste MAIGRE pour la
         # persistance et les comparaisons (cf. _gras).
-        script_content = generer_script(type_script, _gras(params), version)
+        script_content = generer_script(type_script, _render_send(vmid, type_script, params), version)
     if not script_content:
         db_add_alert("alert.deploy.type_inconnu", "error", vmid=vmid, kind="deploy",
                      params={"t": type_script})
@@ -2442,6 +2517,75 @@ def _schedule_fabric_reconcile(vmid, delays=(8.0, 20.0)):
         t = threading.Timer(d, _run); t.daemon = True; t.start()
 
 
+def is_sharded_wall(vmid):
+    """True if the fabric has made this wall an assembler (row `asm:<vmid>`)."""
+    from .database import db_fabric_get
+    return bool(db_fabric_get(f"asm:{vmid}"))
+
+
+# ── SHARDS INHERIT THE MOST DEMANDING LEVEL OF THEIR WALLS (2026-11-23, fabric rework item 4) ──
+# A shard is a plain multiview: it took the manifest's level, Shared — measured on wall 1248, Dedicated,
+# whose shards ran at weight 1024 on the shared pool. A Dedicated wall is only as guaranteed as the
+# cells it reads. The level is set before the shard's first `docker run` (`_deploy`), and checked at
+# every fabric pass for the shards in place (a wall's level can change), through `cpu_weight.regler`
+# — the same gesture as the human one: moved hot to dedicated cores, refused when there is no room.
+_LEVEL_RANK = {"background": 0, "shared": 1, "dedicated": 2}
+_shard_level_said = {}       # shard vmid → level refused, said once
+
+
+def shard_level_for(walls):
+    """The most demanding level among these walls (vmids, str or int), or None (none known)."""
+    from .cpu_weight import for_container
+    best = None
+    for w in walls or []:
+        try:
+            c = db_get_container(int(w))
+        except (TypeError, ValueError):
+            continue
+        if not c:
+            continue
+        lvl = (for_container(c, "multiview") or {}).get("niveau")
+        if lvl in _LEVEL_RANK and (best is None or _LEVEL_RANK[lvl] > _LEVEL_RANK[best]):
+            best = lvl
+    return best
+
+
+def sync_shard_levels(node_id):
+    """Give every shard of this node the level of its walls → {vmid: (level, ok)} of the changes."""
+    import json as _json
+    from .cpu_weight import for_container, regler
+    from .database import db_fabric_all
+    out = {}
+    for row in db_fabric_all(node_id):
+        if row.get("kind") not in ("shard", "shared") or not str(row.get("ref") or "").isdigit():
+            continue
+        vmid = int(row["ref"])
+        c = db_get_container(vmid)
+        if not c:
+            continue
+        try:
+            walls = _json.loads(row["parents"]) if row.get("parents") else []
+        except ValueError:
+            walls = []
+        want = shard_level_for(walls)
+        have = (for_container(c, "multiview") or {}).get("niveau")
+        if not want or want == have:
+            _shard_level_said.pop(vmid, None)
+            continue
+        r = regler(vmid, want, confirme_rt=True)
+        ok = bool(r.get("ok"))
+        out[vmid] = (want, ok)
+        if ok:
+            _shard_level_said.pop(vmid, None)
+            log.info("fabric: shard %s now %s (level of its walls %s)", vmid, want, walls)
+        elif _shard_level_said.get(vmid) != want:
+            _shard_level_said[vmid] = want
+            db_add_alert("alert.fabric.shard_niveau_refuse", "warning", vmid=vmid, node_id=node_id,
+                         kind="resource", params={"h": c.get("hostname") or vmid, "want": want,
+                                                  "murs": ", ".join(str(w) for w in walls)})
+    return out
+
+
 # Un mur déployé depuis moins que ça n'est pas jugé par le tissu : sa latence est celle de la
 # rafale de re-bake, pas de son régime. Deux minutes couvrent le re-bake d'habillage plein cadre
 # et la recomposition des frises, mesurés sur un mur de 4 cellules richement habillé.
@@ -2537,27 +2681,189 @@ def _restaurables_tissu(node_id, budget_by_vmid, budget_ms):
     return out
 
 
+# ── A WALL STARTS IN ITS CUT (fabric rework step 2, 2026-11-25, asked by Cyril) ──────────────
+# The fabric shards a wall only once its monolith is seen saturating, two minutes after its start:
+# a heavy wall started as a monolith, missed frames, then was cut. Nothing measures the cost of a
+# tile, so the node is calibrated instead: ms per Mpx of cells for the multiviews running there
+# (shards and monoliths, not assemblers, which only copy). An ESTIMATE — wrong either way, the
+# saturation path stays the safety net.
+
+def _wall_area_mpx(params):
+    from . import compositor_fabric as _cf
+    return sum(int(e.get("w") or 0) * int(e.get("h") or 0) for e in _cf._visible_cells(params)) / 1e6
+
+
+def _predict_wall_ms(node_id, params, exclude=None):
+    """Predicted own latency (ms) of this wall as a monolith on this node, or None (no sample)."""
+    import json as _json
+    import statistics as _stats
+    from .database import db_fabric_get as _dfg
+    area = _wall_area_mpx(params)
+    if area <= 0:
+        return None
+    rates = []
+    for c in db_get_containers():
+        if c.get("node_id") != node_id or c.get("vmid") == exclude or c.get("status") != "running":
+            continue
+        try:
+            dc = _json.loads(c.get("deploy_config") or "{}") or {}
+        except Exception:                                                  # noqa: BLE001
+            continue
+        if dc.get("type") != "multiview" or _dfg(f"asm:{c.get('vmid')}"):
+            continue
+        a = _wall_area_mpx(dc.get("params") or {})
+        ip = c.get("ip") or get_container_ip(c.get("vmid"))
+        if a < 0.05 or not ip:
+            continue
+        try:
+            own = requests.get(f"http://{ip}:8080/", timeout=1.0).json().get("own_latency_ms")
+        except Exception:                                                  # noqa: BLE001
+            own = None
+        if own and float(own) > 0:
+            rates.append(float(own) / a)
+    return round(_stats.median(rates) * area, 1) if rates else None
+
+
+def manual_walls():
+    """Instances of the walls set to « manual » when they saturate (Murs tool; default automatic)."""
+    import json as _json
+    from . import settings as _st
+    try:
+        v = _st.get("fabric_manual_walls") or []
+        v = _json.loads(v) if isinstance(v, str) else v
+        return {str(u) for u in v or []}
+    except (TypeError, ValueError):
+        return set()
+
+
+def _prestart_fabric(vmid, params):
+    """Before a logical wall's script is rendered: if the node's calibration says it would
+    saturate, plan the node with it and make its shards first, so it starts as an assembler
+    (`_render_send` then finds its saved config). Never blocks a deploy for long."""
+    from . import settings as _st
+    if str(_st.get("fabric_auto") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        return None
+    c = db_get_container(vmid) or {}
+    nid = c.get("node_id")
+    if nid is None or str(c.get("hostname") or "").startswith("bobi-fab-") or is_sharded_wall(vmid):
+        return None
+    if str(c.get("instance_uuid") or "") in manual_walls():
+        return None             # « manual »: it starts whole; a saturation will be proposed
+    pred = _predict_wall_ms(nid, params, exclude=vmid)
+    try:
+        budget = float(_st.get("fabric_budget_ms") or 20.0)
+        _ft = float(params.get("fps_target") or 0)
+        if _ft > 0:
+            budget = 1000.0 / _ft
+    except (TypeError, ValueError):
+        budget = 20.0
+    if pred is None or pred <= budget:
+        log.info("fabric: wall %s starts whole (predicted %s ms, budget %.1f)", vmid, pred, budget)
+        return None
+    _lk = _fabric_lock(nid)
+    if not _lk.acquire(timeout=30):
+        log.info("fabric: wall %s starts whole — node %s busy planning", vmid, nid)
+        return None
+    try:
+        log.info("fabric: wall %s predicted %.1f ms (budget %.1f) — started in its cut", vmid, pred, budget)
+        return _reconcile_fabric_node_impl(nid, prestart=(vmid, params, pred))
+    except Exception as e:                                                 # noqa: BLE001
+        log.warning("fabric: prestart of wall %s: %s", vmid, e)
+        return None
+    finally:
+        _lk.release()
+
+
+def cutover_mode(node_id, prop):
+    """How a proposal would switch (fabric rework step 3, 2026-11-25), told BEFORE it is applied:
+    "prepare" = the new nodes are made and producing before the walls switch (no hole), when the
+    node has room for both cuts at once — free cores for the Dedicated ones, the real-time budget
+    of the shared pool for the others, and the memory budget; else "restart_in_place": the walls
+    are stopped, the old nodes removed, the new made, the walls started (a hole, startup screen)."""
+    from . import cpu_profiles as _cpr, core_pool as _cp, memory_watch as _mw, plugins as _pl
+    from . import realtime as _rt
+    res_ = _cpr._resources("multiview") or {}
+    par, mem = int(res_.get("cores") or 0), int(res_.get("memory") or 0)
+    rt_role = bool(_rt.role_of(_pl.get("multiview") or {}))
+    cores = rt = 0.0
+    for walls in (prop or {}).get("create") or []:
+        lvl = shard_level_for(walls) or "shared"
+        if lvl == "dedicated":
+            cores += par
+        elif lvl == "shared" and rt_role:
+            rt += _cp.rt_load_of(None, None, None)[0]
+    n = len((prop or {}).get("create") or [])
+    free = int((_cp.cores_status(node_id) or {}).get("free") or 0)
+    a_rt = _cp.admission_rt(node_id, rt)
+    a_mem = _mw.admission(node_id, mem * n)
+    ok = cores <= free and a_rt["suffisant"] and a_mem["suffisant"]
+    return {"mode": "prepare" if ok else "restart_in_place", "create": n,
+            "cores": [cores, free], "rt": [a_rt.get("charge"), a_rt["demande"], a_rt.get("budget")],
+            "memory_mb": [a_mem.get("somme"), a_mem["demande"], a_mem.get("budget")]}
+
+
+def apply_fabric_proposal(node_id):
+    """Applies the proposal of a node: every wall planned again together (`regroup`), switched as
+    `cutover_mode` says (measured again now: the node may have changed since)."""
+    from . import compositor_fabric as _cf
+    prop = _cf.proposals().get(node_id) or {}
+    mode = cutover_mode(node_id, prop)["mode"] if prop else "prepare"
+    with _fabric_lock(node_id):
+        if mode == "prepare":
+            return _reconcile_fabric_node_impl(node_id, regroup=True)
+        walls = list(prop.get("changed") or [])
+        log.info("fabric: node %s re-cut in place, walls %s stopped meanwhile", node_id, walls)
+        for v in walls:
+            c = db_get_container(v) or {}
+            ip = c.get("ip") or get_container_ip(v)
+            try:
+                agent_session().post(agent_url(ip, "/stop"), headers=agent_headers(v), timeout=10)
+            except Exception as e:                                         # noqa: BLE001
+                log.warning("fabric: wall %s not stopped for the cut-over: %s", v, e)
+        try:
+            return _reconcile_fabric_node_impl(node_id, regroup=True, in_place=set(walls))
+        finally:
+            for v in walls:
+                rewrite_wall_script(v, start=True)
+
+
 def reconcile_fabric_node(node_id):
     """Wrapper orchestrateur de l'auto-trigger du tissu (cf. compositor_fabric.reconcile_fabric).
     GATED par `fabric_auto` (défaut off). VERROU PAR-NŒUD non bloquant : le tick périodique
     (main.py) et le hook au (re)deploy (_schedule_fabric_reconcile) peuvent se chevaucher → un
     reconcile déjà en cours sur le nœud suffit, on skippe (évite la double matérialisation)."""
     from . import settings as _st
-    if str(_st.get("fabric_auto") or "").strip().lower() not in ("1", "true", "yes", "on"):
-        return {"skipped": "fabric_auto off"}
     _lk = _fabric_lock(node_id)
+    if str(_st.get("fabric_auto") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        # Shards made while it was on (or by a wall edit) still follow their walls' level.
+        if _lk.acquire(blocking=False):
+            try:
+                sync_shard_levels(node_id)
+            except Exception as e:                               # noqa: BLE001
+                log.warning("fabric: shard levels of node %s: %s", node_id, e)
+            finally:
+                _lk.release()
+        return {"skipped": "fabric_auto off"}
     if not _lk.acquire(blocking=False):
         return {"skipped": "reconcile fabric déjà en cours sur ce nœud"}
     try:
-        return _reconcile_fabric_node_impl(node_id)
+        res = _reconcile_fabric_node_impl(node_id)
+        try:
+            sync_shard_levels(node_id)
+        except Exception as e:                                   # noqa: BLE001
+            log.warning("fabric: shard levels of node %s: %s", node_id, e)
+        return res
     finally:
         _lk.release()
 
 
-def _reconcile_fabric_node_impl(node_id, perime=None):
+def _reconcile_fabric_node_impl(node_id, perime=None, regroup=False, prestart=None, in_place=None):
     """Corps du reconcile (cf. reconcile_fabric_node). Pour chaque multiview LOGIQUE du nœud qui
     SATURE (own_latency :8080 > budget), matérialise ses shards (conteneurs compute) et reconfigure
-    le mur en assembleur (hot) ; restaure le monolithe quand il ne sature plus. Idempotent."""
+    le mur en assembleur (hot) ; restaure le monolithe quand il ne sature plus. Idempotent.
+    A wall deployed more than `_DELAI_JUGEMENT_S` ago is ON AIR: its cut is kept, unless
+    `regroup` (a proposal applied). `prestart` = (vmid, params, predicted_ms): a wall about to
+    start, planned on its predicted cost and not pushed to (its script is rendered next)."""
     import json as _json
     from . import settings as _st, compositor_fabric as _cf, docker_compute as _dc, containers as _ct
     try:
@@ -2579,7 +2885,9 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         if _r.get("kind") in ("shard", "shared") and _ref and str(_ref).isdigit():
             _internal.add(int(_ref))
     # multiviews du nœud + leur own_latency (lecture :8080)
-    mvs, latency, budget_by_vmid = {}, {}, {}
+    mvs, latency, budget_by_vmid, on_air, hold = {}, {}, {}, set(), set()
+    _manual = manual_walls()
+    _pre_vmid = prestart[0] if prestart else None
     for c in db_get_containers():
         if c.get("node_id") != node_id:
             continue
@@ -2592,6 +2900,10 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         if c.get("vmid") in _internal:
             continue   # shard/partagé du tissu → jamais re-shardé
         vmid = c.get("vmid"); p = dc.get("params") or {}
+        if vmid == _pre_vmid:
+            continue                                     # added below, with the params it starts on
+        if str(c.get("instance_uuid") or "") in _manual:
+            hold.add(vmid)
         p = _fresh_stored_params(vmid, "multiview", p)   # R1 des ports : le mur logique, avant découpe
         mvs[vmid] = p
         # Intention de cadence PAR multiview (fps_target) → budget de trame propre ; sinon global.
@@ -2612,10 +2924,14 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         # On IGNORE donc les murs déployés depuis moins de _DELAI_JUGEMENT_S : latence None =
         # non jugé, ni shardé ni restauré. Le prochain cycle les prendra en régime établi.
         _dep = c.get("deployed_at")
+        if not _dep:
+            on_air.add(vmid)
         if _dep:
             try:
                 from datetime import datetime as _dt
                 _age = (_dt.now() - _dt.fromisoformat(_dep)).total_seconds()
+                if not 0 <= _age < _DELAI_JUGEMENT_S:
+                    on_air.add(vmid)
                 if 0 <= _age < _DELAI_JUGEMENT_S:
                     latency[vmid] = None
                     _satur_streak[vmid] = 0     # la fenêtre de rafale ne compte pour rien
@@ -2652,14 +2968,28 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         else:
             _satur_streak[vmid] = 0
         latency[vmid] = lat
+    if prestart:
+        mvs[_pre_vmid] = prestart[1]
+        latency[_pre_vmid] = prestart[2]
+        try:
+            _ft = float(prestart[1].get("fps_target") or 0)
+            if _ft > 0:
+                budget_by_vmid[_pre_vmid] = 1000.0 / _ft
+        except (TypeError, ValueError):
+            pass
     if not mvs:
         return {"nodes": 0}
 
-    def _deploy(name, params, hostname):
+    def _deploy(name, params, hostname, walls=None):
         # crée un conteneur compute (multiview shard) + déploie son script ; renvoie str(vmid) = ref.
         vmid = _dc.creer_container_compute(node_id, "multiview", hostname)
         if not vmid:
             return None
+        # The level of its walls BEFORE its first `docker run` (cf. sync_shard_levels).
+        _lvl = shard_level_for(walls)
+        if _lvl:
+            from .database import db_set_resources_override
+            db_set_resources_override(vmid, cpu_weight=_lvl)
         deployer_script(vmid, "multiview", params)
         return str(vmid)
 
@@ -2704,6 +3034,8 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         return all(r.status_code == 200 for r in (_r1, _r2, _r3))
 
     def _reconfigure(vmid, asm):
+        if vmid == _pre_vmid:
+            return          # not started yet: its script is rendered with the saved config
         ip = get_container_ip(vmid)
         if not ip:
             return
@@ -2809,10 +3141,13 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
 
     def _etat(vmid):
         """État RAPPORTÉ par le mur (`:8082/state`) — lecture PURE, aucun effet de bord.
+        None for a wall about to start (whatever runs there now is replaced).
         Sert à ne repousser la config d'assembleur qu'en cas de divergence réelle : un GET ne coûte
         aucune recuisson, alors que le re-push périodique qu'il remplace en provoquait une (purge du
         cache de polices + `overlay_dirty` → trame lente → image figée toutes les ~10 min).
         Toute erreur renvoie None = « état inconnu » → l'appelant repousse (jamais l'inverse)."""
+        if vmid == _pre_vmid:
+            return None
         ip = get_container_ip(vmid)
         if not ip:
             return None
@@ -2862,12 +3197,20 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
     except Exception as _e:                                                # noqa: BLE001
         log.warning("tissu : capacité d'épinglage du nœud %s illisible (%s) — pas de plafond",
                     node_id, _e)
-    return _cf.reconcile_fabric(node_id, mvs, latency, _deploy, _destroy, _reconfigure, _restore,
+    res = _cf.reconcile_fabric(node_id, mvs, latency, _deploy, _destroy, _reconfigure, _restore,
                                 budget_ms=budget, max_cells_per_shard=max_cells,
                                 budget_by_vmid=budget_by_vmid, slice_mode=_slice, etat_fn=_etat,
                                 rebind_fn=_rebind, pret_fn=_pret, max_noeuds=_max_noeuds,
                                 perime_fn=perime,
+                                script_fn=lambda v: v == _pre_vmid or rewrite_wall_script(v),
+                                frozen=on_air - {_pre_vmid}, regroup=regroup, in_place=in_place, hold=hold,
                                 # Sortie ÉCONOMIQUE du sharding : murs dont les shards cumulés
                                 # tiendraient dans le budget d'un monolithe, confirmé plusieurs
                                 # passages. Sans ça, shardé un jour = shardé toujours.
                                 restaurables=_restaurables_tissu(node_id, budget_by_vmid, budget))
+    if res.get("proposal"):
+        try:        # told with the proposal, before anyone applies it (step 3)
+            res["proposal"]["cutover"] = cutover_mode(node_id, res["proposal"])
+        except Exception as e:                                             # noqa: BLE001
+            log.warning("fabric: cut-over of node %s not assessed: %s", node_id, e)
+    return res

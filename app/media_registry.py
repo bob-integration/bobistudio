@@ -44,6 +44,7 @@ import sqlite3
 import tarfile
 import threading
 import time
+import unicodedata
 import uuid
 
 from . import media_naming
@@ -58,7 +59,9 @@ BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "backups")
 THUMB_W = 480
 SCHEMA_VERSION = 1
 FIELD_TYPES = ("text", "longtext", "number", "date", "enum", "bool")
-BASE_FIELDS = ("title", "description", "keywords")
+# Built-in descriptive fields. credit / rights_until / principal (2026-11-22): a portrait library
+# needs who to credit, until when the photo may be aired, and which photo of a person comes first.
+BASE_FIELDS = ("title", "description", "keywords", "credit", "rights_until", "principal")
 _DEFAULT_MOUNT = "/srv/mxl-media"
 _SCAN_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "script_templates", "media_scan.py")
@@ -68,6 +71,16 @@ _SCAN_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 # (piège déjà rencontré avec database.get_db).
 _tls = threading.local()
 _scan_lock = threading.Lock()
+
+
+def fold(s):
+    """Text as a search compares it: accents dropped, case folded (2026-11-22). SQLite's LOWER
+    only lowers ASCII, so « melenchon » did not find « Mélenchon » and « élisabeth » not even
+    « Élisabeth ». Registered as the SQL function fold() on every connection of the base."""
+    if s is None:
+        return ""
+    s = unicodedata.normalize("NFKD", str(s))
+    return "".join(ch for ch in s if not unicodedata.combining(ch)).casefold()
 
 
 def db():
@@ -85,6 +98,7 @@ def db():
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")
         c.execute("PRAGMA foreign_keys=ON")
+        c.create_function("fold", 1, fold, deterministic=True)
         _init(c)
         conns[path] = c
     return c
@@ -175,6 +189,10 @@ def _init(c):
     CREATE TABLE IF NOT EXISTS media_playlists (
         asset_id   TEXT PRIMARY KEY REFERENCES media_assets(id) ON DELETE CASCADE,
         items_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE IF NOT EXISTS media_grids (
+        asset_id TEXT PRIMARY KEY REFERENCES media_assets(id) ON DELETE CASCADE,
+        doc_json TEXT NOT NULL DEFAULT '{}'
     );
     CREATE TABLE IF NOT EXISTS project_media (
         project_id INTEGER NOT NULL,
@@ -722,6 +740,18 @@ def import_from_share(vmid, ext_rel, node_id=None):
     d'un serveur réseau : vérifie à la source, copie sur le volume du nœud du conteneur, enregistre
     le média (la source restant suivie comme copie « partage »). Déjà importé et présent pour ce
     conteneur : rien n'est recopié. Renvoie {asset_id, local_path, copied}."""
+    state, x = _share_copy(vmid, ext_rel, node_id)
+    if state == "done":
+        return x
+    scan_node(x["node_id"], probe_max=20)
+    return _share_register(x)
+
+
+def _share_copy(vmid, ext_rel, node_id=None):
+    """First half of an import from a share: already in the base and present here → ("done", result);
+    otherwise checked at the source and copied to the node → ("copied", pending), to be registered by
+    _share_register AFTER a scan of the node's volume. Split (2026-11-22) so that a batch scans the
+    volume once, not once per file."""
     from services import storage
     # Pour un conteneur (son nœud, le dossier de son projet), ou vers un NŒUD choisi
     # (Gestionnaire : vmid None, portée globale, racine du volume).
@@ -740,7 +770,7 @@ def import_from_share(vmid, ext_rel, node_id=None):
         if lp:
             if vmid is not None:
                 link_container_project(known["asset_id"], vmid)
-            return {"asset_id": known["asset_id"], "local_path": lp, "copied": False}
+            return "done", {"asset_id": known["asset_id"], "local_path": lp, "copied": False}
     # Vérification à la SOURCE (partage monté sur le nœud) : un fichier illisible n'est pas copié.
     host_src = storage.node_path({"conn_id": conn_id, "path": ""}, share_rel)
     chk = _run_on_node(node, {"mode": "check", "path": "/x/" + share_rel},
@@ -763,24 +793,90 @@ def import_from_share(vmid, ext_rel, node_id=None):
     if rc != 0:
         node_driver.host_exec(node, "rm -f %s" % shlex.quote(tmp), timeout=20)
         raise RuntimeError("copie en échec : %s" % (err or out or "")[-300:])
-    scan_node(node_id, probe_max=20)
+    return "copied", {"vmid": vmid, "node_id": node_id, "prefix": prefix, "dest": dest, "want": want,
+                      "conn_id": conn_id, "share_rel": share_rel, "chk": chk}
+
+
+def _share_register(p):
+    """Second half of an import from a share (after a scan of the node's volume): the copy becomes a
+    media of the base, its share source is recorded, the container's project linked."""
+    c, node_id, dest, chk = db(), p["node_id"], p["dest"], p["chk"]
     row = c.execute("SELECT asset_id, fingerprint FROM media_files WHERE node_id=? AND path=?", (node_id, dest)).fetchone()
     if not row:
         raise RuntimeError("copie faite mais introuvable à l'analyse : %s" % dest)
     if row["fingerprint"] and row["fingerprint"] != chk.get("fp"):
         raise RuntimeError("la copie ne correspond pas à la source (empreinte différente)")
-    aid = row["asset_id"] or import_files(node_id, [dest], origin="share", want_ids={dest: want})[0]
+    aid = row["asset_id"] or import_files(node_id, [dest], origin="share", want_ids={dest: p["want"]})[0]
     ver = c.execute("SELECT version FROM media_files WHERE node_id=? AND path=?", (node_id, dest)).fetchone()
-    record_share_copy(aid, conn_id, share_rel, chk.get("size"), chk.get("mtime"), chk.get("fp"),
+    record_share_copy(aid, p["conn_id"], p["share_rel"], chk.get("size"), chk.get("mtime"), chk.get("fp"),
                       version=ver["version"] if ver else ORIGINAL)
-    if vmid is not None:
-        link_container_project(aid, vmid)
-    return {"asset_id": aid, "local_path": dest[len(prefix):], "copied": True}
+    if p["vmid"] is not None:
+        link_container_project(aid, p["vmid"])
+    return {"asset_id": aid, "local_path": dest[len(p["prefix"]):], "copied": True}
 
+SHARE_DEPTH_MAX = 4
+
+
+def share_folder_files(vmid, rel, exts, depth=0):
+    """Files of a share folder whose extension is in `exts`, as paths for import_from_share: the
+    folder's own files in listing order, then (depth > 0) those of each subfolder, depth first,
+    down to `depth` levels below (at most SHARE_DEPTH_MAX). Hidden folders are never entered."""
+    d = browse_share(vmid, rel)
+    exts = tuple(e.lower() for e in exts)
+    out = [d["path"] + "/" + f["name"] for f in d["files"] if f["name"].lower().endswith(exts)]
+    if depth > 0:
+        for sub in d["dirs"]:
+            out += share_folder_files(vmid, d["path"] + "/" + sub, exts, min(depth, SHARE_DEPTH_MAX) - 1)
+    return out
+
+
+def import_share_batch(vmid, paths, node_id=None, progress=None, cancel=None):
+    """Several share files imported in a row (a folder of images to a bin or a grid, 2026-11-22).
+    Every file is checked and copied first, then the node's volume is scanned ONCE and the copies
+    registered (one scan per file made a 300-photo folder crawl). A file already in the base is not
+    copied again; one failure does not stop the others. `progress(done, total, name, phase)` is
+    called before each file, then with phase "scan" during the scan. `cancel()` true → no further
+    file is copied; what was copied is still registered. Returns {items: [{path, asset_id,
+    local_path, copied} | {path, error}], imported, failed, cancelled}, items in the order of
+    `paths`, only for the files reached."""
+    res, pending, total, cancelled = {}, [], len(paths), False
+    for i, p in enumerate(paths):
+        if cancel and cancel():
+            cancelled = True
+            break
+        if progress:
+            progress(i, total, os.path.basename(p))
+        try:
+            state, x = _share_copy(vmid, p, node_id)
+            if state == "done":
+                res[p] = dict(x, path=p)
+            else:
+                pending.append((p, x))
+        except Exception as e:                                             # noqa: BLE001
+            res[p] = {"path": p, "error": str(e)}
+    if pending:
+        if progress:
+            progress(len(res) + len(pending), total, "", "scan")
+        try:
+            scan_node(pending[0][1]["node_id"], probe_max=len(pending) + 20)
+        except Exception as e:                                             # noqa: BLE001
+            for p, _x in pending:
+                res[p] = {"path": p, "error": "analyse du volume en échec : %s" % e}
+            pending = []
+        for p, x in pending:
+            try:
+                res[p] = dict(_share_register(x), path=p)
+            except Exception as e:                                         # noqa: BLE001
+                res[p] = {"path": p, "error": str(e)}
+    if progress:
+        progress(len(res), total, "")
+    items = [res[p] for p in paths if p in res]
+    failed = sum(1 for x in items if "error" in x)
+    return {"items": items, "imported": len(items) - failed, "failed": failed, "cancelled": cancelled}
 
 BROWSE_EXTS = (".mxf", ".mov", ".mp4", ".mkv", ".avi", ".ts", ".mts", ".m2ts", ".m4v", ".webm",
                ".wav", ".mp3", ".aac", ".flac", ".m4a",
-               ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff")
+               ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".heic", ".heif")
 
 
 def browse_share(vmid, rel=""):
@@ -1430,6 +1526,9 @@ SEARCH_FIELDS = {
     "title":        ("text",   _J % ("meta_json", "$.title")),
     "description":  ("text",   _J % ("meta_json", "$.description")),
     "keywords":     ("text",   _J % ("meta_json", "$.keywords")),
+    "credit":       ("text",   _J % ("meta_json", "$.credit")),
+    "rights_until": ("date",   _J % ("meta_json", "$.rights_until")),
+    "principal":    ("bool",   _J % ("meta_json", "$.principal")),
     "copies":       ("number", "(SELECT COUNT(*) FROM media_files f WHERE f.asset_id=a.id AND f.state='present' AND f.share_id=0 AND f.kind='main')"),
     # Proxy de lecture présent (sur au moins un nœud).
     "has_proxy":    ("bool",   "EXISTS (SELECT 1 FROM media_files f WHERE f.asset_id=a.id AND f.kind='proxy' AND f.state='present')"),
@@ -1582,8 +1681,8 @@ def _cond_sql(cond):
     if op == "is_false":
         return "COALESCE(%s, 0) NOT IN (1, 'true', 'oui')" % expr, []
     if op in ("contains", "not_contains"):
-        return ("%s(LOWER(COALESCE(%s, '')) LIKE ?)" % ("NOT " if op == "not_contains" else "", expr),
-                ["%" + str(val or "").lower() + "%"])
+        return ("%s(fold(%s) LIKE ?)" % ("NOT " if op == "not_contains" else "", expr),
+                ["%" + fold(val) + "%"])
     if op in ("within", "not_within"):
         # « dans les N dernières heures » : la borne est calculée À L'ÉVALUATION — un bin
         # intelligent reste juste sans être réenregistré.
@@ -1603,7 +1702,7 @@ def _cond_sql(cond):
             expr = "ROUND(%s, %d)" % (expr, _NUM_ROUND[field])
             val = round(val, _NUM_ROUND[field])
     elif t in ("text", "enum") and op in ("eq", "ne"):
-        return "LOWER(COALESCE(%s, '')) %s LOWER(?)" % (expr, sqlop), [str(val or "")]
+        return "fold(%s) %s ?" % (expr, sqlop), [fold(val)]
     return "%s %s ?" % (expr, sqlop), [val]
 
 
@@ -1670,15 +1769,15 @@ def _query_where(query):
     """Clauses (ET) d'une requête : types de média, texte libre, arbre des critères."""
     query = query or {}
     where, args = [], []
-    kinds = [k for k in (query.get("kinds") or []) if k in ("video", "audio", "image", PLAYLIST)]
+    kinds = [k for k in (query.get("kinds") or []) if k in ("video", "audio", "image", PLAYLIST, GRID)]
     if kinds:
         # Ce qu'un conteneur sait lire : les images pour Images fixes, vidéo + audio (+ playlists)
         # pour le player.
         where.append("%s IN (%s)" % (_KIND, ",".join("?" * len(kinds))))
         args += kinds
-    q = (query.get("q") or "").strip().lower()
+    q = fold((query.get("q") or "").strip())
     if q:
-        where.append("(LOWER(a.name) LIKE ? OR LOWER(COALESCE(a.meta_json, '')) LIKE ?)")
+        where.append("(fold(a.name) LIKE ? OR fold(a.meta_json) LIKE ?)")
         args += ["%" + q + "%"] * 2
     sql, a2 = _tree_sql(query_tree(query))
     if sql:
@@ -1705,7 +1804,8 @@ def search(query=None, project_id=None, limit=2000, also=None, scope=None):
         where += w2
         args += a2
     sql = "SELECT a.* FROM media_assets a" + (" WHERE " + " AND ".join(where) if where else "")
-    sql += " ORDER BY a.created_at DESC LIMIT ?"
+    # A person's principal photo first (2026-11-22): « dupont », Enter → that one, not the latest.
+    sql += " ORDER BY COALESCE(json_extract(a.meta_json, '$.principal'), 0) DESC, a.created_at DESC LIMIT ?"
     rows = db().execute(sql, args + [int(limit)]).fetchall()
     return _with_copies(rows)
 
@@ -1763,7 +1863,9 @@ def _proxied(ids=None):
 #   project_filter : la bibliothèque d'un conteneur de projet s'ouvre filtrée sur ce projet. Un
 #   utilisateur qui voit toute la base et retire ce filtre le retrouvait à CHAQUE retour sur le
 #   player (remonté le 2026-11-07) : son choix est désormais retenu.
-USER_PREFS = {"project_filter": (bool, True)}
+USER_PREFS = {"project_filter": (bool, True),
+              # Grids each user has open on each stills panel: {"<vmid>": {"open": [ids], "active": id}}.
+              "stills_grids": (dict, {})}
 
 
 def user_pref(uid, key):
@@ -1956,6 +2058,178 @@ def playlist_import(data, name=None, project_id=None, bin_id=None):
         items.append(e)
     nm = str(name or data.get("name") or "").strip() or "Playlist importée"
     return playlist_create(nm, items, project_id=project_id, bin_id=bin_id), rep
+
+
+# ─── Grids (2026-11-14) ─────────────────────────────────────────────────────────────────────
+# A grid is a set of image cells for the stills panel, played like a sampler. Like a playlist it is
+# a record of the base, of kind « grid » (`tech.kind`): it goes in bins and projects, is shared,
+# searched, exported — and recalled. Each user opens the grids they want on a panel
+# (USER_PREFS["stills_grids"]); the container knows nothing of them. A cell names its image by
+# IDENTITY, with its framing; a path is only a hint for a file outside the base.
+GRID = "grid"
+GRID_FORMAT = "bobi-grid"
+GRID_COLS, GRID_ROWS = (1, 10), (1, 8)
+_FITS = ("native", "fit", "stretch")
+
+
+def is_grid(aid):
+    r = db().execute("SELECT json_extract(tech_json, '$.kind') k FROM media_assets WHERE id=?", (aid,)).fetchone()
+    return bool(r) and r["k"] == GRID
+
+
+def _grid_cell(x):
+    """{asset, file, label, fit, x, y, size} — None for an empty cell."""
+    if not isinstance(x, dict):
+        return None
+    aid = str(x.get("asset") or "").strip() or None
+    f = str(x.get("file") or "").strip()
+    if not (aid or f):
+        return None
+    return {"asset": aid, "file": f, "label": str(x.get("label") or "").strip()[:80],
+            "fit": x.get("fit") if x.get("fit") in _FITS else "native",
+            "x": _num_or_none(x.get("x")) or 0.0, "y": _num_or_none(x.get("y")) or 0.0,
+            "size": _num_or_none(x.get("size")) or 100.0}
+
+
+def grid_doc(d):
+    """Normalised grid: {cols, rows, cells: [cell | None] × cols·rows}. Cells beyond a smaller size
+    are dropped — the caller resizes knowingly."""
+    d = d if isinstance(d, dict) else {}
+    def _int(v, lo_hi, dflt):
+        try:
+            return max(lo_hi[0], min(lo_hi[1], int(v)))
+        except (TypeError, ValueError):
+            return dflt
+    cols, rows = _int(d.get("cols"), GRID_COLS, 6), _int(d.get("rows"), GRID_ROWS, 4)
+    raw = d.get("cells") if isinstance(d.get("cells"), list) else []
+    cells = [_grid_cell(x) for x in raw[:cols * rows]]
+    return {"cols": cols, "rows": rows, "cells": cells + [None] * (cols * rows - len(cells))}
+
+
+def grid_doc_of(aid):
+    r = db().execute("SELECT doc_json FROM media_grids WHERE asset_id=?", (aid,)).fetchone()
+    return grid_doc(_j(r["doc_json"], {}) if r else {})
+
+
+def grid_save(aid, doc, name=None):
+    if not is_grid(aid):
+        raise ValueError("pas une grille")
+    doc = grid_doc(doc)
+    c = db()
+    c.execute("INSERT OR REPLACE INTO media_grids(asset_id, doc_json) VALUES (?,?)",
+              (aid, json.dumps(doc, ensure_ascii=False)))
+    tech = {"kind": GRID, "cols": doc["cols"], "rows": doc["rows"], "items": sum(1 for x in doc["cells"] if x)}
+    sets, args = ["tech_json=?", "updated_at=?"], [json.dumps(tech), _now()]
+    if name is not None and str(name).strip():
+        sets.append("name=?"); args.append(str(name).strip())
+    c.execute("UPDATE media_assets SET %s WHERE id=?" % ", ".join(sets), args + [aid])
+    c.commit()
+    return aid
+
+
+def grid_create(name, doc=None, project_id=None, bin_id=None, producer=None):
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("nom requis")
+    aid, now = str(uuid.uuid4()), _now()
+    c = db()
+    c.execute("""INSERT INTO media_assets(id, name, created_at, updated_at, origin, producer, tech_json, meta_json)
+                 VALUES (?,?,?,?,?,?,?,?)""", (aid, name, now, now, GRID, producer,
+                                                json.dumps({"kind": GRID, "items": 0}), "{}"))
+    c.commit()
+    grid_save(aid, doc or {})
+    if project_id is not None:
+        link_project(aid, project_id)
+    if bin_id is not None:
+        bin_add(bin_id, [aid])
+    return aid
+
+
+def grid_get(aid, scope=None, vmid=None):
+    """{id, name, cols, rows, cells} — each filled cell with its image's `name`, `missing` (no
+    longer in the base) or `hidden` (out of scope: never named). With `vmid`: `local_path` (the
+    copy that container sees) and `available_nodes` (where a copy can be fetched from)."""
+    if not is_grid(aid) or (scope is not None and not asset_visible(aid, scope)):
+        return None
+    r = db().execute("SELECT id, name, updated_at FROM media_assets WHERE id=?", (aid,)).fetchone()
+    doc = grid_doc_of(aid)
+    ids = sorted({x["asset"] for x in doc["cells"] if x and x.get("asset")})
+    rows = []
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        rows += db().execute("SELECT * FROM media_assets WHERE id IN (%s)" % ",".join("?" * len(part)), part).fetchall()
+    known = {a["id"]: a for a in _with_copies(rows)}
+    vis = set(visible_ids(list(known), scope)) if scope is not None else set(known)
+    node, prefix = container_view(vmid) if vmid is not None else (None, "")
+    names = {}
+    if vmid is not None:
+        from .database import db_get_nodes
+        names = {n["id"]: n.get("name") for n in db_get_nodes()}
+    cells = []
+    for x in doc["cells"]:
+        if not x:
+            cells.append(None)
+            continue
+        d, a = dict(x), known.get(x.get("asset"))
+        if x.get("asset") and not a:
+            d["missing"] = True
+        elif a and a["id"] not in vis:
+            d = {"hidden": True, "asset": None, "label": ""}
+        elif a:
+            d["name"] = a["name"]
+            if vmid is not None:
+                dv = a.get("default_version") or ORIGINAL
+                present = [c for c in a.get("copies", []) if c.get("version", ORIGINAL) == dv
+                           and c["state"] == "present" and c["node_id"]]
+                d["local_path"] = local_path(present, node, prefix) if node is not None else None
+                d["available_nodes"] = sorted({names.get(c["node_id"], "#%s" % c["node_id"]) for c in present})
+        cells.append(d)
+    return {"id": r["id"], "name": r["name"], "updated_at": r["updated_at"],
+            "cols": doc["cols"], "rows": doc["rows"], "cells": cells}
+
+
+def grid_export(aid, scope=None):
+    """Export document: each cell keeps its image's identity, name and FINGERPRINT, so another
+    server finds an image it imported under another identity."""
+    g = grid_get(aid, scope)
+    if not g:
+        return None
+    cells = []
+    for x in g["cells"]:
+        if not x or x.get("hidden"):
+            cells.append(None)
+            continue
+        c = _grid_cell(x)
+        c.update(name=x.get("name"), fingerprint=_asset_fp(x["asset"]) if x.get("asset") and not x.get("missing") else None)
+        cells.append(c)
+    return {"format": GRID_FORMAT, "version": 1, "name": g["name"], "exported_at": _now(),
+            "cols": g["cols"], "rows": g["rows"], "cells": cells}
+
+
+def grid_import(data, name=None, project_id=None, bin_id=None):
+    """New grid from an export (`bobi-grid`). Each image found by identity, else by fingerprint;
+    not found, the cell is KEPT (identity, path) and reported. → (identity, report)."""
+    if not isinstance(data, dict) or not isinstance(data.get("cells"), list):
+        raise ValueError("grille illisible : liste « cells » attendue")
+    c = db()
+    rep = {"items": 0, "by_id": 0, "by_fingerprint": 0, "unresolved": 0}
+    doc = grid_doc(data)
+    for i, x in enumerate(doc["cells"]):
+        if not x:
+            continue
+        rep["items"] += 1
+        if x["asset"] and c.execute("SELECT 1 FROM media_assets WHERE id=?", (x["asset"],)).fetchone():
+            rep["by_id"] += 1
+            continue
+        fp = (data["cells"][i] or {}).get("fingerprint") if isinstance(data["cells"][i], dict) else None
+        hit = find_by_fingerprint(fp)[0] if fp else None
+        if hit:
+            x["asset"] = hit
+            rep["by_fingerprint"] += 1
+        else:
+            rep["unresolved"] += 1
+    nm = str(name or data.get("name") or "").strip() or "Grille importée"
+    return grid_create(nm, doc, project_id=project_id, bin_id=bin_id), rep
 
 
 # ─── Bins ───────────────────────────────────────────────────────────────────────────────────
@@ -2485,6 +2759,84 @@ def update_meta(aid, meta, name=None):
     return get_asset(aid)
 
 
+def _kw_split(s):
+    """Keywords as stored (« a, b; c ») → list, blanks dropped, duplicates (accents/case) dropped."""
+    out, seen = [], set()
+    for k in re.split(r"[,;]", str(s or "")):
+        k = k.strip()
+        if k and fold(k) not in seen:
+            seen.add(fold(k))
+            out.append(k)
+    return out
+
+
+BULK_MAX = 2000
+
+
+def update_meta_bulk(asset_ids, set_=None, kw_add=None, kw_remove=None):
+    """The same fields on a whole selection, keywords added or removed (2026-11-22: tag 40 portraits
+    of a political show at once). `set_` follows update_meta: base and custom fields only, None or ""
+    removes the field. Keywords compare without accents or case (« député » removes « Député »); an
+    added keyword keeps the spelling given. Returns the number of media actually changed."""
+    allowed = set(BASE_FIELDS) | {f["key"] for f in list_fields()}
+    set_ = {k: v for k, v in (set_ or {}).items() if k in allowed and k != "keywords"}
+    add, rm = _kw_split(",".join(kw_add or [])), {fold(k) for k in _kw_split(",".join(kw_remove or []))}
+    c, changed, now = db(), 0, _now()
+    for aid in list(dict.fromkeys(asset_ids))[:BULK_MAX]:
+        r = c.execute("SELECT meta_json FROM media_assets WHERE id=?", (aid,)).fetchone()
+        if not r:
+            continue
+        cur = _j(r["meta_json"], {})
+        new = dict(cur)
+        for k, v in set_.items():
+            if v is None or v == "":
+                new.pop(k, None)
+            else:
+                new[k] = v
+        if add or rm:
+            kws = [k for k in _kw_split(cur.get("keywords")) if fold(k) not in rm]
+            have = {fold(k) for k in kws}
+            kws += [k for k in add if fold(k) not in have]
+            if kws:
+                new["keywords"] = ", ".join(kws)
+            else:
+                new.pop("keywords", None)
+        if new != cur:
+            c.execute("UPDATE media_assets SET meta_json=?, updated_at=? WHERE id=?",
+                      (json.dumps(new, ensure_ascii=False), now, aid))
+            changed += 1
+    c.commit()
+    return changed
+
+
+def change_stamp():
+    """Cheap fingerprint of everything a library list shows (media, their copies, bins, projects):
+    a library polls it every few seconds and re-reads its list only when it moves."""
+    r = db().execute(
+        "SELECT (SELECT count(*) || '.' || coalesce(max(updated_at), '') FROM media_assets),"
+        " (SELECT count(*) || '.' || coalesce(max(seen_at), '') || '.' || coalesce(sum(growing), 0) FROM media_files WHERE state = 'present'),"
+        " (SELECT count(*) || '.' || coalesce(sum(position), 0) FROM media_bin_items),"
+        " (SELECT count(*) FROM project_media),"
+        " (SELECT count(*) FROM media_bins)").fetchone()
+    return "|".join(str(x) for x in r)
+
+
+def keyword_values(limit=500, scope=None):
+    """Keywords in use, ONE BY ONE (the stored field is a list in a string), the most used first:
+    [{value, count}]. Spellings that differ only by accents or case count as one keyword, shown
+    with its most frequent spelling. Suggestions when typing, quick filters."""
+    ssql, sargs = scope_sql(scope)
+    rows = db().execute("SELECT json_extract(a.meta_json, '$.keywords') AS k FROM media_assets a "
+                        "WHERE k IS NOT NULL AND k != ''" + (" AND " + ssql if ssql else ""), sargs)
+    counts, spell = {}, {}
+    for r in rows:
+        for k in _kw_split(r["k"]):
+            f = fold(k)
+            counts[f] = counts.get(f, 0) + 1
+            spell.setdefault(f, {})[k] = spell.setdefault(f, {}).get(k, 0) + 1
+    out = [{"value": max(spell[f].items(), key=lambda x: x[1])[0], "count": n} for f, n in counts.items()]
+    return sorted(out, key=lambda x: (-x["count"], fold(x["value"])))[:max(1, min(int(limit or 500), 5000))]
+
 # ─── Champs personnalisés (Réglages) ────────────────────────────────────────────────────────
 def list_fields():
     return [{"key": r["key"], "label": r["label"], "type": r["type"], "options": _j(r["options"], []),
@@ -2496,7 +2848,7 @@ def save_field(key, label, type_, options=None, position=0):
     import re
     key = (key or "").strip().lower()
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or key in BASE_FIELDS:
-        raise ValueError("clé invalide (minuscules, chiffres, _ ; pas title/description/keywords)")
+        raise ValueError("clé invalide (minuscules, chiffres, _ ; pas %s)" % "/".join(BASE_FIELDS))
     if type_ not in FIELD_TYPES:
         raise ValueError("type inconnu : %s" % type_)
     if not (label or "").strip():
@@ -2670,6 +3022,8 @@ def project_export_media(pid):
                                                  (r["id"],))]
         if (rec["tech"] or {}).get("kind") == PLAYLIST:      # le CONTENU d'une playlist voyage avec elle
             rec["playlist_items"] = playlist_items(r["id"])
+        elif (rec["tech"] or {}).get("kind") == GRID:        # celui d'une grille aussi
+            rec["grid_doc"] = grid_doc_of(r["id"])
         keys |= set(rec["meta"])
         if os.path.exists(thumb_path(r["id"])):
             with open(thumb_path(r["id"]), "rb") as f:
@@ -2690,7 +3044,7 @@ def project_import_media(pid, records, fields=()):
                       (str(f["key"]), str(f["label"]), str(f["type"]), json.dumps(f.get("options") or []),
                        int(f.get("position") or 0)))
     now = _now()
-    playlists = []
+    playlists, grids = [], []
     for rec in records or ():
         aid = str((rec or {}).get("id") or "")
         if not _ID_OK.match(aid):
@@ -2743,6 +3097,8 @@ def project_import_media(pid, records, fields=()):
         n["ids"][str(rec.get("id"))] = aid
         if isinstance(rec.get("playlist_items"), list):
             playlists.append((aid, rec["playlist_items"]))
+        if isinstance(rec.get("grid_doc"), dict):
+            grids.append((aid, rec["grid_doc"]))
     # Playlists APRÈS les médias : une entrée suit son média s'il a été retrouvé sous une autre
     # identité (empreinte). Une playlist déjà connue garde son contenu local.
     for aid, raw in playlists:
@@ -2751,6 +3107,13 @@ def project_import_media(pid, records, fields=()):
             e["asset"] = n["ids"].get(e["asset"], e["asset"]) if e["asset"] else None
         c.execute("INSERT OR IGNORE INTO media_playlists(asset_id, items_json) VALUES (?,?)",
                   (aid, json.dumps(items, ensure_ascii=False)))
+    for aid, raw in grids:
+        doc = grid_doc(raw)
+        for cell in doc["cells"]:
+            if cell and cell.get("asset"):
+                cell["asset"] = n["ids"].get(cell["asset"], cell["asset"])
+        c.execute("INSERT OR IGNORE INTO media_grids(asset_id, doc_json) VALUES (?,?)",
+                  (aid, json.dumps(doc, ensure_ascii=False)))
     c.commit()
     return n
 
@@ -3386,6 +3749,15 @@ MACRO_PROVIDER = {
             {"key": "container", "label": "Player", "type": "select", "options_hook": True},
             {"key": "playlist", "label": "Playlist", "type": "select", "options_hook": True},
             {"key": "play", "label": "Lancer le premier élément", "type": "bool", "default": False}]},
+        # GRILLE d'images (2026-11-14) : une case d'une grille sur un panneau Images fixes, avec son
+        # cadrage — en preview ou à l'antenne. Image sans copie sur le nœud : rapatriée d'abord.
+        {"id": "grid_cell", "label": "Afficher une case d'une grille (Images fixes)", "availability": "project", "params": [
+            {"key": "container", "label": "Images fixes", "type": "select", "options_hook": True},
+            {"key": "grid", "label": "Grille", "type": "select", "options_hook": True},
+            {"key": "cell", "label": "Case (1 = en haut à gauche)", "type": "number", "min": 1, "max": 80, "default": 1},
+            {"key": "to", "label": "Vers", "type": "select", "default": "preview", "options": [
+                {"value": "preview", "label": "Preview"}, {"value": "air", "label": "Antenne"}]
+                + [{"value": "aux%d" % n, "label": "Sortie AUX %d" % n} for n in range(1, 5)]}]},
         {"id": "set_default_version", "label": "Choisir la version par défaut d'un média", "availability": "project",
          "params": [
             {"key": "asset", "label": "Média", "type": "select", "options_hook": True},
@@ -3404,7 +3776,7 @@ MACRO_PROVIDER = {
 MACRO_ASSET_OPTIONS_MAX = 500
 
 
-_NOT_PLAYLIST = "COALESCE(json_extract(a.tech_json, '$.kind'), '') != 'playlist'"
+_NOT_PLAYLIST = "COALESCE(json_extract(a.tech_json, '$.kind'), '') NOT IN ('playlist', 'grid')"
 
 
 def macro_asset_options(pid=None, limit=MACRO_ASSET_OPTIONS_MAX):
@@ -3484,6 +3856,10 @@ def action_options(action_id, key, pid=None):
         return [o for o in _macro_containers(pid) if o["label"].endswith("(player)")]
     if key == "playlist" and action_id == "load_playlist":
         return macro_playlist_options(pid)
+    if key == "container" and action_id == "grid_cell":
+        return [o for o in _macro_containers(pid) if o["label"].endswith("(stills)")]
+    if key == "grid" and action_id == "grid_cell":
+        return macro_playlist_options(pid, kind=GRID)
     if action_id == "create_proxy" and key == "node":
         from .database import db_get_nodes
         return [{"value": "", "label": "Nœud de sa copie"}] + [
@@ -3540,14 +3916,17 @@ def run_action(action_id, params, ctx):
         return _macro_send_media(params or {}, pid, (ctx or {}).get("user") or "macro")
     if action_id == "load_playlist":
         return _macro_load_playlist(params or {}, pid)
+    if action_id == "grid_cell":
+        return _macro_grid_cell(params or {}, pid)
     raise RuntimeError("action inconnue : %s" % action_id)
 
 
-def macro_playlist_options(pid=None):
-    """Playlists qu'une macro peut charger : celles de son projet (macro de projet), sinon toutes."""
+def macro_playlist_options(pid=None, kind=PLAYLIST):
+    """Playlists (ou grilles, `kind`) qu'une macro peut charger : celles de son projet (macro de
+    projet), sinon toutes."""
     c = db()
-    sql = "SELECT a.id, a.name FROM media_assets a WHERE json_extract(a.tech_json, '$.kind')='playlist'"
-    args = []
+    sql = "SELECT a.id, a.name FROM media_assets a WHERE json_extract(a.tech_json, '$.kind')=?"
+    args = [kind]
     if pid is not None:
         sql += " AND EXISTS (SELECT 1 FROM project_media p WHERE p.asset_id=a.id AND p.project_id=?)"
         args.append(int(pid))
@@ -3587,6 +3966,63 @@ def _macro_load_playlist(params, pid):
 
 
 FETCH_WAIT_S = 6 * 3600          # un rapatriement suivi par une macro : abandonné au-delà
+
+
+def _macro_grid_cell(params, pid):
+    """Case `cell` (1-based, row by row) of a grid → the stills panel, with its framing: in preview
+    (`/preview`) or on air (`/select`). No copy on the panel's node: fetched first, sent at the end."""
+    from . import media_fetch
+    raw = str(params.get("container") or "").strip()
+    if not raw.isdigit() or not any(o["value"] == raw for o in action_options("grid_cell", "container", pid)):
+        raise RuntimeError("panneau Images fixes à préciser (ou hors du projet de la macro) : %s" % raw)
+    vmid = int(raw)
+    gid = str(params.get("grid") or "").strip()
+    if not any(o["value"] == gid for o in macro_playlist_options(pid, kind=GRID)):
+        raise RuntimeError("grille introuvable%s : %s" % (" dans le projet de la macro" if pid is not None else "", gid))
+    doc = grid_doc_of(gid)
+    try:
+        n = int(float(params.get("cell") or 0))
+    except (TypeError, ValueError):
+        n = 0
+    if not 1 <= n <= len(doc["cells"]) or not doc["cells"][n - 1]:
+        raise RuntimeError("case %s vide ou hors de la grille (%d cases)" % (params.get("cell"), len(doc["cells"])))
+    cell = doc["cells"][n - 1]
+    to = str(params.get("to") or "preview")
+    ep = "/select" if to == "air" else "/aux" if re.fullmatch(r"aux[1-4]", to) else "/preview"
+    frame = {k: cell[k] for k in ("fit", "x", "y", "size")}
+    if ep == "/aux":                     # a stills AUX output (0.19.14): it keeps the image, cut
+        frame["n"] = int(to[3:])
+
+    def send(path):
+        _post_player(vmid, ep, dict(frame, file=path))
+    if not cell.get("asset"):
+        send(cell["file"])
+        return {"ok": True, "state": "sent", "path": cell["file"]}
+    paths, _missing, _o = resolve_for_container(vmid, [cell["asset"]])
+    if paths:
+        send(paths[0])
+        return {"ok": True, "state": "sent", "path": paths[0]}
+    j = media_fetch.start(cell["asset"], vmid)
+    if j["state"] == "done":
+        send(j["path"])
+        return {"ok": True, "state": "sent", "path": j["path"]}
+
+    def follow():
+        t0 = time.time()
+        while time.time() - t0 < FETCH_WAIT_S:
+            time.sleep(2)
+            cur = media_fetch.get(j["job"]) or {}
+            if cur.get("state") == "done":
+                try:
+                    send(cur["path"])
+                except RuntimeError as e:
+                    log.warning("macro grid_cell: send after fetch: %s", e)
+                return
+            if cur.get("state") in (None, "failed", "unknown"):
+                log.warning("macro grid_cell: fetch failed: %s", cur.get("error"))
+                return
+    threading.Thread(target=follow, daemon=True, name="macro-grid-%s" % j["job"]).start()
+    return {"ok": True, "state": "fetching", "job": j["job"]}
 
 
 def _macro_send_media(params, pid, user):
@@ -3736,7 +4172,7 @@ def integrity():
     rep = {"counts": {"assets": len(assets)}, "offline": [], "missing_copies": [], "dangling_project_refs": [],
            "unknown_projects": [], "unreferenced": [], "fingerprint_mismatch": [], "no_thumb": 0}
     for aid, a in assets.items():
-        if (_j(a["tech_json"], None) or {}).get("kind") == PLAYLIST:
+        if (_j(a["tech_json"], None) or {}).get("kind") in (PLAYLIST, GRID):
             continue                                      # aucune copie, aucune vignette : par nature
         if not present.get(aid):
             on_share = c.execute("SELECT COUNT(*) FROM media_files WHERE asset_id=? AND share_id!=0", (aid,)).fetchone()[0]

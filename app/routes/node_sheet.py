@@ -184,6 +184,32 @@ def api_node_sheet(node_id):
     })
 
 
+@bp.route("/api/nodes/<int:node_id>/aptitude", methods=["GET"])
+@require_login
+def api_node_aptitude(node_id):
+    """The node's real-time aptitude sheet as last measured (app/node_aptitude.py), or null."""
+    from .. import node_aptitude
+    node, err = _node_or_404(node_id)
+    if err:
+        return err
+    return jsonify({"ok": True, "sheet": node_aptitude.get(node_id),
+                    "refresh_s": node_aptitude.REFRESH_S})
+
+
+@bp.route("/api/nodes/<int:node_id>/aptitude/measure", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_aptitude_measure(node_id):
+    """Measure now (a few seconds: one second of work on one SHARED core, never a dedicated one)."""
+    from .. import node_aptitude
+    node, err = _node_or_404(node_id)
+    if err:
+        return err
+    sheet = node_aptitude.measure(node_id)
+    if sheet is None:
+        return jsonify({"ok": False, "error": "probe_failed"}), 502
+    return jsonify({"ok": True, "sheet": sheet})
+
+
 def _params(c):
     try:
         return (json.loads(c.get("deploy_config") or "{}") or {}).get("params") or {}

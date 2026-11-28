@@ -192,14 +192,10 @@ def missing(pid, snapshot):
 
 
 def nodes(type_):
-    """Nodes a missing `type_` service can be created on: up, and with the capability its image
-    needs (same rule as the creation route — media image or volume, GUI image)."""
+    """Nodes a missing `type_` service can be created on: up, and with the capability it needs
+    (`plugins.required_capability` — the very rule the creation route applies)."""
     from .node_driver import node_capabilities
-    need = None
-    if _pl.image_variant(type_) == "media" or _pl.wants_media_volume(type_):
-        need = "media"
-    elif _pl.image_variant(type_) == "gui":
-        need = "gui"
+    need = _pl.required_capability(type_)
     out = []
     for n in db_get_nodes():
         if n.get("status") != "up":

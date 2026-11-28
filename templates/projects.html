@@ -1518,8 +1518,9 @@ function togglePorts(pid) { openProject(pid, 'ports'); }
    suggestions (same project only) and the table with its filters. A move recreates the container:
    the confirmation names them. Shown in the « Ressources » tab of the project window. ─────── */
 const PROJ_RES_BADGE = {guaranteed: 'running', undersized: 'stopped', reserved_unmeasured: 'warn',
-                        shared: 'warn', stopped: 'stopped'};
-const PROJ_RES_LEVELS = ['dedicated', 'normal', 'background', 'batch'];
+                        shared: 'warn', stopped: 'stopped', deadline_missed: 'stopped',
+                        deadline_unwatched: 'warn', node_unfit: 'stopped', shards_not_guaranteed: 'stopped'};
+const PROJ_RES_LEVELS = ['dedicated', 'shared', 'background'];
 const PROJ_RES_COLORS = ['#2f6fd6', '#1f9c8a', '#7c3aed', '#d0569b', '#c7772b', '#5aa02c', '#b84a3a',
                          '#3a8fb7', '#8a5cc2', '#a8913a'];
 const _PROJ_RES = {pid: null, members: [], timer: null, data: null, plan: {}, filter: null, type: '',
@@ -1680,7 +1681,7 @@ function _resRender() {
     const t = (k) => window.t(k);
     const colors = _resColors(j);
     const ok = j.verdict === 'guaranteed';
-    const detail = ['stopped', 'undersized', 'reserved_unmeasured', 'shared']
+    const detail = ['stopped', 'undersized', 'reserved_unmeasured', 'shared', 'node_unfit', 'shards_not_guaranteed', 'deadline_missed', 'deadline_unwatched']
         .filter(s => j.counts[s])
         .map(s => t('projects.res_count.' + s).replace('{n}', j.counts[s])).join(' · ');
     const pools = (j.nodes_without_pool || []).map(n =>
@@ -1699,6 +1700,9 @@ function _resRender() {
             <button type="button" class="btn btn-green" id="proj-res-cal" onclick="resCalibrateProject(${pid})">${_mEsc(t('projects.res_calibrate'))}</button>
             <span class="meta">${_mEsc(t('projects.res_step_calibrate'))}</span>
             <span class="meta" id="proj-res-chrono"></span></div>` : '';
+    // « Éprouver » (app/project_trial.py): filled by _resTrialLoad, polled while it runs.
+    const trial = j.verdict !== 'empty' && j.verdict !== 'no_dedicated'
+        ? `<div class="proj-res-calibrate" id="proj-res-trial"><span class="meta">${_mEsc(t('projects.trial.reading'))}</span></div>` : '';
 
     // ── Schema: every node, one cell per core ──
     const schema = _resNodes(j).map(n => {
@@ -1774,13 +1778,71 @@ function _resRender() {
       </table></div>`;
 
     const hint = RES_CAN_DEPLOY ? `<p class="meta proj-res-drag-hint">${_mEsc(t('projects.res_drag_hint'))}</p>` : '';
-    body.innerHTML = verdict + calibrate
+    body.innerHTML = verdict + calibrate + trial
         + `<section class="proj-res-schema">${schema}<div class="proj-res-legend">${legend}</div>${hint}</section>`
         + plan + suggestions + filters + table;
     _resHlWire(body);
     _resDragWire(body);
     _resHl(_PROJ_RES.hl);
     _resUpdateCampaign();
+    if (trial) _resTrialLoad(pid);
+}
+
+// ── « Éprouver » (app/project_trial.py, 2026-11-23): the shared pool of the project's nodes is
+// saturated at the « Arrière-plan » weight for a few minutes, and the deadline witness of every
+// Dedicated container is read before and after. Inferred guarantee → measured one.
+let _resTrialTimer = null;
+async function _resTrialLoad(pid) {
+    const t = (k) => window.t(k);
+    const box = document.getElementById('proj-res-trial');
+    if (!box || _PROJ_RES.pid !== pid) return;
+    let j;
+    try { j = await (await fetch('/api/projects/' + pid + '/trial')).json(); } catch (_) { return; }
+    if (!document.getElementById('proj-res-trial') || _PROJ_RES.pid !== pid) return;
+    const tr = j.trial, p = j.plan || {};
+    clearTimeout(_resTrialTimer);
+    const name = (vmid) => _resShort(((p.members || []).concat((tr && tr.members) || []).find(m => m.vmid === vmid) || {}).hostname || ('#' + vmid));
+    let html = '';
+    if (tr && tr.status === 'running') {
+        html = `<b>${_mEsc(t('projects.trial.running').replace('{s}', tr.remaining_s))}</b>`
+            + (RES_CAN_DEPLOY ? ` <button type="button" class="ctl-push" onclick="resTrialAbort(${pid})">${_mEsc(t('projects.trial.abort'))}</button>` : '');
+        _resTrialTimer = setTimeout(() => _resTrialLoad(pid), 5000);
+    } else {
+        if (RES_CAN_DEPLOY) html += `<button type="button" class="ctl-push" onclick="resTrialStart(${pid})"${(p.refused || []).length || !(p.members || []).length ? ' disabled' : ''}>${_mEsc(t('projects.trial.start').replace('{m}', Math.round((j.default_s || 300) / 60)))}</button>`;
+        html += ` <span class="meta">${_mEsc(t('projects.trial.help'))}</span>`;
+        (p.refused || []).forEach(r => { html += `<span class="meta" style="color:var(--status-warning-fg)">${_mEsc(t('projects.trial.refused_' + r.reason).replace('{n}', r.name))}</span>`; });
+        if (tr && tr.status === 'done') {
+            const when = new Date(tr.finished * 1000).toLocaleString();
+            const col = tr.verdict === 'held' ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
+            const missed = (tr.members || []).filter(m => m.result === 'missed' || m.result === 'restarted')
+                .map(m => _resShort(m.hostname) + ' (' + (m.result === 'restarted' ? t('projects.trial.restarted') : m.missed) + ')');
+            const unw = (tr.unwatched || []).map(name);
+            html += `<div style="flex-basis:100%"><b style="color:${col}">${_mEsc(t('projects.trial.verdict_' + tr.verdict))}</b>
+                <span class="meta">${_mEsc(t('projects.trial.when').replace('{t}', when).replace('{s}', Math.round(tr.duration_s / 60)))}</span>
+                ${missed.length ? `<p>${_mEsc(t('projects.trial.missed').replace('{l}', missed.join(', ')))}</p>` : ''}
+                ${unw.length ? `<p class="meta">${_mEsc(t('projects.trial.unwatched').replace('{l}', unw.join(', ')))}</p>` : ''}</div>`;
+        } else if (tr && (tr.status === 'aborted' || tr.status === 'failed')) {
+            html += `<div class="meta" style="flex-basis:100%">${_mEsc(t('projects.trial.' + tr.status) + (tr.error ? ' — ' + tr.error : ''))}</div>`;
+        }
+    }
+    document.getElementById('proj-res-trial').innerHTML = html;
+}
+async function resTrialStart(pid) {
+    const t = (k) => window.t(k);
+    let j;
+    try { j = await (await fetch('/api/projects/' + pid + '/trial')).json(); } catch (_) { return; }
+    const nodes = ((j.plan || {}).nodes || []).map(n => n.name).join(', ');
+    if (!window.confirm(t('projects.trial.confirm').replace('{nodes}', nodes)
+            .replace('{m}', Math.round((j.default_s || 300) / 60)))) return;
+    const r = await fetch('/api/projects/' + pid + '/trial', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                              body: JSON.stringify({duration_s: j.default_s || 300})});
+    const k = await r.json().catch(() => ({}));
+    if (!r.ok || !k.ok) showWireToast(t('projects.trial.err_' + (k.error || 'other')).replace('{n}', k.node || ''), 'error');
+    _resTrialLoad(pid);
+}
+async function resTrialAbort(pid) {
+    await fetch('/api/projects/' + pid + '/trial', {method: 'DELETE'});
+    _resTrialLoad(pid);
 }
 
 // A project's hostnames share a long prefix (« Projet-Regie-Legere-rl-… »): dropped for display,
@@ -2022,14 +2084,21 @@ async function _resFollow(pid) {
 // be guaranteed: on air = to guarantee, the rest best effort (2026-11-07).
 async function resLevel(pid, vmid, sel) {
     sel.disabled = true;
-    const r = await fetch('/api/containers/' + vmid + '/resources', {
+    const send = (extra) => fetch('/api/containers/' + vmid + '/resources', {
         method: 'PATCH', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({cpu_weight: sel.value})});
-    const j = await r.json().catch(() => ({}));
+        body: JSON.stringify(Object.assign({cpu_weight: sel.value}, extra || {}))});
+    let r = await send();
+    let j = await r.json().catch(() => ({}));
+    // The shared pool's real-time budget (2026-11-23): refused unless the user chooses.
+    if (!r.ok && j.error === 'rt_shared_full'
+        && window.confirm(j.message + '\n\n' + window.t('containers.panel.rt_confirm'))) {
+        r = await send({confirme_rt: true});
+        j = await r.json().catch(() => ({}));
+    }
     // « Dédié » = dedicated cores: refused when the node has none to give (the level is kept).
     if (!r.ok) showWireToast(j.error === 'no_room'
         ? window.t('projects.res_level_no_room').replace('{name}', j.name).replace('{need}', j.need).replace('{available}', j.available)
-        : (j.error || r.statusText), 'error');
+        : (j.message || j.error || r.statusText), 'error');
     loadResources(pid);
 }
 

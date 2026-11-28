@@ -193,7 +193,12 @@ def _ordre_appels(noeud, *noms):
     return vus
 
 
-for libelle, src, fonction in (("node_only worker", SRC_IMG, "_build_node_only_worker"),
+# The node_only worker builds through `_build_one` (2026-11-28), shared with the build-once path of
+# the registry: the pre-flight lives there, and both paths must go through it.
+for libelle in ("_build_node_only_worker", "_build_once"):
+    verifie(f"1b. {libelle} builds through _build_one",
+            _ordre_appels(_corps(SRC_IMG, libelle), "_build_one")["_build_one"] is not None)
+for libelle, src, fonction in (("node_only build (_build_one)", SRC_IMG, "_build_one"),
                                ("page Nœuds", SRC_NODES, "api_node_build_image"),
                                ("page Images", SRC_IMG, "_build_image_worker")):
     f = _corps(src, fonction)

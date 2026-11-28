@@ -267,23 +267,63 @@ def _local_component_ids():
     return plugs, servs
 
 
-def _extract_over(zip_path, skip_plugins=None, skip_services=None):
-    """Extrait le zip par-dessus ROOT en sautant les chemins protégés (état local) et les
-    composants exclus (composition par instance : plugins/services non installés ici)."""
-    skip_plugins = skip_plugins or set()
-    skip_services = skip_services or set()
+def _member_arc(name):
+    """Member name of an archive as a plain relative path (`a/b.py`), or None when it is not one:
+    absolute, drive-prefixed, or holding a `..` component. A leading `./` is dropped, so the
+    protected list and the per-component exclusions see the path that would really be written."""
+    a = str(name).replace("\\", "/")
+    if not a or a.startswith("/") or "\0" in a or ":" in a.split("/", 1)[0]:
+        return None
+    parts = [p for p in a.split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
+        return None
+    return "/".join(parts)
+
+
+def _member_target(root, arc):
+    """Path `arc` is written to under `root`, or None if it resolves outside it (a link already
+    present in the tree counts: the file would land where the link points)."""
+    base = os.path.realpath(root)
+    target = os.path.realpath(os.path.join(base, arc))
+    return target if target.startswith(base + os.sep) else None
+
+
+def _archive_error(zip_path, root=None):
+    """Reason to refuse the WHOLE archive, or None. One member that would leave the installation
+    is enough: such an archive was not produced by our builder."""
     with zipfile.ZipFile(zip_path) as zf:
         for name in zf.namelist():
             if name.endswith("/"):
                 continue
-            if _protected(name):
+            arc = _member_arc(name)
+            if arc is None or _member_target(root or ROOT, arc) is None:
+                return "archive refusée\u00a0: chemin hors de l'installation (%.80r)" % name
+    return None
+
+
+def _extract_over(zip_path, skip_plugins=None, skip_services=None, root=None):
+    """Extrait le zip par-dessus ROOT en sautant les chemins protégés (état local) et les
+    composants exclus (composition par instance : plugins/services non installés ici).
+    Lève ValueError, avant toute écriture, si un membre sortirait de l'installation."""
+    skip_plugins = skip_plugins or set()
+    skip_services = skip_services or set()
+    root = root or ROOT
+    err = _archive_error(zip_path, root)
+    if err:
+        raise ValueError(err)
+    with zipfile.ZipFile(zip_path) as zf:
+        for name in zf.namelist():
+            if name.endswith("/"):
                 continue
-            parts = name.split("/", 2)
+            arc = _member_arc(name)
+            if _protected(arc):
+                continue
+            parts = arc.split("/", 2)
             if len(parts) >= 2 and ((parts[0] == "plugins" and parts[1] in skip_plugins)
                                     or (parts[0] == "services" and parts[1] in skip_services)):
                 continue
-            target = os.path.join(ROOT, name)
-            os.makedirs(os.path.dirname(target) or ROOT, exist_ok=True)
+            target = _member_target(root, arc)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
             with zf.open(name) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
 
@@ -414,6 +454,9 @@ def apply_update(source_url, token, install_new=None):
         skip_p = {p for p in src_p if p not in loc_p and p not in new_p}
         skip_s = {s for s in src_s if s not in loc_s and s not in new_s}
 
+        err = _archive_error(zpath)
+        if err:
+            return False, err
         backup_code()
         _extract_over(zpath, skip_plugins=skip_p, skip_services=skip_s)
         with open(PENDING_PATH, "w") as f:
@@ -537,6 +580,9 @@ def apply_update_github(tag=None, install_new=None):
         if not ok_req:
             return False, req_msg
 
+        err = _archive_error(zpath)
+        if err:
+            return False, err
         backup_code()
         _extract_over(zpath, skip_plugins=skip_p, skip_services=skip_s)
         with open(PENDING_PATH, "w") as f:

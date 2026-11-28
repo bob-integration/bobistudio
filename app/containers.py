@@ -368,6 +368,8 @@ def redemarrer_container(vmid):
         # l'opérateur reprend la main, l'auto-restart redémarre de zéro (backoff réinitialisé).
         from .metrics import reset_crash_loop
         reset_crash_loop(vmid)
+        from . import deadlines                     # its startup is not a missed deadline
+        deadlines.mark_starting(vmid)
         return _redemarrer_container_locked(vmid)
 
 

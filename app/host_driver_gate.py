@@ -91,6 +91,30 @@ def _set_desired(vmid, state):
         db.commit()
 
 
+def _clear_stale_cause(vmid, c):
+    """Forget the cause of the PREVIOUS life of a driver-gated container, as a deploy starts.
+
+    ★ A CAUSE THAT OUTLIVED ITS TRUTH (2026-11-25, the testeur's Z8). This gate wrote
+      `status_cause = driver_missing_upload_needed` at 10:37, when the driver really was missing.
+      Nothing ever wrote it again: the driver was installed, the next deploy went past this gate
+      and was refused for a different reason (the node lacked the `decklink` capability) — and
+      the card kept saying « driver missing » all afternoon. The operator went on fighting a
+      driver that was already in place. A deploy that gets past the gate starts a new life; the
+      cause of the old one no longer describes anything, and whatever stops this one writes its
+      own. `status` is only moved off AWAITING: the container is not waiting for its driver
+      any more, and it is not running yet either.
+    """
+    if not c.get("status_cause") and c.get("status") != AWAITING:
+        return
+    with get_db() as db:
+        db.execute("UPDATE containers SET status_cause=NULL, "
+                   "status=CASE WHEN status=? THEN 'stopped' ELSE status END WHERE vmid=?",
+                   (AWAITING, vmid))
+        db.commit()
+    log.info("host driver gate vmid=%s: driver no longer proven missing, cleared cause %r",
+             vmid, c.get("status_cause"))
+
+
 def hold_if_missing(vmid, type_, params):
     """Appelé par deploy.deployer_script AVANT tout `docker run`. True = conteneur mis en attente
     du pilote (rien n'a été lancé) ; False = on déploie normalement."""
@@ -99,6 +123,8 @@ def hold_if_missing(vmid, type_, params):
         node = db_get_node(c.get("node_id")) if c.get("node_id") is not None else None
         cause = missing_cause(type_, node)
         if not cause:
+            if required_driver(type_):
+                _clear_stale_cause(vmid, c)
             return False
         kind, code = cause
         from .database import db_update_deploy_config, db_update_status

@@ -324,8 +324,10 @@ POST /v1/host/isolation             { containers: {nom: cpus} } → { ok, wanted
   partition arrête les tâches, pas les IRQ. L'agent ne fait que RÉTRÉCIR l'affectation de chaque IRQ
   (et `/proc/irq/default_smp_affinity`, pour les IRQ créées plus tard), ce qui garde l'aiguillage posé
   au démarrage sur un nœud 2110 ; une IRQ posée seulement sur des CPU isolés part sur les CPU ni isolés
-  ni partitionnés. À la libération, chaque IRQ retrouve son affectation d'origine (mémoire du processus :
-  un redémarrage de l'agent entre les deux laisse l'affectation rétrécie). Les IRQ gérées par le noyau
+  ni partitionnés. À la libération, chaque IRQ retrouve son affectation d'origine. **Depuis 0.32.9**, ce
+  qui a été retiré est gardé dans `/var/lib/bobi-node-agent/irq_taken.json`, lié au démarrage
+  (`boot_id`) : un redémarrage de l'agent entre les deux (sa mise à jour) ne laisse plus l'affectation
+  rétrécie, et un fichier d'un autre démarrage n'est jamais rejoué. Les IRQ gérées par le noyau
   (une file par CPU, ex. `megasas`) refusent l'écriture : elles servent les E/S lancées depuis ce CPU,
   elles sont listées dans `irq_unmovable`. Mesuré sur dell-1 (2026-11-09, 60 s) : la garde recevait
   `eno3` (16/s) et `mlx4` (0,5/s), le CPU 42 d'un mélangeur `ahci` (1/s) ; le CPU de la console, rien.
@@ -337,6 +339,21 @@ POST /v1/host/isolation             { containers: {nom: cpus} } → { ok, wanted
   l'envoie selon le réglage `mce_polling` (`keep` par défaut | `off_when_isolated`, Réglages → CPU), et
   seulement à un agent qui remonte `mce_off`. Mesuré sur dell-1 (2026-11-09) : `mce_timer_fn` 340 µs sur
   le CPU d'une console toutes les ~5 min, seule cause de ses 4 retards en 45 min à 16/16 (333 µs par bloc).
+  **Depuis 0.32.5**, deux gardes contre une partition qui tombe sans se relever. (1) Un voisin allégé de
+  ses CPU l'est aussi dans systemd (`systemctl set-property --runtime <unité> AllowedCPUs=…`) : systemd
+  garde sa propre copie et la réécrit au prochain `daemon-reload`. (2) Une partition lue `… invalid` est
+  repassée par `member` puis reposée : le noyau ne la revalide jamais seul, et réécrire le même mode ne
+  fait rien. Mesuré sur dell-1 (2026-11-09 → 11) : un conteneur lancé à la main avec
+  `--cpuset-cpus 0-12,14-87`, un `daemon-reload` → 9 partitions sur 10 invalides pendant 36 h (seule
+  celle du CPU 13, absent de la liste, a tenu) ; les conteneurs « dédiés » tournaient sur le pool partagé,
+  leurs cœurs restaient vides.
+  **Depuis 0.32.7**, une partition n'est plus jamais LAISSÉE `invalid`. Refusée par le noyau, elle est
+  rendue aussitôt à `member` (exclusifs vidés), le refus reste signalé (`status: invalid`, `partition` = le
+  texte du noyau, `retry_in_s`) et elle n'est retentée qu'après 5 min. Et la partition d'un conteneur est
+  défaite AVANT `docker stop`, `docker rm` et la recréation, sans être reposée pendant. Constat sur un HPE
+  DL360 Gen10 en 6.12.117 (2026-11-15) : une partition refusée, retentée toutes les 10 s, puis réécrite
+  par systemd → avertissements du noyau (`cpuset.c` `update_parent_effective_cpumask`, puis
+  `partition_xcpus_del`) ; le nœud s'est figé à la destruction suivante d'un conteneur, reprise par l'iLO.
 - **`images/export`** (GET, `?tag=` requis) : streame `docker save <tag>` en
   `application/octet-stream`. L'agent est en HTTP/1.0 → **corps délimité par la fermeture de
   connexion** (ni Content-Length ni chunked ; le client lit jusqu'à EOF). `400` sans tag, `404`
@@ -409,15 +426,16 @@ GET /v1/transfer/read?g=<autorisation>      Range: bytes=a-b | bytes=a- | bytes=
 Mécanisme **générique** : l'agent ne connaît aucun pilote. Un « *kind* » est un script
 `/opt/bobi-node-agent/host_drivers/<kind>.py` (source : `node_agent/host_drivers/`, posé par
 `install-node.sh`, poussé avec l'agent par « Mettre à jour l'agent », et redéposé par le contrôleur
-quand son empreinte diffère). Aujourd'hui deux kinds : **`nvidia`** (pilote GPU) et **`blackmagic`**
+quand son empreinte diffère). Aujourd'hui quatre kinds : **`nvidia`** (pilote GPU), **`blackmagic`**
 (pilote Desktop Video DeckLink + micrologiciel des cartes ; fin de job `11` — arrêt complet — quand
-du micrologiciel a été flashé).
+du micrologiciel a été flashé), **`rt_kernel`** (noyau PREEMPT_RT) et **`irq_managed`** (interruptions
+gérées des contrôleurs disque), tous deux ci-dessous.
 
 **Contrat d'un kind** (stdlib seule, exécuté en root par l'agent) :
 
 | Appel | Attendu |
 |---|---|
-| `<kind>.py state` | UN document JSON sur stdout : `kind`, `version`, `status`, `plan:{status,code,params,steps[]}`, `rows:[{key,value}]`, `can_run`, `upload_dir?`. `status`/`code`/`key`/ids d'étape sont des **CODES** que l'interface traduit (`settings.hostdrv.<kind>.*`) — jamais une phrase. |
+| `<kind>.py state` | UN document JSON sur stdout : `kind`, `version`, `status`, `plan:{status,code,params,steps[]}`, `rows:[{key,value}]`, `can_run`, `upload_dir?`, `warnings?:[{code,params}]` (affichés AU-DESSUS du plan quel que soit son statut, clé `settings.hostdrv.<kind>.warn.<code>`). `status`/`code`/`key`/ids d'étape sont des **CODES** que l'interface traduit (`settings.hostdrv.<kind>.*`) — jamais une phrase. |
 | `<kind>.py run` | Fait le travail. Journal **lisible, en anglais**, sur stdout/stderr (l'agent le capture). Code de sortie : `0` fini · `10` **redémarrage** requis · `11` **arrêt complet** (hors tension) requis · autre = échec. |
 
 ```
@@ -457,6 +475,75 @@ COMPLET) : (1) écrire `node_agent/host_drivers/<kind>.py` selon le contrat ci-d
 `i18n/{fr,en}.json` ; (3) ajouter un bouton `hostDrvToggle(id,'<kind>')` et son conteneur
 `hostdrv_<kind>_<id>` à la carte du nœud. Rien à changer dans l'agent, le relais contrôleur ni le
 panneau. Un test du type `tests/verif_nvidia_driver.py` (décision pure, sondes rejouées) est attendu.
+
+#### Kind `rt_kernel` (`node_agent/host_drivers/rt_kernel.py`)
+
+Même script pour `install-node.sh` (`provision_rt`) et pour le bouton « Noyau temps réel » de la fiche
+du nœud. Depuis le 2026-11-23, c'est le DÉFAUT d'un nouveau nœud : `install-node.sh` part en « auto »
+(`resolve_rt_kernel`) — temps réel, sauf carte DeckLink (fournisseur PCI 0xbdbd ou capacité
+`decklink` : le pilote Blackmagic 16.4a1 plante sous PREEMPT_RT) et sauf réinstallation (un
+`config.json` déjà présent : le noyau ne change pas). `--rt-kernel` / `--no-rt-kernel` l'imposent ;
+le profil d'enrôlement (champ `rt_kernel` : `"auto"`, `true`, `false`) les passe.
+Pourquoi : sur dell-1 (2026-11-11 → 12, même charge les deux nuits), une console audio sur cœur isolé
+a manqué 7 360 blocs sur le noyau normal et 0 sur 217 M sous `linux-image-rt-amd64`. Le sondage MCE
+(softirq) et le sondage d'écran DRM (kworker) y deviennent des fils que le fil FIFO de la console
+devance.
+
+Étapes : `linux-image-rt-amd64` + `linux-headers-rt-amd64` → pour CE noyau, tout module hors arbre
+que le noyau EN COURS utilise : DKMS (`dkms autoinstall -k`), NVIDIA (par DKMS s'il y est inscrit,
+sinon compilé depuis `/usr/src/nvidia-<version chargée>` dans `updates/nvidia/`), ice Kahawai 2.6.6
+patché MTL (mêmes sources que `app/mtl.py`) — en-têtes pris dans `/lib/modules/<noyau>/source`,
+jamais « le premier `*-common` » → `GRUB_DEFAULT=saved` + `grub-set-default` sur l'entrée EXACTE
+de ce noyau → sortie `10`. Jamais de redémarrage automatique.
+Toute compilation NVIDIA sur un noyau PREEMPT_RT passe `IGNORE_PREEMPT_RT_PRESENCE=1` (ici, et dans
+`nvidia.py run` quand le nœud tourne déjà dessus) : non pris en charge par NVIDIA, 20 h sans un Xid
+sur une Quadro P5000 (580.105.08).
+Décision (`decide`, pure, `tests/verif_rt_kernel_driver.py`) : `ok` · `install` (`rt_not_installed`,
+`modules_missing`, `set_default`) · `pending_reboot` · `refused` (`not_debian`, `arch`,
+`secure_boot_modules` — les modules compilés sur place ne seraient pas signés —, `no_grub_entry`,
+`decklink` — une carte DeckLink est sur le bus : les pilotes Blackmagic 16.4a1 et 16.5a1 plantent sous
+PREEMPT_RT dès l'ouverture de la carte, mesuré sur dell-1 le 2026-11-23). Le refus DeckLink ne vise
+qu'un CHANGEMENT (un nœud déjà en RT reste `ok`) ; seul `install-node.sh --rt-kernel`, explicite,
+passe outre (`run --allow-decklink`).
+La cible est le noyau RT le PLUS RÉCENT installé : un noyau RT arrivé par apt apparaît donc ici en
+`modules_missing`, sans jamais être démarré avant d'avoir ses modules.
+Hors temps réel, `install-node.sh` fixe aussi le noyau de démarrage (`pin_boot_kernel`) : celui de
+`--kernel-pkg` s'il est fourni, sinon le noyau courant — plus jamais `GRUB_DEFAULT=0`.
+
+#### Kind `irq_managed` (`node_agent/host_drivers/irq_managed.py`)
+
+Rend DÉPLAÇABLES les interruptions que le noyau GÈRE pour les contrôleurs disque : une file MSI-X par
+CPU, affectation non inscriptible, donc l'agent ne peut pas les écarter d'un cœur Dédié
+(`isolation.irq_unmovable`). Mesuré sur dell-1 le 2026-11-25 : 25 IRQ/s megasas sur les cœurs Dédiés
+d'un player. Même script pour le bouton de la ligne « Interruptions » de la fiche Aptitude (action
+`irq_managed` quand `fixable`), le panneau « Interruptions gérées » de la carte du nœud et
+`install-node.sh` (`provision_irq_managed`).
+
+| Pilote chargé (et ayant des IRQ dans `/proc/interrupts`) | Paramètre posé |
+|---|---|
+| `megaraid_sas` (IRQ `megasas*`) | `megaraid_sas.smp_affinity_enable=0` |
+| `mpt3sas` (IRQ `mpt3sas*`, `mpt2sas*`) | `mpt3sas.smp_affinity_enable=0` |
+| `smartpqi` | `smartpqi.disable_managed_interrupts=1` |
+| `nvme` | **rien** : toujours gérées, aucun paramètre ; une file ne sert que les E/S lancées depuis son cœur. Signalé (`others`), jamais modifié. |
+
+Où : GRUB → `GRUB_CMDLINE_LINUX` de `/etc/default/grub` (jamais `_DEFAULT`, qui appartient à la
+préparation MTL : `isolcpus`, hugepages…), `update-grub`, puis relecture de CHAQUE entrée de la section
+`10_linux` de `grub.cfg` (un `/etc/default/grub.d/*.cfg` qui écraserait la variable est vu là) ;
+systemd-boot → `/etc/kernel/cmdline` + `proxmox-boot-tool refresh`. Chargeur choisi par l'OUTIL présent,
+même règle que `app/mtl.py`. Copie `<fichier>.bak.irq_managed.<date>` avant toute écriture.
+**Pas d'initramfs à refaire** ni de fichier `/etc/modprobe.d` : modprobe (kmod) lit `<module>.<param>=`
+dans `/proc/cmdline` au chargement d'un module, initramfs compris (dell-1 : disque système sur megasas,
+pilote chargé depuis l'initramfs). Un seul endroit écrit, un seul relu.
+Décision (`decide`, pure, `tests/verif_irq_managed_driver.py`) : `ok` (`none`, `nvme_only`, `active` =
+paramètre lu dans `/sys/module/<mod>/parameters/`) · `install` (`apply`, `regenerate`) ·
+`pending_reboot` (posé, pas encore démarré) · `refused` (`not_honoured` — sur la ligne en cours mais
+ignoré —, `no_bootloader`, `param_unreadable`). Sortie `10` ; jamais de redémarrage.
+Retour arrière : `python3 /opt/bobi-node-agent/host_drivers/irq_managed.py revert` (retire les paramètres
+de la table, régénère, sortie `10` s'ils étaient actifs) puis redémarrage.
+`install-node.sh` : appliqué par défaut sur un NOUVEAU nœud, jamais sur une réinstallation
+(`resolve_irq_managed`) ; `--irq-managed` / `--no-irq-managed` l'imposent.
+Après le redémarrage, l'agent (≥ 0.32.2) écarte ces IRQ des cœurs Dédiés comme les autres, et la ligne
+« Interruptions » de la fiche Aptitude repasse à `ok`.
 
 #### Kind `nvidia` (`node_agent/host_drivers/nvidia.py`)
 
@@ -532,6 +619,11 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
   propagation : le conteneur ne voit que ce qui était monté à son démarrage (une alerte le dit).
 - **GPU** : si `gpus` (string non vide) est fourni → `--gpus "<valeur>"`. Absent → inchangé. Nécessite
   `nvidia-container-toolkit` + runtime nvidia sur l'hôte (n'émettre que pour un nœud GPU, ex. dl360-2).
+  **Depuis 0.32.6**, les périphériques NVIDIA suivent aussi en `--device` (`nvidiactl`, `nvidia-uvm*`,
+  `nvidia-modeset` et `/dev/nvidia<mineur>` de chaque carte choisie ; un sélecteur par UUID n'a que les
+  premiers). Par `--gpus` seul, le hook NVIDIA les ouvrait sans que systemd le sache : la liste
+  `DeviceAllow` du scope ne les portait pas, et le moindre `daemon-reload` ou `set-property` les retirait.
+  Mesuré sur dell-1 (2026-11-12) : 7 conteneurs GPU sur 7 en « Failed to initialize NVML: Unknown Error ».
   **Implémenté côté agent en 0.9.0.** Un agent plus ancien qui IGNORE ce champ ne casse rien : le
   conteneur démarre sans GPU, cupy est absent et le script de plugin retombe sur numpy (repli silencieux).
 - **Journal (`log`, agent ≥ 0.17.0)** : `{driver, opts}` → `--log-driver <driver> --log-opt k=v …`.
@@ -678,7 +770,7 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   antérieur : le contrôleur ne lui pousse rien.
 - **`isolation`** (ajout **0.32.0**) : `{wanted, state, error, freed?, irq_moved?, irq_unmovable, mce_off, mce}` — la carte demandée ; par
   conteneur `status` (`isolated` | `root` | `invalid` | `cpuset_mismatch` | `not_running`), `cpus`,
-  `partition` (le texte du noyau), `blockers` ; `freed` = les dernières listes de voisins allégées
+  `partition` (le texte du noyau), `blockers`, `retry_in_s` (0.32.7 : partition refusée, rendue à `member`) ; `freed` = les dernières listes de voisins allégées
   (§4.3 bis) ; `irq_moved` = les dernières IRQ déplacées ou rendues, `irq_unmovable` = les IRQ gérées
   par le noyau qui restent sur un CPU partitionné (0.32.2) ; `mce_off` = le choix reçu, `mce` =
   `{status: on | off | off_by_host | error | absent, check_interval, saved?}` (0.32.3). Absent = agent antérieur : le contrôleur ne lui pousse rien.

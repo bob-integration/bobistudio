@@ -64,6 +64,10 @@ _FABRICS_SLICE_PATCH = ("plugins/_compute_runtime/patches/mxl-fabrics-slice-rese
 # la charge utile qu'elle annonce, et la cible publiait des tranches encore en vol. SECONDE cause.
 _FABRICS_FENCE_PATCH = ("plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch",
                         "plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch")
+# Patch mxl-fabrics-demo: `--fabrics-options` JSON (cqDepth, MXL #736) handed to the initiator and
+# target setup — upstream passes nullptr. Compute and media images only (they run the RDMA links).
+_FABRICS_DEMO_OPTS_PATCH = ("plugins/_compute_runtime/patches/mxl-fabrics-demo-options.patch",
+                            "plugins/_compute_runtime/patches/mxl-fabrics-demo-options.patch")
 # Convertisseur v210↔planar (C auto-vectorisé) compilé dans l'étage v210-builder de l'image
 # compute → libbobi_v210.so (+ variante AVX2), chargée par bobimxl (chantier interop MXL).
 _V210_CONV = ("script_templates/v210convert.c", "script_templates/v210convert.c")
@@ -84,6 +88,8 @@ _NTCOPY = ("script_templates/ntcopy.c", "script_templates/ntcopy.c")
 # Noyaux de mesure du plugin `scope` (waveform, vecteur-scope, extrêmes), compilés dans le même
 # étage v210-builder → libbobi_scope.so (+ variante AVX2), chargés par bobimxl.charger_noyau().
 _SCOPEK = ("script_templates/scopekernel.c", "script_templates/scopekernel.c")
+# Noyau du plugin Images fixes (RGBA → Fill/Key planar, 2026-11-15) : même étage, libbobi_stills.so.
+_STILLSK = ("script_templates/stillskernel.c", "script_templates/stillskernel.c")
 _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
 # Chemin de données du plugin decklink_io. ⚠ CES CHEMINS NE SONT PLUS DANS LA LISTE DE L'IMAGE
 # COMPUTE (2026-11-01) : ils alimentent l'image `decklink` seule. Les y remettre rendrait de
@@ -110,7 +116,7 @@ _IMAGES = {
     "compute": {"label": "bobi-compute (calcul)", "meta": "plugins/_compute_runtime/meta.json",
                 "prefix": "bobi-compute", "field": "compute_image",
                 "stage": [("plugins/_compute_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
-                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _V210_CONV, _MVK, _NTCOPY, _SCOPEK]
+                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _FABRICS_DEMO_OPTS_PATCH, _V210_CONV, _MVK, _NTCOPY, _SCOPEK, _STILLSK]
                          + _LICENCES},
     # Variante GPU/NVIDIA de l'image compute : fine couche FROM bobi-compute:<ver> + cupy[ctk]
     # (cf. plugins/_compute_gpu_runtime/Dockerfile). node_only = buildée SUR le nœud GPU (image
@@ -133,8 +139,8 @@ _IMAGES = {
     "media":   {"label": "bobi-media (média)", "meta": "plugins/_media_runtime/meta.json",
                 "prefix": "bobi-media", "field": "media_image",
                 "stage": [("plugins/_media_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
-                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _NTCOPY,
-                          _PLAYOUT] + _LICENCES},
+                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _FABRICS_DEMO_OPTS_PATCH,
+                          _NTCOPY, _PLAYOUT] + _LICENCES},
     # Interfaces NATIVES des plugins LV2 (plugin plugin_gui, 2026-10-18) : fine couche FROM bobi-compute (comme
     # compute-gpu : base_from réécrit le FROM vers l'image_tag compute courant), Xvfb + x11vnc + suil + Mesa
     # llvmpipe + bobi_ui_host compilé dans l'étage builder. node_only : construite sur le nœud qui portera le
@@ -288,7 +294,11 @@ def _build_target():
         n = db_get_node(int(sel))
         if n and (n.get("agent_url") or "").strip():
             return ("node", n)
-        return ("local", None)                       # nœud choisi introuvable/sans agent → local
+        # The chosen node is gone or has no agent: built on the controller, and SAID (2026-11-23).
+        # An image built for another machine can lack what the node needs (CPU features of the MTL
+        # image), and nothing told the operator his setting was ignored.
+        _say_build_fallback(sel, n)
+        return ("local", None)
     # auto (rétro-compat) :
     if _st.get("image_build_local"):
         return ("local", None)
@@ -298,6 +308,22 @@ def _build_target():
         if n:
             return ("node", n)
     return ("local", None)
+
+_build_fallback_said = {}      # chosen node id → time.monotonic() of the last alert
+
+
+def _say_build_fallback(sel, node):
+    import time as _t
+    now = _t.monotonic()
+    if sel in _build_fallback_said and now - _build_fallback_said[sel] < 3600:
+        return
+    _build_fallback_said[sel] = now
+    logging.getLogger(__name__).warning("image build: chosen node %s %s — building on the controller", sel,
+                "has no agent" if node else "is unknown")
+    db_add_alert("alert.image.build_node_indisponible", "warning", node_id=(node or {}).get("id"),
+                 kind="prep", params={"n": (node or {}).get("name") or "#%s" % sel,
+                                      "why": "agent" if node else "unknown"})
+
 
 def _build_host():
     kind, node = _build_target()
@@ -673,7 +699,32 @@ def verifier_derive_images(node):
     if jamais:
         db_add_alert("alert.image.jamais_construite", "warning", node_id=nid, kind="prep",
                      params={"n": node.get("name") or nid, "tags": ", ".join(jamais)})
-    return manquantes + jamais
+    ecarts = _digest_drift(node, presents)
+    return manquantes + jamais + ecarts
+
+
+def _digest_drift(node, presents):
+    """Same tag, OTHER content (2026-11-28, registry): the node runs a tag the registry published,
+    but what it holds under that name is not what was published — a local rebuild, a load from an
+    old archive. Compared to the INTENT (the published digest), never to another node. An image
+    that came by archive carries no registry digest: that is the documented fallback, not a drift.
+    → [tags in drift]."""
+    from .. import registry
+    if not registry.settings_values()["enabled"]:
+        return []
+    pub = registry.published()
+    ecarts = []
+    for which in _IMAGES:
+        used = _used_tag(which, node)
+        if not used or used not in pub or used not in presents:
+            continue
+        got = registry.node_digest(node, used)
+        if got and not registry.holds_published(used, got):
+            ecarts.append(used)
+    if ecarts:
+        db_add_alert("alert.image.empreinte_ecart", "warning", node_id=node.get("id"), kind="prep",
+                     params={"n": node.get("name") or node.get("id"), "tags": ", ".join(ecarts)})
+    return ecarts
 
 
 def _stage_tar(which):
@@ -953,6 +1004,85 @@ def _materialize_image_tar(which, tag, dest, build_node=None):
     return (ok, "docker save local" if ok else "docker save local échoué (image présente côté contrôleur ?)")
 
 
+def _publish_to_registry(tag, tar_path):
+    """Publish the image to the internal registry when it is usable. → digest, or None (the tar
+    path is then used, as before the registry). A failure is SAID, never swallowed: a node that
+    silently fell back to the tar would no longer be identified by its digest."""
+    from .. import registry
+    if not registry.usable():
+        return None
+    known = registry.expected_digest(tag)
+    if known and registry.remote_digest(tag) == known:
+        return known                  # already published: no need to recompress gigabytes
+    ok, res = registry.publish_tar(tag, tar_path)
+    if ok:
+        return res
+    db_add_alert("alert.image.registre_publication", "warning", kind="prep",
+                 params={"tag": tag, "m": res})
+    return None
+
+
+def _deliver(node, tag, tar_path, digest):
+    """Put `tag` on `node`: pull BY DIGEST from the registry when it was published there, else
+    (or on a failed pull) load the tar. → (ok, message)."""
+    from .. import node_driver as _nd, registry
+    arch = registry.missing_platform(node, tag)
+    if arch:
+        db_add_alert("alert.image.architecture_absente", "warning", node_id=node.get("id"), kind="prep",
+                     params={"tag": tag, "n": node.get("name"), "arch": arch,
+                             "have": ", ".join(registry.platforms(tag) or [])})
+        return False, "no %s image for %s" % (arch, tag)
+    if digest:
+        ok, msg = registry.node_pull(node, tag, digest)
+        if ok:
+            return True, digest
+        db_add_alert("alert.image.registre_tirage", "warning", node_id=node.get("id"), kind="prep",
+                     params={"tag": tag, "n": node.get("name"), "m": msg})
+    return _nd.load_image_file(node, tag, tar_path)
+
+
+_rollback = {}      # which → {status, msg, nodes}
+
+
+def rollback_image(which, tag):
+    """Make `tag` (an older version kept in the registry) the version every node runs again:
+    pulled BY DIGEST on each node that needs the image, then recorded as its tag exactly as a
+    build would. Running containers keep their image until they are recreated, as after a build.
+    → (ok, message)."""
+    from .. import registry
+    from ..oci_push import split_ref
+    spec = _IMAGES.get(which)
+    if not spec:
+        return False, "unknown image"
+    repo, _ref = split_ref(tag)
+    if repo != spec["prefix"]:
+        return False, "%s is not a version of %s" % (tag, spec["prefix"])
+    digest = registry.remote_digest(tag)
+    if not digest:
+        return False, "%s is not in the registry" % tag
+    targets = [n for n in db_get_nodes() if (n.get("agent_url") or "").strip()
+               and (_node_needs_image(which, n) if spec.get("node_only") else _node_expects_image(which, n))]
+    with _img_lock:
+        _rollback[which] = {"status": "running", "msg": tag, "nodes": []}
+    results = []
+    for n in targets:
+        ok, m = registry.node_pull(n, tag, digest)
+        if ok and spec.get("node_only"):
+            record_node_only_tag(which, n["id"], tag)
+        if not ok:
+            db_add_alert("alert.image.registre_tirage", "warning", node_id=n.get("id"), kind="prep",
+                         params={"tag": tag, "n": n.get("name"), "m": m})
+        results.append({"id": n["id"], "name": n.get("name"), "ok": ok, "msg": m})
+    if not spec.get("node_only"):
+        _autofill_nodes_image(which, tag)          # writes the tag only where the image IS
+    n_ko = sum(1 for r in results if not r["ok"])
+    db_add_alert("alert.image.retour_arriere", "info" if not n_ko else "warning", kind="prep",
+                 params={"tag": tag, "ok": len(results) - n_ko, "tot": len(results)})
+    with _img_lock:
+        _rollback[which] = {"status": "ok" if not n_ko else "error", "msg": tag, "nodes": results}
+    return not n_ko, "%d/%d" % (len(results) - n_ko, len(results))
+
+
 def _distribute_image(which, tag, build_node):
     """Distribue les BITS de l'image `tag` à tous les nœuds qui l'exécutent (capacité == `which`),
     SAUF le nœud de build (il l'a déjà). Matérialise le tar UNE fois (`_materialize_image_tar`) puis
@@ -990,8 +1120,9 @@ def _distribute_image(which, tag, build_node):
             return (0, len(targets), "export image échoué : %s" % msg, echecs)
         n_ok = 0
         echecs = []
+        digest = _publish_to_registry(tag, tmp.name)
         for n in targets:
-            o, m = _nd.load_image_file(n, tag, tmp.name)
+            o, m = _deliver(n, tag, tmp.name, digest)
             if o:
                 n_ok += 1
             else:
@@ -1041,7 +1172,7 @@ def _provision_shared_images(node, progress=None):
             except OSError:
                 _taille = ""
             _dire("%s : transfert vers le nœud%s…" % (tag, _taille))
-            o, m = _nd.load_image_file(node, tag, tmp.name)
+            o, m = _deliver(node, tag, tmp.name, _publish_to_registry(tag, tmp.name))
             # ★ CONSTATER, PAS CROIRE (2026-08-22). On comptait un succès sur le seul retour de
             # `load_image_file`. Un transfert « ok » qui n'aboutit pas laisse le nœud sans image
             # pendant qu'on annonce l'inverse — et le mensonge ne se voit qu'au premier build
@@ -1070,6 +1201,144 @@ def _provision_shared_images(node, progress=None):
 _BUILD_SUIVI_APRES_TIMEOUT_S = 1800
 
 
+def _build_one(which, node, tag, ctx, key, nname, n_start):
+    """Build `tag` on `node` through its agent and CHECK the image is there. → (ok, tail, refus).
+    Shared by the per-node build and the build-once path (registry): same pre-flight on the base
+    image, same follow-up after a timed-out wait, same anti-false-ok."""
+    import time as _t
+    from .. import node_driver as _nd
+    ok, tail, refus = False, "", None
+    try:
+        # ★ PRE-FLIGHT, PER NODE. All three thin layers (compute-gpu, gui, decklink) are
+        # `node_only`, so this is the only path that ever sees a `base_from`. Failing one node
+        # here leaves the others to build: invariant 2 already turns the aggregate to `error`.
+        _bstate, _btag, _bwhere = _base_image_state(which, node=node)
+        if _bstate is False:
+            raise BaseImageMissing(_btag, _bwhere)
+        if _bstate is None and _btag:
+            # Not measured: we build anyway rather than block on a read we do not have. The
+            # failure, if it comes, is still readable — `_explain_registry_denial` names it.
+            logging.getLogger(__name__).warning(
+                "images: build %s on %s — base image %s not verified (unreadable inventory)",
+                tag, nname, _btag)
+        rc, tail = _nd.build_image(node, tag, ctx, timeout=2400)
+        # ANTI-FAUX-ÉCHEC (2026-08-19, incident Horace) : le timeout ne coupe que l'attente
+        # HTTP, jamais le `docker build` du nœud. Déclarer « échec » à cet instant est un
+        # MENSONGE qui coûte cher : il invite à relancer, donc à lancer une seconde
+        # compilation en parallèle sur un nœud qui porte l'antenne. On surveille l'apparition
+        # de l'image au lieu de conclure — c'est exactement ce qu'un opérateur ferait à la
+        # main, et ce qui a effectivement récupéré bobi-mtl:0.96.0 ce jour-là.
+        if rc == _nd.BUILD_RC_TIMEOUT:
+            _fin = _t.time() + _BUILD_SUIVI_APRES_TIMEOUT_S
+            with _img_lock:
+                _node_img_build[key] = {
+                    "status": "building",
+                    "msg": "suivi interrompu à %d min — le build CONTINUE sur %s, on surveille "
+                           "l'apparition de %s" % (2400 // 60, nname, tag),
+                    "start": n_start}
+            while _t.time() < _fin and not _image_present_node(node, tag, force=True):
+                _t.sleep(30)
+            ok = _image_present_node(node, tag, force=True)
+            tail = ("image apparue après un suivi interrompu" if ok else
+                    "suivi interrompu à %d min et %s toujours absente %d min plus tard — le "
+                    "build peut encore tourner sur %s : VÉRIFIER (`ps -eo args | grep \"docker "
+                    "build\"`) AVANT de relancer, deux compilations en parallèle sur un nœud "
+                    "d'antenne se voient à l'image."
+                    % (2400 // 60, tag, _BUILD_SUIVI_APRES_TIMEOUT_S // 60, nname))
+        else:
+            ok = (rc == 0)
+        # Anti-faux-ok : rc=0 ne suffit pas, l'image doit être RÉELLEMENT présente sur ce nœud.
+        if ok and not _image_present_node(node, tag, force=True):
+            ok, tail = False, ("build rc=0 mais %s introuvable sur %s (faux-ok). %s"
+                               % (tag, nname, str(tail)[-400:]))
+    except BaseImageMissing as e:
+        tail, refus = str(e), e
+    except Exception as e:
+        tail = str(e)
+    return ok, tail, refus
+
+
+def _build_once_node(which):
+    """The node that builds a `node_only` image ONCE for every target, or None (per-node build).
+    Only with a usable registry: it is what carries the image to the others, layer by layer. The
+    host is the `image_build_node` setting — a machine that does not carry the antenna, ideally.
+    Possible since the images stopped carrying the build machine's instruction set (2026-11-28:
+    DPDK and libmxl of bobi-mtl were -march=native)."""
+    from .. import registry
+    if not registry.usable():
+        return None
+    kind, bnode = _build_target()
+    return bnode if kind == "node" and bnode else None
+
+
+def _build_once(which, tag, ctx, targets, builder):
+    """Build on `builder`, publish to the registry, deliver to every target (pull by digest, tar
+    if the pull fails). → results as the per-node loop gives them: [{id, name, ok, msg}]."""
+    import os, tempfile, time as _t
+    bname = str(builder.get("name") or builder["id"])
+    bkey = "%d:%s" % (builder["id"], which)
+    b_start = _t.time()
+    with _img_lock:
+        _node_img_build[bkey] = {"status": "building", "msg": "construction unique sur %s" % bname,
+                                 "start": b_start}
+        if _img_build.get(which, {}).get("status") == "building":
+            _img_build[which]["msg"] = "construction unique sur %s, puis tirage par %d nœud(s)" % (
+                bname, len(targets))
+    ok, tail, refus = _build_one(which, builder, tag, ctx, bkey, bname, b_start)
+    if not ok:
+        _expl = _explain_registry_denial(str(tail))
+        if refus is not None:
+            db_add_alert(refus.alert_key, "warning", node_id=builder["id"], kind="prep",
+                         params=dict(refus.params, tag=tag))
+        else:
+            db_add_alert("alert.image.build_noeud_echec", "warning", node_id=builder["id"], kind="prep",
+                         params={"tag": tag, "n": bname, "e": _expl[-1200:]})
+        msg = "échec build %s sur %s : %s" % (tag, bname, _expl[-1400:])
+        with _img_lock:
+            _node_img_build[bkey] = {"status": "error", "msg": msg}
+        return [{"id": n["id"], "name": str(n.get("name") or n["id"]), "ok": False, "msg": msg}
+                for n in targets]
+    with _img_lock:
+        _node_img_build[bkey] = {"status": "ok", "msg": "%s construite sur %s" % (tag, bname)}
+    tmp = tempfile.NamedTemporaryFile(prefix="bobi-once-", suffix=".tar", delete=False, dir="/var/tmp")
+    tmp.close()
+    results = []
+    try:
+        eok, emsg = _materialize_image_tar(which, tag, tmp.name, builder)
+        digest = _publish_to_registry(tag, tmp.name) if eok else None
+        for node in targets:
+            nid, nname = node["id"], str(node.get("name") or node["id"])
+            key = "%d:%s" % (nid, which)
+            if nid == builder["id"]:
+                o, m = True, "construite ici"
+            elif not eok:
+                o, m = False, "export depuis %s impossible : %s" % (bname, emsg)
+            else:
+                with _img_lock:
+                    _node_img_build[key] = {"status": "building", "msg": "tirage depuis le registre…",
+                                            "start": _t.time()}
+                o, m = _deliver(node, tag, tmp.name, digest)
+                if o and not _image_present_node(node, tag, force=True):
+                    o, m = False, "%s rapportée chargée mais absente de %s" % (tag, nname)
+            if o:
+                record_node_only_tag(which, nid, tag)
+                nmsg = "%s sur %s (%s)" % (tag, nname, "registre" if digest and nid != builder["id"]
+                                           else m)
+            else:
+                nmsg = "échec %s sur %s : %s" % (tag, nname, m)
+                db_add_alert("alert.image.distribution_echouee", "warning", node_id=nid, kind="prep",
+                             params={"tag": tag, "n": nname, "m": m})
+            with _img_lock:
+                _node_img_build[key] = {"status": "ok" if o else "error", "msg": nmsg}
+            results.append({"id": nid, "name": nname, "ok": o, "msg": nmsg})
+    finally:
+        try:
+            os.remove(tmp.name)
+        except OSError:
+            pass
+    return results
+
+
 def _build_node_only_worker(which):
     """Build d'une image `node_only` (bobi-mtl, bobi-compute-gpu) : PAS sur le nœud de build global
     (réglage `image_build_node`, pertinent seulement pour les images partagées build-once+push) mais
@@ -1083,7 +1352,6 @@ def _build_node_only_worker(which):
          et l'agrégat passe en `error` dès qu'UN nœud échoue — pas d'« ok » global masquant un trou ;
       3. aucun nœud cible → erreur explicite, on ne build PAS au hasard sur le nœud de build."""
     import time as _t
-    from .. import node_driver as _nd
     tag = _image_tag(which)
     spec = _IMAGES[which]
     start = _t.time()
@@ -1117,8 +1385,11 @@ def _build_node_only_worker(which):
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": str(e)}
         return
-    results = []
-    for node in targets:
+    # Registry usable → built ONCE on the build host, published, pulled by every target (2026-11-28).
+    # Otherwise, as before: built on every node that runs it.
+    once = _build_once_node(which)
+    results = _build_once(which, tag, ctx, targets, once) if once else []
+    for node in ([] if once else targets):
         nid = node["id"]
         nname = str(node.get("name") or nid)
         key = "%d:%s" % (nid, which)
@@ -1129,54 +1400,7 @@ def _build_node_only_worker(which):
             if _img_build.get(which, {}).get("status") == "building":
                 _img_build[which]["msg"] = "build sur %s (%d/%d)…" % (
                     nname, len(results) + 1, len(targets))
-        ok, tail, refus = False, "", None
-        try:
-            # ★ PRE-FLIGHT, PER NODE. All three thin layers (compute-gpu, gui, decklink) are
-            # `node_only`, so this is the only path that ever sees a `base_from`. Failing one node
-            # here leaves the others to build: invariant 2 already turns the aggregate to `error`.
-            _bstate, _btag, _bwhere = _base_image_state(which, node=node)
-            if _bstate is False:
-                raise BaseImageMissing(_btag, _bwhere)
-            if _bstate is None and _btag:
-                # Not measured: we build anyway rather than block on a read we do not have. The
-                # failure, if it comes, is still readable — `_explain_registry_denial` names it.
-                logging.getLogger(__name__).warning(
-                    "images: build %s on %s — base image %s not verified (unreadable inventory)",
-                    tag, nname, _btag)
-            rc, tail = _nd.build_image(node, tag, ctx, timeout=2400)
-            # ANTI-FAUX-ÉCHEC (2026-08-19, incident Horace) : le timeout ne coupe que l'attente
-            # HTTP, jamais le `docker build` du nœud. Déclarer « échec » à cet instant est un
-            # MENSONGE qui coûte cher : il invite à relancer, donc à lancer une seconde
-            # compilation en parallèle sur un nœud qui porte l'antenne. On surveille l'apparition
-            # de l'image au lieu de conclure — c'est exactement ce qu'un opérateur ferait à la
-            # main, et ce qui a effectivement récupéré bobi-mtl:0.96.0 ce jour-là.
-            if rc == _nd.BUILD_RC_TIMEOUT:
-                _fin = _t.time() + _BUILD_SUIVI_APRES_TIMEOUT_S
-                with _img_lock:
-                    _node_img_build[key] = {
-                        "status": "building",
-                        "msg": "suivi interrompu à %d min — le build CONTINUE sur %s, on surveille "
-                               "l'apparition de %s" % (2400 // 60, nname, tag),
-                        "start": n_start}
-                while _t.time() < _fin and not _image_present_node(node, tag, force=True):
-                    _t.sleep(30)
-                ok = _image_present_node(node, tag, force=True)
-                tail = ("image apparue après un suivi interrompu" if ok else
-                        "suivi interrompu à %d min et %s toujours absente %d min plus tard — le "
-                        "build peut encore tourner sur %s : VÉRIFIER (`ps -eo args | grep \"docker "
-                        "build\"`) AVANT de relancer, deux compilations en parallèle sur un nœud "
-                        "d'antenne se voient à l'image."
-                        % (2400 // 60, tag, _BUILD_SUIVI_APRES_TIMEOUT_S // 60, nname))
-            else:
-                ok = (rc == 0)
-            # Anti-faux-ok : rc=0 ne suffit pas, l'image doit être RÉELLEMENT présente sur ce nœud.
-            if ok and not _image_present_node(node, tag, force=True):
-                ok, tail = False, ("build rc=0 mais %s introuvable sur %s (faux-ok). %s"
-                                   % (tag, nname, str(tail)[-400:]))
-        except BaseImageMissing as e:
-            tail, refus = str(e), e
-        except Exception as e:
-            tail = str(e)
+        ok, tail, refus = _build_one(which, node, tag, ctx, key, nname, n_start)
         dur = int(_t.time() - n_start)
         _min, _sec = dur // 60, dur % 60
         if ok:

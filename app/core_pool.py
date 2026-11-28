@@ -650,6 +650,19 @@ def physical_allocations(node_id):
     return {v: sorted(c) for v, c in out.items()}
 
 
+def edge_phys(pool, core_of):
+    """Physical cores straddling the pool's edge: one thread in the compute pool, the other OUTSIDE
+    it — on a compute node, CPU 0's twin, where the kernel's housekeeping and the node agent run.
+    A dedicated reservation there shares its execution units with the system: measured on dell-1
+    on 2026-11-25, CPU 44 held by a wall shard, its twin 0 busy with housekeeping. On a 2110 node
+    the pool is the complement of the engine's HT-aware footprint, so no core straddles it. No HT
+    map → nothing (flat model, nothing invented)."""
+    if not core_of:
+        return set()
+    pool = set(pool or ())
+    return {k for c, k in core_of.items() if c not in pool} & {core_of[c] for c in pool if c in core_of}
+
+
 def _one_per_phys(cands, core_of, keep=()):
     """One logical CPU per physical core among `cands` (sorted), preferring those in `keep` (the
     container's current cores, so a redeployment does not shuffle them)."""
@@ -733,8 +746,18 @@ def _allocate_cores(node_id, vmid, n, prefer_numa=None, physical=False):
                 """`n` cœurs parmi `cands` (déjà filtrés par la règle stricte), NUMA respecté →
                 (cœurs, motif). `prio` = tous : le repli sur des frères pris n'existe plus."""
                 if not numa_of:
-                    return cands[:n], None
-                return _choisir_numa(cands, n, numa_of, prefer_numa, prio=set(cands), poids=_poids)
+                    pick, motif = cands[:n], None
+                else:
+                    pick, motif = _choisir_numa(cands, n, numa_of, prefer_numa, prio=set(cands),
+                                                poids=_poids)
+                on_edge = [c for c in pick if core_of and core_of.get(c) in edge]
+                if on_edge:
+                    nodes = {numa_of.get(c) for c in on_edge} if numa_of else {None}
+                    spare = [c for c in cands if c not in pick and core_of.get(c) not in edge
+                             and (not numa_of or numa_of.get(c) in nodes)]
+                    keep = [c for c in pick if c not in on_edge]
+                    pick = sorted(keep + spare[:len(on_edge)] + on_edge[len(spare):])
+                return pick, motif
 
             def _alerter_motif(motif):
                 if motif:
@@ -754,6 +777,9 @@ def _allocate_cores(node_id, vmid, n, prefer_numa=None, physical=False):
             # L'ancienne préférence (`prio` + `poids`) retombait sur ces frères quand le socket
             # n'avait plus de cœur physique entier : c'est ce repli-là qui est supprimé. À défaut
             # de cœurs physiques entiers → REPLI PARTAGÉ (None), comme un pool plein, et dit.
+            # A core whose twin is the system's (`edge_phys`) is taken LAST: only when nothing else of
+            # the same NUMA node fits — no capacity is lost, and an existing reservation keeps it.
+            edge = edge_phys(pool, core_of)
             mine = sorted(c for c, v in alloc.items() if v == vmid)
             if mine and physical and core_of and len({core_of.get(c) for c in mine}) < len(mine):
                 # A whole-core reservation holding two siblings of one core (made before it was
@@ -1997,6 +2023,74 @@ def _grille_coeurs(pool, core_of, par_vmid, vivants, libres, noms, moteurs):
     return out
 
 
+# ─── Real-time load ADMITTED on the shared pool (decided with Cyril, 2026-11-23) ─────────────────
+# A plugin with a real-time role runs its deadline thread in SCHED_FIFO (`app/realtime.py`). On
+# dedicated cores that is harmless. On the SHARED pool a FIFO thread always runs before every normal
+# thread of every other container, and two FIFO threads at the same priority do not preempt each
+# other: measured 2026-11-22, two of them hold as long as the capacity suffices — the case where it
+# no longer does was not measured. So the FIFO load put on the pool is BOUNDED, at admission:
+#   - the load of a FIFO container = its MEASURED CPU load (a container's load bounds its FIFO
+#     thread's from above); not measured yet, or measured as a floor → its CPU cap, else one core;
+#   - the budget = RT_SHARED_SHARE of the pool's counted capacity (its exclusive PHYSICAL cores
+#     when the topology is known, like the « pool too low » verdict): the other half is left to the
+#     normal containers and the system, which FIFO would otherwise starve.
+# Above the budget a new container is refused unless the user chooses explicitly — the same rule
+# as a Dedicated container without room. The number is a product decision, not a setting.
+RT_SHARED_SHARE = 0.5
+
+
+def _rt_role(c):
+    """Real-time role of a container's plugin ("" without one): its deadline thread runs in FIFO."""
+    try:
+        from .docker_compute import _type_of
+        from . import plugins, realtime
+        t = _type_of(c)
+        return realtime.role_of(plugins.get(t) or {}) if t else ""
+    except Exception as e:                                                   # noqa: BLE001
+        log.debug("rt role of %s unknown (%s)", (c or {}).get("vmid"), e)
+        return ""
+
+
+def rt_load_of(charge, minorant, plafond):
+    """CPU load (cores) counted for one FIFO container on the shared pool. → (cores, estimated)."""
+    if charge is not None and not minorant:
+        return float(charge), False
+    floor = float(charge) if charge is not None else 0.0
+    return max(floor, float(plafond or 1)), True
+
+
+def charge_rt(partages, capacite):
+    """FIFO load on the shared pool, from the `partages` lines of `vue_coeurs`.
+    → {capacite, budget, charge, conteneurs: [{vmid, hostname, role, charge, estimee}]}"""
+    rows = []
+    for l in partages or ():
+        if not l.get("rt_role"):
+            continue
+        load, est = rt_load_of(l.get("charge"), l.get("charge_minorant"), l.get("plafond"))
+        rows.append({"vmid": l["vmid"], "hostname": l.get("hostname") or "",
+                     "role": l["rt_role"], "charge": round(load, 2), "estimee": est})
+    return {"capacite": capacite, "budget": round(RT_SHARED_SHARE * (capacite or 0), 2),
+            "charge": round(sum(r["charge"] for r in rows), 2), "conteneurs": rows}
+
+
+def admission_rt(node_id, demande, vue=None):
+    """Would `demande` more cores of FIFO load fit in this node's shared-pool budget?
+    → {suffisant, demande, charge, budget, capacite, conteneurs, noeud}. Never refuses on a node
+    without a compute pool (nothing to count: `effective_cpuset` already says so)."""
+    out = {"suffisant": True, "demande": round(float(demande or 0), 2), "charge": 0.0,
+           "budget": None, "capacite": None, "conteneurs": [], "noeud": str(node_id)}
+    if not demande:
+        return out          # nothing asked: not even a read (every creation passes here)
+    node = db_get_node(node_id) or {}
+    out["noeud"] = node.get("name") or str(node_id)
+    if not (node.get("compute_cpuset") or "").strip():
+        return out
+    rt = ((vue or vue_coeurs(node_id)).get("partage") or {}).get("rt") or {}
+    out.update({k: rt.get(k) for k in ("charge", "budget", "capacite", "conteneurs")})
+    out["suffisant"] = (rt.get("charge") or 0) + out["demande"] <= (rt.get("budget") or 0)
+    return out
+
+
 def vue_coeurs(node_id, force=False):
     """Qui tient quoi sur le pool de calcul de ce nœud → dict prêt pour l'UI et pour une garde.
 
@@ -2132,6 +2226,7 @@ def vue_coeurs(node_id, force=False):
             # vue le listait sans rien dire. Le débordement est le cas grave, l'écart simple est
             # une occasion manquée : les deux sont nommés, séparément.
             ligne["temps_reel"] = _temps_reel(c)
+            ligne["rt_role"] = _rt_role(c)
             applique_set = parse_cpuset(app)
             if not app:
                 ligne["coherent"] = None
@@ -2202,6 +2297,8 @@ def vue_coeurs(node_id, force=False):
     # those were not. Counted in logical CPUs: this is the cpuset a shared container receives.
     etat_partage["reduit"] = bool(partages) and len(libres) < PARTAGE_MIN_CPUS
     etat_partage["capacite_comptee"] = _capacite
+    etat_partage["rt"] = charge_rt(partages, _capacite)
+    etat_partage["strict"] = bool(core_of) and reserve_physique(node_id)
     # ★ CE QUE COÛTERAIT « dédié = cœur physique », CHIFFRÉ AVANT LA DÉCISION. Sans ça, la
     # question « peut-on l'activer ? » se répond à la main sur un relevé — c'est ce que j'ai fait
     # pour la Z8 le 28/10, et c'est exactement le genre de calcul qu'on ne refait pas six mois
@@ -2211,6 +2308,9 @@ def vue_coeurs(node_id, force=False):
         etat_partage["si_strict"] = {
             "cpuset": fmt_cpuset(_strict), "cores": len(_strict),
             "physiques": len({core_of[c] for c in _strict if c in core_of}),
+            # The COUNTED capacity after (exclusive physical cores): a sibling of a dedicated core
+            # never was any, so it does not move — dell-1 on 2026-11-25: 7 before, 7 after.
+            "exclusifs": len({core_of[c] for c in _strict if c in core_of} - phys_dedies),
             "perdus": fmt_cpuset(sorted(set(libres) - set(_strict))),
             # Le verdict qui décide : reste-t-il de quoi faire tourner les partagés temps réel ?
             "viable": bool(_strict) and (not tr or len({core_of[c] for c in _strict
@@ -2289,6 +2389,48 @@ def alerter_partage_bas(node_id, vue=None):
     return True
 
 
+def alerter_rt_partage(node_id, vue=None):
+    """Alert (throttled) when the FIFO load MEASURED on the shared pool is past its budget.
+
+    Admission only sees the load at creation: a container's load grows with its work (a wall gets
+    tiles, a mixer a keyer), and the fabric creates shards without going through it. The state is
+    said here, every 5 min (node_health). → True if alerted."""
+    vue = vue or vue_coeurs(node_id)
+    rt = (vue.get("partage") or {}).get("rt") or {}
+    if not rt.get("conteneurs") or (rt.get("charge") or 0) <= (rt.get("budget") or 0):
+        return False
+    noms = _noms_vmids([r["vmid"] for r in rt["conteneurs"]])
+    _alerter_throttle(node_id, "rt_partage",
+                      "real-time load %.2f core(s) on the shared pool, budget %.2f: %s"
+                      % (rt["charge"], rt["budget"], noms),
+                      "warning", cle="alert.resource.rt_partage_depasse",
+                      params={"n": (db_get_node(node_id) or {}).get("name") or node_id,
+                              "charge": rt["charge"], "budget": rt["budget"],
+                              "count": len(rt["conteneurs"]), "noms": noms})
+    return True
+
+
+# An HT sharing is a PERMANENT state, not an event (2026-11-23): throttled to one alert per 5 min it
+# came back ~180 times a day on dell-1 for the same twelve containers. Said when the set of
+# containers concerned CHANGES (appears, grows, shrinks), and once when it is gone; the node's
+# aptitude sheet (app/node_aptitude.py) shows the state the rest of the time.
+_ht_episodes = _Episodes("dedie_frere_ht")
+
+
+def _ht_changed(node_id, motif, vmids):
+    """True when the set for (node, motif) differs from the last one said; remembers it."""
+    k = "%s:%s" % (node_id, motif)
+    sig = ",".join(str(v) for v in sorted(set(vmids)))
+    if _ht_episodes.get(k) == sig:
+        return False
+    if sig:
+        _ht_episodes.poser(k, sig)
+    else:
+        _ht_episodes.retirer(k)
+    _ht_episodes.flush()
+    return True
+
+
 def alerter_dedies_non_exclusifs(node_id, vue=None):
     """Alerte (throttlée) quand un cœur « dédié » partage son cœur PHYSIQUE — avec le pool partagé
     (`alert.resource.dedie_frere_ht`) OU avec une autre réservation dédiée
@@ -2307,12 +2449,18 @@ def alerter_dedies_non_exclusifs(node_id, vue=None):
     leve = False
     # Cas 1 — frère HT dans le pool PARTAGÉ (clé historique, paramètres inchangés).
     coupables = [l for l in vue["dedies"] if l.get("exclusif") is False and l.get("freres_partages")]
-    if coupables:
-        _alerter_throttle(
-            node_id, "dedie_frere_ht",
-            "réservations dédiées dont le frère HT est dans le pool partagé : %s"
-            % _noms_vmids([l["vmid"] for l in coupables]), "warning",
-            cle="alert.resource.dedie_frere_ht",
+    _was = _ht_episodes.get("%s:dedie_frere_ht" % node_id)
+    coupables_dits = False
+    if _ht_changed(node_id, "dedie_frere_ht", [l["vmid"] for l in coupables]):
+        if coupables:
+            coupables_dits = True
+        elif _was:
+            db_add_alert("alert.resource.dedie_frere_ht_fin", "info", node_id=node_id, kind="resource",
+                         params={"n": nom_noeud})
+    if coupables_dits:
+        # Not throttled: said only when the set changes (`_ht_changed`), never lost to a throttle.
+        db_add_alert(
+            "alert.resource.dedie_frere_ht", "warning", node_id=node_id, kind="resource",
             params={"n": nom_noeud,
                     "count": len(coupables),
                     "noms": _noms_vmids([l["vmid"] for l in coupables]),
@@ -2323,7 +2471,15 @@ def alerter_dedies_non_exclusifs(node_id, vue=None):
     # 27-31, frères de 1-5 tenus par les pyramides #232 et #230). Motif de throttle DISTINCT : un
     # cas ne doit pas taire l'autre. Le VOISIN est nommé avec son cpuset — c'est lui qu'on va voir.
     paires = [l for l in vue["dedies"] if l.get("exclusif") is False and l.get("siblings_dedicated")]
-    if paires:
+    _was2 = _ht_episodes.get("%s:dedie_frere_dedie" % node_id)
+    paires_dites = False
+    if _ht_changed(node_id, "dedie_frere_dedie", [l["vmid"] for l in paires]):
+        if paires:
+            paires_dites = True
+        elif _was2:
+            db_add_alert("alert.resource.dedicated_sibling_dedicated_fin", "info", node_id=node_id,
+                         kind="resource", params={"n": nom_noeud})
+    if paires_dites:
         detail = "; ".join(
             "%s (%s) %s ↔ %s" % (l["hostname"] or "?", l["vmid"], l["cpuset_reserve"],
                                  ", ".join("%s (%s) cpuset %s [%s]"
@@ -2331,10 +2487,8 @@ def alerter_dedies_non_exclusifs(node_id, vue=None):
                                               s["siblings"])
                                            for s in l["siblings_dedicated"]))
             for l in paires)
-        _alerter_throttle(
-            node_id, "dedie_frere_dedie",
-            "réservations dédiées dont le frère HT est tenu par un autre dédié : %s" % detail,
-            "warning", cle="alert.resource.dedicated_sibling_dedicated",
+        db_add_alert(
+            "alert.resource.dedicated_sibling_dedicated", "warning", node_id=node_id, kind="resource",
             params={"n": nom_noeud, "count": len(paires),
                     "noms": _noms_vmids([l["vmid"] for l in paires]), "pairs": detail})
         leve = True
@@ -2371,7 +2525,28 @@ def reappliquer_partages(node_id, force=False):
     vingt-cinq étaient redevenus libres. Rien ne le rattrapait, et rien ne le disait. `docker
     update --cpuset-cpus` le corrige sur un conteneur EN MARCHE : recréer serait une coupure
     d'antenne pour un geste d'intendance.
+
+    ★ ONE AT A TIME PER NODE, and each container re-read before it is written (2026-11-23). Every
+    reservation starts one of these in the background: three shards moved to dedicated cores in a
+    row on dell-1 left two of them back on the shared pool — a run started for the first move,
+    working on a view taken before the next ones, wrote the shared cpuset over the containers
+    that had just been given their cores. The lock makes each run compute its view when it
+    starts; the re-read skips a container that took a reservation meanwhile.
     """
+    with _reapply_lock(node_id):
+        return _reappliquer_partages(node_id, force=force)
+
+
+_reapply_locks = {}
+_reapply_locks_guard = threading.Lock()
+
+
+def _reapply_lock(node_id):
+    with _reapply_locks_guard:
+        return _reapply_locks.setdefault(str(node_id), threading.Lock())
+
+
+def _reappliquer_partages(node_id, force=False):
     from . import node_driver
     from .database import db_get_containers
     import shlex as _sh
@@ -2396,6 +2571,10 @@ def reappliquer_partages(node_id, force=False):
                                          "aucun cpuset n'est modifié à l'aveugle"})
             continue
         if parse_cpuset(avant) == parse_cpuset(voulu):
+            out["inchanges"].append(ligne["vmid"])
+            continue
+        if allocated_for(node_id, ligne["vmid"]):
+            # Given dedicated cores since the view was taken: it is no longer ours to write.
             out["inchanges"].append(ligne["vmid"])
             continue
         try:

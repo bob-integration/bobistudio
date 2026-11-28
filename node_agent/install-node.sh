@@ -52,6 +52,12 @@
 #   --registry <host>      registry pour `docker pull <registry>/<image>` (sinon: images supposées présentes)
 #   --images <csv>         tags d'images d'intérêt (défaut dérivé des capacités)
 #   --no-start             installe sans démarrer l'agent
+#   --rt-kernel            impose le noyau PREEMPT_RT ; --no-rt-kernel impose le noyau normal.
+#                          Sans l'un ni l'autre (défaut) : temps réel sur un NOUVEAU nœud, sauf carte
+#                          DeckLink ; une réinstallation garde son noyau (cf. resolve_rt_kernel).
+#   --irq-managed          make the kernel-managed IRQs of disk controllers movable (host driver
+#                          `irq_managed`: megaraid_sas / mpt3sas / smartpqi parameter on the boot line);
+#                          --no-irq-managed leaves the boot line alone. Default: done on a NEW node only.
 #   --reset-tls            SUPPRIME sans demander un certificat mTLS déjà présent (ré-enrôlement).
 #                          Sans ça, un cert d'un enrôlement PRÉCÉDENT fait redémarrer l'agent
 #                          verrouillé sur l'ANCIENNE CA → impossible de le ré-enrôler ailleurs.
@@ -71,9 +77,19 @@ REGISTRY=""; IMAGES=""; IMAGES_EXPLICIT=0; START=1; RESET_TLS=""; KEEP_TLS=""
 # Noyau compatible MTL (io2110). NON figé : fournis par le profil (réglage cluster). Vide = aucun
 # changement de noyau (avertissement seulement). KERNEL_APT = ligne sources.list optionnelle.
 KERNEL_PKG=""; KERNEL_APT=""
+# Noyau PREEMPT_RT de Debian (pilote hôte `rt_kernel`), fixé comme noyau de démarrage.
+# RT_KERNEL : auto (défaut depuis le 2026-11-23, cf. resolve_rt_kernel) · 1 (--rt-kernel) · 0 (--no-rt-kernel).
+# KERNEL_TARGET : le noyau installé par --kernel-pkg, que pin_boot_kernel fixe à défaut du RT.
+RT_KERNEL=auto; KERNEL_TARGET=""; RT_FAIL=0
+# --rt-kernel given EXPLICITLY: the only case where a DeckLink node goes RT (rt_kernel.py refuses otherwise).
+RT_FORCED=0
+# Host driver `irq_managed`: auto (new node only, cf. resolve_irq_managed) · 1 (--irq-managed) · 0 (--no-irq-managed).
+IRQ_MANAGED=auto
 # CONF_DIR surchargeable par l'environnement : sert à éprouver le mode --add-caps (fusion de
 # config.json) hors d'un vrai nœud. Défaut inchangé en exploitation.
 AGENT_DIR="/opt/bobi-node-agent"; CONF_DIR="${CONF_DIR:-/etc/bobi-node-agent}"
+# Présent AVANT cette exécution = réinstallation d'un nœud existant (lu avant toute écriture).
+PRE_INSTALLED=0; [ -f "$CONF_DIR/config.json" ] && PRE_INSTALLED=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_0=$'\033[0m'
@@ -247,9 +263,12 @@ provision_io2110() {
       apt-get update -qq || warn "apt-get update (source noyau) a échoué"
     fi
     log "Installation du noyau MTL : $KERNEL_PKG"
+    local _kb; _kb="$(ls /lib/modules)"
     # shellcheck disable=SC2086  (word-splitting voulu : image + headers éventuels)
     if apt-get install -y -qq $KERNEL_PKG; then
       update-grub >/dev/null 2>&1 || true
+      # Le noyau qui vient d'arriver : c'est lui que pin_boot_kernel fixera (et plus « le premier de GRUB »).
+      KERNEL_TARGET="$(ls /lib/modules | grep -vxF "$_kb" | sort -V | tail -1)"
       ok "noyau '$KERNEL_PKG' installé — REBOOT requis pour basculer dessus (courant : $(uname -r))"
     else
       warn "échec installation du noyau '$KERNEL_PKG' — io2110/MTL risque de ne pas fonctionner."
@@ -399,6 +418,98 @@ UNIT
 # nvidia-driver` : le pilote Debian 13 (550.163.01) est trop vieux pour le runtime CUDA 12.8 de l'image
 # GPU (>= 570) et le mur de visualisation retombait sur le CPU sans le dire.
 # Code retour du script : 0 = rien à faire/terminé ; 10 = REBOOT requis ; autre = échec (GPU_FAIL).
+# Noyau de démarrage FIXÉ, jamais « le premier de GRUB ». Avec GRUB_DEFAULT=0, le noyau démarré
+# changeait avec l'ordre des entrées : un apt qui pose un noyau (le normal 6.12.116 tiré avec le RT sur
+# dell-1 et dl360-1, le 11/11) devenait le noyau de démarrage, sans le module NVIDIA ni l'ice MTL.
+pin_boot_kernel() {
+  local _k="$1" _sub _ent
+  [ -f /etc/default/grub ] && command -v grub-set-default >/dev/null 2>&1 || { warn "GRUB absent : noyau de démarrage non fixé."; return 0; }
+  if ! grep -qx 'GRUB_DEFAULT=saved' /etc/default/grub; then
+    if grep -q '^GRUB_DEFAULT=' /etc/default/grub; then sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' /etc/default/grub
+    else echo 'GRUB_DEFAULT=saved' >> /etc/default/grub; fi
+  fi
+  update-grub >/dev/null 2>&1 || { warn "update-grub a échoué : noyau de démarrage non fixé."; return 0; }
+  _sub="$(grep -o "submenu [^{]*\$menuentry_id_option 'gnulinux-advanced-[^']*'" /boot/grub/grub.cfg | head -1 | sed "s/.*'\(gnulinux-advanced-[^']*\)'/\1/")"
+  _ent="$(grep -o "\$menuentry_id_option 'gnulinux-$_k-advanced-[^']*'" /boot/grub/grub.cfg | head -1 | sed "s/.*'\(gnulinux-[^']*\)'/\1/")"
+  if [ -z "$_sub" ] || [ -z "$_ent" ]; then warn "entrée GRUB introuvable pour $_k : noyau de démarrage non fixé."; return 0; fi
+  grub-set-default "$_sub>$_ent" && ok "noyau de démarrage fixé : $_k"
+}
+
+# Noyau temps réel (--rt-kernel). Même script que le bouton de la fiche du nœud (pilote hôte
+# `rt_kernel`) : il installe le noyau, y recompile les modules hors arbre (DKMS, NVIDIA, ice MTL) et le
+# fixe dans GRUB. Code retour : 0 rien à faire · 10 REBOOT requis · autre = échec (on garde alors le
+# noyau courant, fixé par pin_boot_kernel).
+provision_rt() {
+  local _rt="" _rc=0
+  for _c in "$SCRIPT_DIR/host_drivers/rt_kernel.py" "$AGENT_DIR/host_drivers/rt_kernel.py"; do
+    [ -f "$_c" ] && { _rt="$_c"; break; }
+  done
+  [ -n "$_rt" ] || { warn "noyau RT : script host_drivers/rt_kernel.py introuvable — noyau inchangé."; RT_FAIL=1; return 0; }
+  local _allow=""
+  [ "$RT_FORCED" = 1 ] && _allow="--allow-decklink"     # imposed by the operator: their call
+  BOBI_APT_OPTS="${APT_OPTS[*]:-}" python3 "$_rt" run $_allow || _rc=$?
+  case "$_rc" in
+    0)  ok "noyau RT : déjà en place.";;
+    10) warn "noyau RT installé et fixé — REBOOT du nœud requis pour démarrer dessus.";;
+    *)  warn "noyau RT en ÉCHEC (rc=$_rc, cf. journal ci-dessus) — le nœud garde son noyau."; RT_FAIL=1;;
+  esac
+  return 0
+}
+
+# The RT kernel is the DEFAULT of a new node (decided with Cyril, 2026-11-23: a deadline thread in
+# SCHED_FIFO misses nothing on it, and the console's audio went from 7 360 late blocks a night to 0).
+# « auto » keeps the normal kernel in two cases only, each said:
+#   - a DeckLink card (PCI vendor 0xbdbd): the Blackmagic driver 16.4a1 crashes on PREEMPT_RT
+#     (Oops at the first frame, measured on dell-1 2026-11-23, with or without SCHED_FIFO);
+#   - a REINSTALL of a node: its kernel is not changed by an update it did not ask that of.
+# --rt-kernel / --no-rt-kernel decide instead (the enrollment profile passes them).
+has_decklink() {
+  local _v
+  for _v in "${PCI_SYSFS:-/sys/bus/pci/devices}"/*/vendor; do
+    [ "$(cat "$_v" 2>/dev/null)" = "0xbdbd" ] && return 0
+  done
+  return 1
+}
+resolve_rt_kernel() {
+  [ "$RT_KERNEL" = auto ] || return 0
+  if has_decklink || has_cap decklink; then
+    RT_KERNEL=0; warn "noyau : normal — carte DeckLink détectée (pilote Blackmagic instable sous PREEMPT_RT). --rt-kernel pour l'imposer."
+  elif [ "$PRE_INSTALLED" = 1 ]; then
+    RT_KERNEL=0; ok "noyau : inchangé (réinstallation d'un nœud existant). --rt-kernel pour passer en temps réel."
+  else
+    RT_KERNEL=1; ok "noyau : temps réel (défaut d'un nouveau nœud). --no-rt-kernel pour garder le noyau normal."
+  fi
+}
+
+# Kernel-managed IRQs of disk controllers (megaraid_sas, mpt3sas, smartpqi: one queue per CPU, affinity
+# not writable, so the agent cannot steer them off a Dedicated core — 25/s on a player's cores, dell-1
+# 2026-11-25). SAME script as the button of the node's aptitude sheet (host driver `irq_managed`): it puts
+# the driver's parameter on the boot line and never reboots. Exit: 0 nothing to do · 10 reboot required ·
+# other = failure (the boot line is then left as it was). « auto »: a new node only — a reinstall does not
+# change its boot line behind the operator's back, like the kernel (resolve_rt_kernel).
+resolve_irq_managed() {
+  [ "$IRQ_MANAGED" = auto ] || return 0
+  if [ "$PRE_INSTALLED" = 1 ]; then
+    IRQ_MANAGED=0; ok "managed IRQs: boot line unchanged (reinstall). --irq-managed to apply."
+  else
+    IRQ_MANAGED=1
+  fi
+}
+provision_irq_managed() {
+  local _s="" _rc=0
+  for _c in "$SCRIPT_DIR/host_drivers/irq_managed.py" "$AGENT_DIR/host_drivers/irq_managed.py"; do
+    [ -f "$_c" ] && { _s="$_c"; break; }
+  done
+  [ -n "$_s" ] || { warn "managed IRQs: host_drivers/irq_managed.py not found — boot line unchanged."; return 0; }
+  python3 "$_s" run || _rc=$?
+  case "$_rc" in
+    0)  ok "managed IRQs: nothing to do.";;
+    10) warn "managed IRQs: boot parameter set — node REBOOT required.";;
+    *)  warn "managed IRQs: FAILED (rc=$_rc, see the log above) — boot line unchanged or partly changed, check /etc/default/grub.bak.irq_managed.*";;
+  esac
+  return 0
+}
+
 provision_gpu() {
   # Introuvable = installation incomplète (le script voyage avec l'archive, ou a été déposé par le
   # contrôleur dans $AGENT_DIR avant un rattrapage `--add-caps`) : on le dit, sans rien improviser.
@@ -465,6 +576,10 @@ while [ $# -gt 0 ]; do
     --keep-tls) KEEP_TLS=1; shift;;
     --kernel-pkg) KERNEL_PKG="$2"; shift 2;;
     --kernel-apt) KERNEL_APT="$2"; shift 2;;
+    --rt-kernel) RT_KERNEL=1; RT_FORCED=1; shift;;
+    --no-rt-kernel) RT_KERNEL=0; shift;;
+    --irq-managed) IRQ_MANAGED=1; shift;;
+    --no-irq-managed) IRQ_MANAGED=0; shift;;
     --no-start) START=0; shift;;
     *) die "option inconnue : $1";;
   esac
@@ -788,6 +903,15 @@ if has_cap gpu; then provision_gpu; fi
 
 # ─── 3. Capacité io2110 (E810 / hugepages / PTP) ────────────────────────────
 if has_cap io2110; then provision_io2110; fi
+
+# ─── 3b. Noyau de démarrage ──────────────────────────────────────────────────
+# APRÈS gpu et io2110 : le noyau RT doit recevoir les modules hors arbre qu'ils viennent de poser.
+resolve_rt_kernel
+if [ "$RT_KERNEL" = 1 ]; then provision_rt; fi
+[ "$RT_KERNEL" = 1 ] && [ "$RT_FAIL" = 0 ] || pin_boot_kernel "${KERNEL_TARGET:-$(uname -r)}"
+# After the kernel step: update-grub then writes our parameter into every entry, the RT kernel's included.
+resolve_irq_managed
+if [ "$IRQ_MANAGED" = 1 ]; then provision_irq_managed; fi
 
 # ─── 4. Réseau macvlan ───────────────────────────────────────────────────────
 if [ "$USE_MACVLAN" = "1" ]; then

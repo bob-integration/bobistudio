@@ -1120,6 +1120,23 @@ def api_node_interface_set(node_id, ifname):
                                  "— ptp4l ne peut pas y tourner. L'horloge PTP est alors portée par le "
                                  "moteur 2110 (libmtl). Retirer « ptp4l sur cette carte », ou rester "
                                  "en AF-XDP."}), 400
+    # A DPDK port is handed to the engine by its PCI address (no netdev once on vfio-pci). The
+    # network page sends it with the form; a direct API call may not, and the engine then received
+    # the interface NAME and stopped on `mtl_init fail` (dl-360-1, 2026-11-23). Read it on the node
+    # while the port is still on its kernel driver, or refuse — never store a DPDK port without it.
+    if (role or _row.get("role")) == "media2110" and _pmd_eff == "dpdk":
+        from .. import pmd_switch as _pmds
+        _host = _node_host(node_id)
+        _pci, _why = _pmds.resolve_dpdk_pci(
+            ifname, d.get("pci") or _row.get("pci"),
+            lambda: _fetch_host_nics(_host) if _host else (False, "no host", []))
+        if not _pci:
+            from ..i18n import t as _t
+            return jsonify({"error": _t("api.interfaces.dpdk_sans_pci_injoignable" if _why == "unreachable"
+                                        else "api.interfaces.dpdk_sans_pci", ifn=ifname,
+                                        n=node.get("name") or node_id),
+                            "error_code": "dpdk_without_pci"}), 409
+        d["pci"] = _pci
     # Alias opérateur libre (« PGM-Rouge ») — sur toute interface, affiché à côté du nom.
     alias = (str(d.get("alias") or "")).strip() or None
     # Plage IP conteneurs PAR NŒUD : uniquement sur une carte containers/mgmt_containers. Les deux

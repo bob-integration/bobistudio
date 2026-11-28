@@ -7,7 +7,7 @@
  *
  * ★ DEUX NOTIONS, JAMAIS CONFONDUES (arbitrage de Cyril, 2026-10-30) :
  *     la PLACE  — dédié / partagé / partagé plafonné à N : OÙ le conteneur s'exécute ;
- *     le POIDS  — Antenne / Normal / Arrière-plan / Batch : sa part de CPU SOUS SATURATION.
+ *     le POIDS  — Dédié / Partagé / Arrière-plan : sa part de CPU SOUS SATURATION.
  *   Et ce que le poids ne fait pas, écrit dans la fenêtre plutôt que su de quelques-uns : il
  *   n'agit QUE sous saturation, entre conteneurs du même pool ; il ne fait rien sur un cœur
  *   dédié, et il ne protège pas du frère HyperThreading.
@@ -73,11 +73,11 @@
         return r.cle ? fmt(r.cle, r) : '';
     };
     const lignes = (j) => (j ? (j.dedies || []).concat(j.partages || []) : []);
-    // « Poids bas » = sous le niveau NORMAL, tel que le SERVEUR publie le barème. Recopier 1024
-    // ici créerait un second barème : le jour où « Normal » change de valeur, la vue classerait
+    // « Poids bas » = sous le niveau PARTAGÉ, tel que le SERVEUR publie le barème. Recopier 1024
+    // ici créerait un second barème : le jour où « Partagé » change de valeur, la vue classerait
     // les conteneurs selon l'ancien, et personne ne verrait l'écart.
     const seuilNormal = (j) => {
-        const n = ((j || {}).poids_niveaux || []).find((x) => x.niveau === 'normal');
+        const n = ((j || {}).poids_niveaux || []).find((x) => x.niveau === 'shared');
         return n ? n.valeur : null;
     };
     const poidsBas = (j, l) => {
@@ -217,7 +217,7 @@
 
     // A refusal the server explains (409): « Dédié needs N cores on X, which has only M free » —
     // the same sentence as the project view, never a bare code.
-    const refus = (j) => (j && j.error === 'no_room'
+    const refus = (j) => (j && j.error === 'rt_shared_full' ? j.message : j && j.error === 'no_room'
         ? fmt('projects.res_level_no_room', { need: j.need, name: j.name, available: j.available })
         : (j && j.error) || '');
 
@@ -416,7 +416,13 @@
             + esc(T('settings.cores.si_strict_titre')) + '</div>'
             + esc(sst.viable ? fmt('settings.cores.si_strict', { cpuset: sst.cpuset || '—', cores: sst.cores,
                 physiques: sst.physiques, perdus: sst.perdus || '—' })
-                : fmt('settings.cores.si_strict_non_viable', { cpuset: sst.cpuset || '—' })) + '</div>';
+                : fmt('settings.cores.si_strict_non_viable', { cpuset: sst.cpuset || '—' }))
+            + (sst.exclusifs != null ? '<div class="meta">' + esc(fmt('settings.cores.si_strict_capacite',
+                { avant: p.capacite_comptee, apres: sst.exclusifs })) + '</div>' : '')
+            + '<button type="button" class="ctl-push bc-strict" data-on="1">' + esc(T('settings.cores.strict_activer')) + '</button></div>';
+        else if (p.strict) h += '<div class="bc-cap"><div class="meta">' + esc(T('settings.cores.si_strict_titre')) + '</div>'
+            + esc(T('settings.cores.strict_actif'))
+            + '<button type="button" class="ctl-push bc-strict" data-on="0">' + esc(T('settings.cores.strict_desactiver')) + '</button></div>';
         return '<div class="bc-caps">' + h + '</div>';
     }
 
@@ -584,10 +590,16 @@
             c.on('change', async (v) => {
                 if (st.occupe) return;
                 st.occupe = true;
-                const r = await _json('/api/nodes/' + st.id + '/cores/weight', {
+                const send = (extra) => _json('/api/nodes/' + st.id + '/cores/weight', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ vmid: vmid, niveau: v }),
+                    body: JSON.stringify(Object.assign({ vmid: vmid, niveau: v }, extra || {})),
                 });
+                let r = await send();
+                // The shared pool's real-time budget (2026-11-23): refused unless the user chooses.
+                if (!r.ok && r.j && r.j.error === 'rt_shared_full'
+                    && window.confirm(r.j.message + '\n\n' + T('containers.panel.rt_confirm'))) {
+                    r = await send({ confirme_rt: true });
+                }
                 st.occupe = false;
                 if (!r.ok) { toast(refus(r.j) || T('settings.cores.poids_echec'), 'error'); c.set(l.poids.niveau); return; }
                 if (!r.j.applique) toast(fmt('settings.cores.poids_differe', { e: r.j.err || '' }), 'warning');
@@ -633,6 +645,18 @@
             toast(r.ok ? fmt('settings.cores.reapply_ok', { n: (r.j.faits || []).length })
                        : (r.j.error || T('settings.cores.reapply_echec')), r.ok ? '' : 'error');
             maj(true);
+        });
+        // « Dedicated = physical core » for THIS node (node setting `pin_reserve_physical`): the
+        // server re-applies the shared cpusets at once (docker update, no cut).
+        clic('.bc-strict', async () => {
+            const on = root.querySelector('.bc-strict').dataset.on === '1';
+            if (!confirm(T(on ? 'settings.cores.strict_activer_confirme' : 'settings.cores.strict_desactiver_confirme'))) return;
+            const r = await _json('/api/settings/node/' + st.id, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ set: { pin_reserve_physical: on ? 1 : 0 } }),
+            });
+            toast(r.ok ? T('settings.cores.strict_ok') : (r.j.error || T('settings.cores.reapply_echec')), r.ok ? '' : 'error');
+            setTimeout(() => maj(true), 2000);
         });
         clic('.bc-reapply-poids', async () => {
             const r = await _json('/api/nodes/' + st.id + '/cores/weight/reapply', { method: 'POST' });

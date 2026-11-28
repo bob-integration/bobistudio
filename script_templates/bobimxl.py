@@ -2384,6 +2384,217 @@ def audio_grain(config=None, sample_rate=48000):
     return g
 
 
+# REAL-TIME PRIORITY (orchestrator app/realtime.py). The plugin declares the ROLE of its deadline
+# thread in its manifest; the orchestrator grants CAP_SYS_NICE + an rtprio limit and passes the
+# grid's number as CONFIG["rt_priority"]. The script calls rt_promote() from that thread, before its
+# first deadline, and publishes rt_state() on :8080: the panel shows what was OBTAINED.
+# Linux threads inherit the policy of the thread that creates them: a helper started by a promoted
+# thread (preview, prefetch, builders) must call rt_release() first, or it competes in FIFO with the
+# deadline it is meant to serve. Threads started before the promotion keep SCHED_OTHER.
+_RT_STATE = {"rt_priority": 0, "rt_priority_error": ""}
+
+
+def rt_priority(config=None):
+    """The priority the orchestrator asks for (0 = none), clamped to 0-99."""
+    try:
+        return max(0, min(99, int((config or {}).get("rt_priority") or 0)))
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def rt_promote(priority):
+    """Put the CALLING thread in SCHED_FIFO at `priority`. Returns the priority obtained, 0 when
+    none was asked or the kernel refused (reason kept in rt_state(), logged once per thread)."""
+    if not priority or priority <= 0:
+        return 0
+    try:
+        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(int(priority)))
+    except (OSError, AttributeError, ValueError) as e:
+        if not _RT_STATE["rt_priority_error"]:
+            _RT_STATE["rt_priority_error"] = str(e)
+        sys.stderr.write("bobimxl: real-time priority %d refused (%s), thread stays SCHED_OTHER\n"
+                         % (priority, e))
+        return 0
+    _RT_STATE["rt_priority"] = max(_RT_STATE["rt_priority"], int(priority))
+    return int(priority)
+
+
+def rt_release():
+    """Put the CALLING thread back in SCHED_OTHER (no-op when it already is)."""
+    try:
+        if os.sched_getscheduler(0) != os.SCHED_OTHER:
+            os.sched_setscheduler(0, os.SCHED_OTHER, os.sched_param(0))
+    except (OSError, AttributeError):
+        pass
+
+
+def rt_state():
+    """{rt_priority, rt_priority_error} for :8080 — the highest priority obtained by a thread of this
+    script (0 = none), and the first refusal, if any."""
+    return dict(_RT_STATE)
+
+
+# DEADLINE WITNESS (2026-11-23). One block, same shape in every plugin that has a cadence, read by
+# the orchestrator (app/deadlines.py): a Dedicated container is only « guaranteed » if it has its
+# cores AND missed no deadline in 24 h. Before it, 7 plugins counted under 7 names and the
+# controller read almost none of them.
+# A deadline is missed when the output of a cycle is ready AFTER its deadline, or when a slot is
+# skipped altogether (what the downstream sees). The deadline thread calls done() once per cycle
+# and skipped() for slots it did not produce; :8080 publishes {"deadline": witness.report()}.
+# STARTUP (2026-11-24, decided with Cyril): nothing counts until the first cycle on time — opening
+# the inputs is not a missed deadline (measured on a multiview shard: one 1.41 s first frame, 71
+# slots). Capped at STARTUP_MAX_S so a container that never keeps its deadline is still seen.
+STARTUP_MAX_S = 15.0
+
+
+class DeadlineWitness:
+    """Lateness of each cycle against its deadline, over a fixed sliding window."""
+
+    def __init__(self, period_s, window_s=60, clock=None, startup_max_s=STARTUP_MAX_S):
+        self.period_ms = float(period_s) * 1000.0
+        self.window_s = int(window_s)
+        self._clock = clock or now_tai
+        n = max(1, int(round(window_s / float(period_s))))
+        self._late = np.zeros(n, dtype=np.float32)     # ms, finish - deadline (negative = margin)
+        self._n = n
+        self._i = 0
+        self._filled = 0
+        self._skips = deque()                          # (monotonic s, n) inside the window
+        self.missed_total = 0
+        self._cache = (0.0, None)
+        self._born = time.monotonic()
+        self._startup_max_s = float(startup_max_s)
+        self.starting = True
+        self.startup_missed = 0                        # not counted: see STARTUP above
+        self.startup_ms = None
+
+    def _warming(self, on_time):
+        """True while still starting; the first cycle on time (or the cap) ends it."""
+        if not self.starting:
+            return False
+        age = time.monotonic() - self._born
+        if on_time or age > self._startup_max_s:
+            self.starting = False
+            self.startup_ms = round(age * 1000.0, 1)
+            return False
+        return True
+
+    def done(self, deadline_ns, now_ns=None):
+        """End of a cycle whose output was due at `deadline_ns` (same clock as `clock`)."""
+        late = ((self._clock() if now_ns is None else now_ns) - deadline_ns) / 1e6
+        if self._warming(late <= 0):
+            self.startup_missed += 1
+            return late
+        self._late[self._i] = late
+        self._i = (self._i + 1) % self._n
+        if self._filled < self._n:
+            self._filled += 1
+        if late > 0:
+            self.missed_total += 1
+        return late
+
+    def skipped(self, n=1):
+        """Slots of the cadence that were not produced at all."""
+        if n > 0 and self._warming(False):
+            self.startup_missed += int(n)
+        elif n > 0:
+            self.missed_total += int(n)
+            self._skips.append((time.monotonic(), int(n)))
+
+    def report(self):
+        """The :8080 block; recomputed at most once per second (any thread may call it)."""
+        t = time.monotonic()
+        if self._cache[1] is not None and t - self._cache[0] < 1.0:
+            return self._cache[1]
+        while self._skips and t - self._skips[0][0] > self.window_s:
+            self._skips.popleft()
+        f = self._filled
+        late = self._late[:f].copy() if f < self._n else self._late.copy()
+        out = {"period_ms": round(self.period_ms, 3), "window_s": self.window_s,
+               "cycles": int(f), "missed": int((late > 0).sum()) + sum(k for _, k in list(self._skips)),
+               "missed_total": int(self.missed_total),
+               "late_p999_ms": round(float(np.percentile(late, 99.9)), 3) if f else None,
+               "late_max_ms": round(float(late.max()), 3) if f else None,
+               "starting": self.starting, "startup_missed": int(self.startup_missed),
+               "startup_ms": self.startup_ms, "age_s": round(t - self._born, 1)}
+        self._cache = (t, out)
+        return out
+
+
+# STARTUP SPLASH (2026-11-24, asked by Cyril): what an output shows while its plugin opens the
+# inputs, instead of a black frame with tiles appearing one by one. Set once for every plugin and
+# container (Settings → Branding, `splash_*`); only the text differs when it is the container's
+# name. The orchestrator resolves everything (`params["splash"]`); this renders it ONCE at start
+# (PIL, tens of ms at 1080p), never per frame. Each plugin converts it with its own RGB→YUV.
+SPLASH_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
+
+
+def _hex_rgb(v, default):
+    try:
+        v = str(v or "").strip().lstrip("#")
+        if len(v) == 6:
+            return tuple(int(v[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        pass
+    return default
+
+
+def render_splash(cfg, width, height):
+    """`params["splash"]` → (PIL RGBA image of width×height, [problems]). Image None = no splash.
+    Problems are said, never swallowed: a logo the container cannot read is a splash without logo,
+    and the plugin publishes why on :8080."""
+    import base64
+    import io
+    from PIL import Image, ImageDraw, ImageFont
+    problems = []
+    if not isinstance(cfg, dict) or not cfg.get("enabled"):
+        return None, problems
+    width, height = int(width), int(height)
+    img = Image.new("RGBA", (width, height), _hex_rgb(cfg.get("bg"), (0, 0, 0)) + (255,))
+    logo = None
+    lp = max(0.0, min(90.0, float(cfg.get("logo_pct") or 0)))
+    if cfg.get("logo_b64") and lp > 0:
+        try:
+            logo = Image.open(io.BytesIO(base64.b64decode(cfg["logo_b64"]))).convert("RGBA")
+            lh = max(1, int(height * lp / 100.0))
+            lw = max(1, int(logo.width * lh / max(1, logo.height)))
+            if lw > int(width * 0.9):                 # a wide logo is bounded by the width
+                lw = int(width * 0.9)
+                lh = max(1, int(logo.height * lw / max(1, logo.width)))
+            logo = logo.resize((lw, lh), Image.LANCZOS)
+        except Exception as e:                        # noqa: BLE001 (SVG, damaged file…)
+            logo = None
+            problems.append("logo: %s" % e)
+    text = str(cfg.get("text") or "").strip()
+    font = None
+    if text:
+        size = max(8, int(height * max(1.0, min(30.0, float(cfg.get("text_pct") or 6))) / 100.0))
+        for fp in SPLASH_FONTS:
+            try:
+                font = ImageFont.truetype(fp, size)
+                break
+            except OSError:
+                continue
+        if font is None:
+            problems.append("font: none of %d found, default font" % len(SPLASH_FONTS))
+            font = ImageFont.load_default()
+    draw = ImageDraw.Draw(img)
+    tb = draw.textbbox((0, 0), text, font=font) if text else (0, 0, 0, 0)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    gap = int(height * 0.04) if (logo and text) else 0
+    total = (logo.height if logo else 0) + gap + th
+    y = (height - total) // 2
+    if logo:
+        img.alpha_composite(logo, ((width - logo.width) // 2, y))
+        y += logo.height + gap
+    if text:
+        draw.text(((width - tw) // 2 - tb[0], y - tb[1]), text, font=font,
+                  fill=_hex_rgb(cfg.get("text_color"), (255, 255, 255)) + (255,))
+    return img, problems
+
+
 def flow_audio_grain(flow_def):
     """Samples per packet a flow ANNOUNCES (dict flowDef), or None when it announces nothing — a
     flow written before the setting existed: it was 1 ms, the former convention."""
@@ -3321,6 +3532,36 @@ def _mvk_load():
             _MVK_HAS_FUSE = True
         except AttributeError:
             _MVK_HAS_FUSE = False
+        # ABI 8 (image ≥ 0.85) : keyers à DÉCOUPE du mélangeur (chroma, linear) — découpe + composite
+        # en une passe. Tolérant : un .so plus vieux garde tout le reste, mvk_kchroma_*/mvk_klin_*
+        # renvoient False (repli numpy du mixer, compté dans son loop_timing).
+        global _MVK_HAS_KEY
+        _p = ctypes.c_void_p
+        try:
+            for fn in ("mvk_kchroma_y_u8", "mvk_kchroma_y_u16"):
+                f = getattr(lib, fn)
+                f.restype = _i32
+                f.argtypes = ([_p, _pd, _p, _pd, _p, _p, _pd, _p, _p, _i32, _i32,
+                               _i32, _i32, _i32, _i32, _i32, _i32, _p] +
+                              ([] if fn.endswith("u8") else [_i32]))
+            lib.mvk_kchroma_c_u8.restype = _i32
+            lib.mvk_kchroma_c_u8.argtypes = [_p, _p, _pd, _p, _p, _pd, _p, _p, _i32, _i32,
+                                             _i32, _i32, _p]
+            lib.mvk_kchroma_c_u16.restype = _i32
+            lib.mvk_kchroma_c_u16.argtypes = [_p, _p, _pd, _p, _p, _pd, _p, _p, _i32, _i32,
+                                              _i32, _i32, _p, _p, _p, _i32, _i32]
+            for fn in ("mvk_klin_y_u8", "mvk_klin_y_u16"):
+                f = getattr(lib, fn)
+                f.restype = _i32
+                f.argtypes = [_p, _pd, _p, _pd, _p, _pd, _p, _p, _i32, _i32, _i32, _i32, _p, _i32]
+            for fn in ("mvk_klin_c_u8", "mvk_klin_c_u16"):
+                f = getattr(lib, fn)
+                f.restype = _i32
+                f.argtypes = [_p, _p, _pd, _p, _p, _pd, _p, _pd, _p, _p, _p, _p, _i32, _i32,
+                              _i32, _i32, _i32, _i32, _p, _i32]
+            _MVK_HAS_KEY = True
+        except AttributeError:
+            _MVK_HAS_KEY = False
         try:
             n = int(os.environ.get("BOBI_MVK_THREADS") or 0)
         except ValueError:
@@ -3493,6 +3734,160 @@ def mvk_mixmap_into(dst, a, b, mask, m_colstep=1):
        b.ctypes.data, b.strides[0] // b.itemsize,
        mask.ctypes.data, mask.strides[0] // mask.itemsize, m_colstep, h, w)
     return True
+
+
+_MVK_HAS_KEY = False
+
+
+def mvk_has_key():
+    """True si le .so porte les keyers à découpe du mélangeur (ABI 8)."""
+    return _mvk_load() is not None and _MVK_HAS_KEY
+
+
+def _mvk_idx(a):
+    a = np.asarray(a)
+    if a.ndim != 1:
+        return None
+    return np.ascontiguousarray(a, dtype=np.int32)
+
+
+def _mvk_tab(t, dt, n=None):
+    if t is None or getattr(t, "ndim", 0) != 1 or t.dtype != dt or not t.flags["C_CONTIGUOUS"]:
+        return False
+    return n is None or t.size == n
+
+
+def _mvk_es(a):
+    return a.strides[0] // a.itemsize
+
+
+def mvk_kchroma_y_into(dst, fy, fu, fv, rows, cols, cw, ch, table, sh=0):
+    """Keyer CHROMA, plan LUMA d'une bande, découpe + composite en une passe : dst (h × w, vue du
+    rectangle visible du PGM) ← blend(dst, fy[rows, cols], α), α = table[chroma du fill à
+    (rows // ch, cols // cw)]. 8 bits : `table` = uint32[65536] empaquetée (α | U' << 8 | V' << 16) ;
+    10/12 bits : uint8[65536] (α), index sur les 8 bits hauts (`sh` = profondeur − 8).
+    Octets identiques au numpy du mixer. False si non applicable (rien écrit) → repli de l'appelant."""
+    lib = _mvk_load()
+    if lib is None or not _MVK_HAS_KEY:
+        return False
+    dt = dst.dtype
+    if dt not in (np.uint8, np.uint16):
+        return False
+    if not (_mvk_mix_ok(dst, dt) and _mvk_mix_ok(fy, dt) and _mvk_mix_ok(fu, dt) and _mvk_mix_ok(fv, dt)):
+        return False
+    if fu.shape != fv.shape or fu.strides != fv.strides:
+        return False
+    rows = _mvk_idx(rows); cols = _mvk_idx(cols)
+    if rows is None or cols is None or dst.shape != (rows.size, cols.size):
+        return False
+    if dt == np.uint8:
+        if not _mvk_tab(table, np.uint32, 65536):
+            return False
+        return bool(lib.mvk_kchroma_y_u8(
+            dst.ctypes.data, _mvk_es(dst), fy.ctypes.data, _mvk_es(fy),
+            fu.ctypes.data, fv.ctypes.data, _mvk_es(fu), rows.ctypes.data, cols.ctypes.data,
+            rows.size, cols.size, fy.shape[0], fy.shape[1], fu.shape[0], fu.shape[1],
+            int(cw), int(ch), table.ctypes.data))
+    if not _mvk_tab(table, np.uint8, 65536):
+        return False
+    return bool(lib.mvk_kchroma_y_u16(
+        dst.ctypes.data, _mvk_es(dst), fy.ctypes.data, _mvk_es(fy),
+        fu.ctypes.data, fv.ctypes.data, _mvk_es(fu), rows.ctypes.data, cols.ctypes.data,
+        rows.size, cols.size, fy.shape[0], fy.shape[1], fu.shape[0], fu.shape[1],
+        int(cw), int(ch), table.ctypes.data, int(sh)))
+
+
+def mvk_kchroma_c_into(dst_u, dst_v, fu, fv, rows, cols, table, du=None, dv=None, sh=0, maxv=255):
+    """Keyer CHROMA, plans U et V d'une bande en une passe : une lecture de table donne α ET le fill
+    corrigé du débordement. 8 bits : `table` empaquetée uint32[65536] ; 10/12 bits : α uint8[65536]
+    + écarts `du`/`dv` int16[65536] (None = sans débordement), bornés à [0, maxv]. False si non
+    applicable (rien écrit)."""
+    lib = _mvk_load()
+    if lib is None or not _MVK_HAS_KEY:
+        return False
+    dt = dst_u.dtype
+    if dt not in (np.uint8, np.uint16):
+        return False
+    if not all(_mvk_mix_ok(a, dt) for a in (dst_u, dst_v, fu, fv)):
+        return False
+    if dst_u.shape != dst_v.shape or dst_u.strides != dst_v.strides:
+        return False
+    if fu.shape != fv.shape or fu.strides != fv.strides:
+        return False
+    rows = _mvk_idx(rows); cols = _mvk_idx(cols)
+    if rows is None or cols is None or dst_u.shape != (rows.size, cols.size):
+        return False
+    if dt == np.uint8:
+        if not _mvk_tab(table, np.uint32, 65536):
+            return False
+        return bool(lib.mvk_kchroma_c_u8(
+            dst_u.ctypes.data, dst_v.ctypes.data, _mvk_es(dst_u), fu.ctypes.data, fv.ctypes.data,
+            _mvk_es(fu), rows.ctypes.data, cols.ctypes.data, rows.size, cols.size,
+            fu.shape[0], fu.shape[1], table.ctypes.data))
+    if not _mvk_tab(table, np.uint8, 65536):
+        return False
+    if (du is None) != (dv is None):
+        return False
+    if du is not None and not (_mvk_tab(du, np.int16, 65536) and _mvk_tab(dv, np.int16, 65536)):
+        return False
+    return bool(lib.mvk_kchroma_c_u16(
+        dst_u.ctypes.data, dst_v.ctypes.data, _mvk_es(dst_u), fu.ctypes.data, fv.ctypes.data,
+        _mvk_es(fu), rows.ctypes.data, cols.ctypes.data, rows.size, cols.size,
+        fu.shape[0], fu.shape[1], table.ctypes.data,
+        None if du is None else du.ctypes.data, None if dv is None else dv.ctypes.data,
+        int(sh), int(maxv)))
+
+
+def mvk_klin_y_into(dst, fy, ky, rows, cols, lut):
+    """Keyer à découpe LINEAR/LUMA, plan luma d'une bande en une passe : α = lut[min(key, n−1)]
+    (np.take mode="clip"), dst ← blend(dst, fy[rows, cols], α). `lut` uint8 1D. False si non
+    applicable (rien écrit)."""
+    lib = _mvk_load()
+    if lib is None or not _MVK_HAS_KEY:
+        return False
+    dt = dst.dtype
+    if dt not in (np.uint8, np.uint16):
+        return False
+    if not (_mvk_mix_ok(dst, dt) and _mvk_mix_ok(fy, dt) and _mvk_mix_ok(ky, dt)):
+        return False
+    if fy.shape != ky.shape or not _mvk_tab(lut, np.uint8):
+        return False
+    rows = _mvk_idx(rows); cols = _mvk_idx(cols)
+    if rows is None or cols is None or dst.shape != (rows.size, cols.size):
+        return False
+    fn = lib.mvk_klin_y_u8 if dt == np.uint8 else lib.mvk_klin_y_u16
+    return bool(fn(dst.ctypes.data, _mvk_es(dst), fy.ctypes.data, _mvk_es(fy),
+                   ky.ctypes.data, _mvk_es(ky), rows.ctypes.data, cols.ctypes.data,
+                   rows.size, cols.size, fy.shape[0], fy.shape[1], lut.ctypes.data, lut.size))
+
+
+def mvk_klin_c_into(dst_u, dst_v, fu, fv, ky, rows, cols, krows, kcols, lut):
+    """Keyer à découpe LINEAR/LUMA, plans U et V d'une bande en une passe : α = lut[key luma à
+    (krows, kcols)] (ligne luma de la rangée chroma, colonne luma paire), fill fu/fv[rows, cols].
+    False si non applicable (rien écrit)."""
+    lib = _mvk_load()
+    if lib is None or not _MVK_HAS_KEY:
+        return False
+    dt = dst_u.dtype
+    if dt not in (np.uint8, np.uint16):
+        return False
+    if not all(_mvk_mix_ok(a, dt) for a in (dst_u, dst_v, fu, fv, ky)):
+        return False
+    if dst_u.shape != dst_v.shape or dst_u.strides != dst_v.strides:
+        return False
+    if fu.shape != fv.shape or fu.strides != fv.strides or not _mvk_tab(lut, np.uint8):
+        return False
+    rows = _mvk_idx(rows); cols = _mvk_idx(cols); krows = _mvk_idx(krows); kcols = _mvk_idx(kcols)
+    if any(x is None for x in (rows, cols, krows, kcols)):
+        return False
+    if dst_u.shape != (rows.size, cols.size) or krows.size != rows.size or kcols.size != cols.size:
+        return False
+    fn = lib.mvk_klin_c_u8 if dt == np.uint8 else lib.mvk_klin_c_u16
+    return bool(fn(dst_u.ctypes.data, dst_v.ctypes.data, _mvk_es(dst_u), fu.ctypes.data,
+                   fv.ctypes.data, _mvk_es(fu), ky.ctypes.data, _mvk_es(ky),
+                   rows.ctypes.data, cols.ctypes.data, krows.ctypes.data, kcols.ctypes.data,
+                   rows.size, cols.size, fu.shape[0], fu.shape[1], ky.shape[0], ky.shape[1],
+                   lut.ctypes.data, lut.size))
 
 
 def mvk_rgba2yuv(arr, out_dtype, scale, maxv, cw, ch):

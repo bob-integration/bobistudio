@@ -100,7 +100,7 @@ NODE = database.db_get_node(NID)
 # Profils de types, posés dans le registre des plugins (aucun fichier touché).
 _PROFILS = {
     "multiview": {"cores": 3, "pin": True},            # dédié : Dédié par défaut (07/11)
-    "transcoder": {"cores": 2, "priority": "batch"},   # ancien champ : doit valoir « batch »
+    "transcoder": {"cores": 2, "priority": "batch"},   # ancien champ : doit valoir Arrière-plan
     "streamer": {"cores": 2, "cpu_weight": "background"},   # défaut au MANIFESTE
     "mixer": {},                                       # aucun profil du tout
 }
@@ -120,13 +120,21 @@ def _ajoute(vmid, nom, typ):
 
 
 print("\n1. ★ Quatre niveaux NOMMÉS, un barème unique, aucun nombre libre")
-verifie(cpu_weight.LEVELS == ("dedicated", "normal", "background", "batch"),
-        "1a. les quatre niveaux, du plus au moins prioritaire", str(cpu_weight.LEVELS))
-verifie([cpu_weight.WEIGHTS[l] for l in cpu_weight.LEVELS] == [2048, 1024, 256, 128],
-        "1b. barème 2048 / 1024 / 256 / 128",
+verifie(cpu_weight.LEVELS == ("dedicated", "shared", "background"),
+        "1a. les trois niveaux (2026-11-23), du plus au moins prioritaire", str(cpu_weight.LEVELS))
+verifie([cpu_weight.WEIGHTS[l] for l in cpu_weight.LEVELS] == [2048, 1024, 128],
+        "1b. barème 2048 / 1024 / 128 (Arrière-plan prend le poids de l'ancien Batch)",
         str([cpu_weight.WEIGHTS[l] for l in cpu_weight.LEVELS]))
-verifie(cpu_weight.DEFAULT == "normal" and cpu_weight.value("normal") == 1024,
-        "1c. défaut = Normal (1024)")
+verifie(cpu_weight.DEFAULT == "shared" and cpu_weight.value("shared") == 1024,
+        "1c. défaut = Partagé (1024)")
+verifie(cpu_weight.normalize("normal") == "shared" and cpu_weight.normalize("batch") == "background"
+        and cpu_weight.niveau_valide("normal") and cpu_weight.niveau_valide("batch"),
+        "1c'. ★ les anciens noms restent acceptés (projets sauvegardés, macros, manifestes d'autres "
+        "instances) : « normal » → Partagé, « batch » → Arrière-plan")
+verifie(cpu_weight.level_of({"priority": "batch"}) == "background"
+        and cpu_weight.level_of({"cpu_weight": "batch"}) == "background"
+        and cpu_weight.level_of({}) == "shared",
+        "1c''. un profil BRUT (sans niveau résolu) : `priority: batch` → Arrière-plan, rien → Partagé")
 verifie(not cpu_weight.niveau_valide("1500") and not cpu_weight.niveau_valide("urgent"),
         "1d. ★ un nombre libre, ou un nom inventé, n'est PAS un niveau")
 verifie(cpu_weight.value("1500") == 1024,
@@ -138,9 +146,9 @@ c_mv = _ajoute(4101, "mur", "multiview")
 c_tr = _ajoute(4102, "transcodeur", "transcoder")
 c_st = _ajoute(4103, "monitor-u1", "streamer")
 c_mx = _ajoute(4104, "melangeur", "mixer")
-verifie(cpu_weight.for_container(c_mx) == {"niveau": "normal", "valeur": 1024,
+verifie(cpu_weight.for_container(c_mx) == {"niveau": "shared", "valeur": 1024,
                                            "source": "default"},
-        "2a. type sans rien de déclaré → Normal, source `default`",
+        "2a. type sans rien de déclaré → Partagé, source `default`",
         str(cpu_weight.for_container(c_mx)))
 # 2026-11-07 : la place suit le niveau. Un type dont le manifeste demande `pin` est Antenne par
 # défaut — c'est ce qui garde ses cœurs dédiés — et c'est son manifeste qui le dit.
@@ -148,16 +156,16 @@ verifie(cpu_weight.for_container(c_mv) == {"niveau": "dedicated", "valeur": 2048
                                            "source": "manifest"},
         "2a'. type épinglé par son manifeste → Dédié, source `manifest`",
         str(cpu_weight.for_container(c_mv)))
-verifie(cpu_weight.for_container(c_tr)["niveau"] == "batch"
+verifie(cpu_weight.for_container(c_tr)["niveau"] == "background"
         and cpu_weight.for_container(c_tr)["source"] == "priority",
-        "2b. ★ `priority: batch` vaut toujours « batch » — le retirer relèverait en silence le "
+        "2b. ★ `priority: batch` vaut toujours Arrière-plan — le retirer relèverait en silence le "
         "transcodeur au poids normal, et il mangerait le CPU des conteneurs d'antenne",
         str(cpu_weight.for_container(c_tr)))
-verifie(cpu_weight.for_container(c_st) == {"niveau": "background", "valeur": 256,
+verifie(cpu_weight.for_container(c_st) == {"niveau": "background", "valeur": 128,
                                            "source": "manifest"},
         "2c. `resources.cpu_weight` du manifeste = défaut du TYPE",
         str(cpu_weight.for_container(c_st)))
-verifie(cpu_weight.for_container(c_mx)["niveau"] == "normal",
+verifie(cpu_weight.for_container(c_mx)["niveau"] == "shared",
         "2d. un type sans aucun profil de ressources a quand même un poids (c'est lui qu'on "
         "veut pouvoir faire céder)")
 database.db_set_resources_override(4103, cpu_weight="dedicated")
@@ -231,8 +239,8 @@ verifie(_par[4101]["poids_applique"] == 2048 and _par[4101]["poids_coherent"] is
 verifie(_par[4103]["poids_applique"] == 1024,
         "4e. `CpuShares: 0` est traduit en 1024 — Docker ne dit pas « aucun poids », il dit "
         "« je n'ai rien eu à poser »", str(_par[4103].get("poids_applique")))
-verifie(_par[4103]["poids"]["valeur"] == 256 and _par[4103]["poids_coherent"] is False,
-        "4f. ★ un poids voulu à 256 et posé à 1024 est SIGNALÉ : comme le poids est hors "
+verifie(_par[4103]["poids"]["valeur"] == 128 and _par[4103]["poids_coherent"] is False,
+        "4f. ★ un poids voulu à 128 et posé à 1024 est SIGNALÉ : comme le poids est hors "
         "signature, rien ne le rattraperait — sans cette mesure, un `docker update` manqué "
         "resterait invisible pour toujours", str(_par[4103]))
 _releve["ok"] = False
@@ -308,7 +316,7 @@ verifie(vue["synthese"]["partie"] == 1 and vue["synthese"]["non"] == 3,
         "7j. synthèse de protection cliquable : 1 en partie, 3 non protégés",
         str(vue["synthese"]))
 verifie(vue["synthese"]["poids_bas"] == 2 and vue["synthese"]["poids_haut"] == 1,
-        "7k. et la synthèse des poids (batch + arrière-plan bas, antenne haut)",
+        "7k. et la synthèse des poids (deux arrière-plans bas, un dédié haut)",
         str(vue["synthese"]))
 verifie([n["niveau"] for n in vue["poids_niveaux"]] == list(cpu_weight.LEVELS),
         "7l. le barème est PUBLIÉ par le serveur — l'interface ne le recopie pas (deux barèmes "
@@ -403,7 +411,7 @@ _ids = {a["id"] for a in cpu_weight.MACRO_PROVIDER["actions"]}
 verifie(_ids == {"set", "reset"}, "11b. deux actions : régler, rendre au manifeste", str(_ids))
 _opts = cpu_weight.action_options("set", "niveau")
 verifie([o["value"] for o in _opts] == list(cpu_weight.LEVELS),
-        "11c. le menu de la macro offre les quatre niveaux — et rien d'autre", str(_opts))
+        "11c. le menu de la macro offre les trois niveaux — et rien d'autre", str(_opts))
 _ok, _msg = True, ""
 try:
     out = cpu_weight.run_action("set", {"vmid": 4104, "niveau": "dedicated"}, {})

@@ -573,7 +573,7 @@ def pressions_noeud(nid):
 
 
 def _weight_level(type_, c):
-    """Effective CPU weight level of a container (dedicated / normal / background / batch): what
+    """Effective CPU weight level of a container (dedicated / shared / background): what
     says whether it must be guaranteed (see `project_resources`)."""
     from . import cpu_weight
     from .docker_compute import effective_resources

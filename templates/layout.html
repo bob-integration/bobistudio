@@ -1316,6 +1316,12 @@
         async function refreshStatus() {
             try {
                 const s = await (await fetch('/api/monitor/status')).json();
+                // Something this instance lacks: say what, before offering to create anything.
+                if (s.unavailable === 'no_streamer' || s.unavailable === 'no_gateway_service') {
+                    loadFrame(null);
+                    showMsg(window.t('js.monitor.unavailable_' + s.unavailable));
+                    return;
+                }
                 if (!s.gateway_ready) {
                     loadFrame(null);
                     showMsg(window.t('js.monitor.no_gateway'));

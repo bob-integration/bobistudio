@@ -81,12 +81,85 @@ def save_image(data):
     return name
 
 
-def _drop_images(msgs):
+# Pièces jointes TEXTE (patchs, journaux), demandées par le testeur le 2026-11-27 : il prépare
+# des correctifs et n'avait que des blocs de code de 8000 caractères pour les faire passer.
+#
+# ★ LE CONTENU DÉCIDE, JAMAIS LE NOM NI LE CONTENT-TYPE. Même règle que `_image_kind`, pour la
+# même raison : un fichier servi DANS l'origine de la page y exécuterait ce qu'il contient. Deux
+# gardes séparées, et il faut les deux :
+#   · à l'entrée — seul du texte entre (UTF-8 valide, aucun octet nul, aucune commande de
+#     terminal) ; l'extension déposée n'est qu'une ÉTIQUETTE, ramenée à notre liste et à `.txt`
+#     sinon, et le nom de l'envoyeur ne sert jamais à écrire sur le disque ;
+#   · à la sortie — toujours `text/plain`, toujours en pièce jointe, toujours `nosniff`. Un
+#     patch est du texte pour nous, mais c'est du HTML pour un navigateur qui le devine.
+TEXTS_DIR = os.path.join(os.path.dirname(STORE_PATH), "testplan_fichiers")
+TEXT_MAX_BYTES = 1024 * 1024
+TEXTS_PER_MESSAGE = 4
+TEXT_EXTS = ("patch", "diff", "log", "txt")
+_TEXT_NAME = re.compile(r"^[0-9a-f]{20}\.(patch|diff|log|txt)$")
+# Caractères de commande interdits : tout C0 sauf tabulation, retour chariot et fin de ligne.
+_TEXT_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def text_label(filename):
+    """Nom D'AFFICHAGE d'une pièce jointe, dérivé de celui déposé : base seule (jamais de chemin),
+    caractères sûrs, 60 signes au plus. Ne sert QU'À montrer et à proposer l'enregistrement — le
+    fichier sur disque, lui, porte un nom que nous tirons au sort."""
+    base = os.path.basename(str(filename or "").replace("\\", "/")).strip() or "fichier.txt"
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).lstrip(".-")[:60]
+    return base or "fichier.txt"
+
+
+def _text_ext(filename):
+    """Extension retenue : la sienne si elle est dans la liste, `txt` sinon. Jamais de confiance,
+    juste une étiquette — le fichier est servi en text/plain quelle qu'elle soit."""
+    ext = os.path.basename(str(filename or "")).rsplit(".", 1)
+    return ext[1].lower() if len(ext) == 2 and ext[1].lower() in TEXT_EXTS else "txt"
+
+
+def text_refus(data, filename=""):
+    """Raison de refus d'une pièce jointe texte, ou None si elle est acceptable."""
+    if not data:
+        return "fichier vide"
+    if len(data) > TEXT_MAX_BYTES:
+        return "trop lourd (%d Ko max)" % (TEXT_MAX_BYTES // 1024)
+    try:
+        txt = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return "ce n'est pas du texte UTF-8"
+    if _TEXT_CTRL.search(txt):
+        return "ce n'est pas du texte (caractère de commande)"
+    return None
+
+
+def save_text(data, filename=""):
+    """Stocke une pièce jointe texte, rend `{name, label, bytes}` ou lève ValueError."""
+    refus = text_refus(data, filename)
+    if refus:
+        raise ValueError(refus)
+    os.makedirs(TEXTS_DIR, exist_ok=True)
+    name = "%s.%s" % (uuid.uuid4().hex[:20], _text_ext(filename))
+    tmp = os.path.join(TEXTS_DIR, "." + name + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, os.path.join(TEXTS_DIR, name))
+    return {"name": name, "label": text_label(filename), "bytes": len(data)}
+
+
+def _drop_attachments(msgs):
+    """Retire du disque les images ET les fichiers cités par ces messages."""
     for m in msgs or []:
         for name in m.get("images") or []:
             if _IMAGE_NAME.match(name or ""):
                 try:
                     os.remove(os.path.join(IMAGES_DIR, name))
+                except OSError:
+                    pass
+        for f in m.get("files") or []:
+            name = (f or {}).get("name") if isinstance(f, dict) else None
+            if _TEXT_NAME.match(name or ""):
+                try:
+                    os.remove(os.path.join(TEXTS_DIR, name))
                 except OSError:
                     pass
 
@@ -125,16 +198,22 @@ def mutate(fn):
         return ret
 
 
-def append_message(item_id, author, role, text, images=None):
+def append_message(item_id, author, role, text, images=None, files=None):
     """Ajoute un message au fil de discussion d'un item (utilisable depuis le CLI : l'assistant
     poste ses questions en role='dev'). Cross-process safe via mutate().
-    `images` = noms rendus par save_image() (depuis le CLI : save_image(open(p,"rb").read()))."""
+    `images` = noms rendus par save_image() (depuis le CLI : save_image(open(p,"rb").read())).
+    `files` = fiches rendues par save_text() — `{name, label, bytes}` par pièce jointe texte."""
     role = role if role in ROLES else "tester"
     msg = {"id": uuid.uuid4().hex[:10], "author": (author or "?")[:80],
            "role": role, "text": str(text)[:8000], "ts": time.time()}
     images = [n for n in (images or []) if _IMAGE_NAME.match(n or "")]
     if images:
         msg["images"] = images[:IMAGES_PER_MESSAGE]
+    files = [f for f in (files or [])
+             if isinstance(f, dict) and _TEXT_NAME.match(f.get("name") or "")]
+    if files:
+        msg["files"] = [{"name": f["name"], "label": text_label(f.get("label")),
+                         "bytes": int(f.get("bytes") or 0)} for f in files[:TEXTS_PER_MESSAGE]]
 
     def _do(store):
         if not any(it["id"] == item_id for it in store["items"]):
@@ -356,37 +435,66 @@ def api_tests_thread():
     """Ajoute un message au FIL de discussion d'un item (Q/R horodatées, historique conservé).
     L'équipe poste en role='tester' ; l'assistant Claude poste en 'dev' depuis le CLI.
 
-    JSON pour un message texte ; multipart (champs id/text/author/role + fichiers `image`) quand
-    le testeur joint des images. Un message peut n'être QUE des images."""
+    JSON pour un message texte ; multipart (champs id/text/author/role + fichiers `image` et
+    `fichier`) quand le testeur joint des images ou des pièces jointes texte (patch, journal).
+    Un message peut n'être QUE des pièces jointes."""
     if request.files:
         data = request.form
         files = request.files.getlist("image")
+        textes = request.files.getlist("fichier")
     else:
         data = request.get_json(silent=True) or {}
-        files = []
+        files, textes = [], []
     iid = str(data.get("id") or "").strip()
     text = str(data.get("text") or "").strip()
     if len(files) > IMAGES_PER_MESSAGE:
         return jsonify({"error": "%d images au plus par message" % IMAGES_PER_MESSAGE}), 400
-    if not iid or not (text or files):
+    if len(textes) > TEXTS_PER_MESSAGE:
+        return jsonify({"error": "%d fichiers au plus par message" % TEXTS_PER_MESSAGE}), 400
+    if not iid or not (text or files or textes):
         return jsonify({"error": "id ou texte manquant"}), 400
     if not any(it["id"] == iid for it in _load()["items"]):
         return jsonify({"error": "item inconnu"}), 404
-    # Toutes les images sont validées AVANT d'en écrire une : un lot refusé ne laisse aucun
-    # fichier orphelin derrière lui.
+    # Toutes les pièces jointes sont validées AVANT d'en écrire une : un lot refusé ne laisse
+    # aucun fichier orphelin derrière lui.
     blobs = [f.read(IMAGE_MAX_BYTES + 1) for f in files]
     for f, b in zip(files, blobs):
         if len(b) > IMAGE_MAX_BYTES or not _image_kind(b):
             why = "trop lourde" if len(b) > IMAGE_MAX_BYTES else "format non accepté (PNG, JPEG, GIF ou WebP)"
             return jsonify({"error": "%s : %s" % (f.filename or "image", why)}), 400
+    tblobs = [f.read(TEXT_MAX_BYTES + 1) for f in textes]
+    for f, b in zip(textes, tblobs):
+        refus = text_refus(b, f.filename)
+        if refus:
+            return jsonify({"error": "%s : %s" % (text_label(f.filename), refus)}), 400
     names = [save_image(b) for b in blobs]
+    fichiers = [save_text(b, f.filename) for f, b in zip(textes, tblobs)]
     author = str(data.get("author") or "").strip() or "anonyme"
     role = "dev" if str(data.get("role")) == "dev" else "tester"
-    msg = append_message(iid, author, role, text, images=names)
+    msg = append_message(iid, author, role, text, images=names, files=fichiers)
     if msg is None:
-        _drop_images([{"images": names}])
+        _drop_attachments([{"images": names, "files": fichiers}])
         return jsonify({"error": "item inconnu"}), 404
     return jsonify({"ok": True, "message": msg})
+
+
+@testplan_bp.route("/api/tests/fichier/<name>", methods=["GET"])
+@require_login
+def api_tests_fichier(name):
+    """Sert une pièce jointe texte. JAMAIS dans la page : `text/plain`, en pièce jointe, et
+    `nosniff`. Le nom proposé à l'enregistrement est l'étiquette du message (le nom déposé,
+    nettoyé) ; le nom de FICHIER, lui, est tiré au sort et c'est le seul que l'URL accepte."""
+    if not _TEXT_NAME.match(name or ""):
+        abort(404)
+    path = os.path.join(TEXTS_DIR, name)
+    if not os.path.isfile(path):
+        abort(404)
+    label = text_label(request.args.get("nom") or name)
+    resp = send_file(path, mimetype="text/plain", max_age=86400,
+                     as_attachment=True, download_name=label)
+    resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @testplan_bp.route("/api/tests/image/<name>", methods=["GET"])
@@ -510,7 +618,7 @@ def api_tests_del_item():
             return ("err", 400, "item intégré non supprimable")
         store["items"] = [x for x in store["items"] if x["id"] != iid]
         store["state"].pop(iid, None)
-        _drop_images(store.get("threads", {}).pop(iid, None))
+        _drop_attachments(store.get("threads", {}).pop(iid, None))
         return ("ok",)
     res = mutate(_do)
     if res[0] == "err":
@@ -556,6 +664,19 @@ def _recette_export(avec_resultats):
                             imgs[name] = base64.b64encode(f.read()).decode("ascii")
         if imgs:
             out["images"] = imgs
+        # Les pièces jointes texte voyagent de la même façon, et pour la même raison : un fil
+        # exporté qui citerait un patch sans le patch serait un aller-retour cassé.
+        fics = {}
+        for msgs in out["threads"].values():
+            for m in msgs or []:
+                for f in m.get("files") or []:
+                    name = (f or {}).get("name") if isinstance(f, dict) else None
+                    path = os.path.join(TEXTS_DIR, name or "")
+                    if _TEXT_NAME.match(name or "") and os.path.isfile(path):
+                        with open(path, "rb") as fo:
+                            fics[name] = base64.b64encode(fo.read()).decode("ascii")
+        if fics:
+            out["fichiers"] = fics
     return out
 
 
@@ -676,5 +797,23 @@ def api_tests_import():
             fo.write(blob)
         os.replace(tmp, path)
         compte["images"] = compte.get("images", 0) + 1
+    # Mêmes règles pour les pièces jointes texte : nom d'origine, pas de réécriture, et le
+    # CONTENU est revalidé — un export est un fichier venu d'ailleurs.
+    for name, b64 in (data.get("fichiers") or {}).items():
+        path = os.path.join(TEXTS_DIR, str(name))
+        if not _TEXT_NAME.match(str(name)) or os.path.exists(path):
+            continue
+        try:
+            blob = base64.b64decode(b64, validate=True)
+        except Exception:
+            continue
+        if text_refus(blob, name):
+            continue
+        os.makedirs(TEXTS_DIR, exist_ok=True)
+        tmp = os.path.join(TEXTS_DIR, "." + name + ".tmp")
+        with open(tmp, "wb") as fo:
+            fo.write(blob)
+        os.replace(tmp, path)
+        compte["fichiers"] = compte.get("fichiers", 0) + 1
     mutate(_do)
     return jsonify({"ok": True, **compte, "avec_resultats": bool(data.get("state"))})

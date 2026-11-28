@@ -211,6 +211,22 @@ def media_networks_update(net_id):
     kw = dict(name=name, domain=domain)
     if "ptp_params" in d:                       # présent → applique (vide = hérite tout)
         kw["ptp_params"] = _ptp_params_from_payload(d.get("ptp_params")) or None
+    # Multicast plans: which pair colour is fabric A on this network, and the leg-B rule proposed
+    # for a new plan (app/mcast_plans.py).
+    if "first_fabric" in d:
+        ff = (d.get("first_fabric") or "red").strip().lower()
+        if ff not in ("red", "blue"):
+            return jsonify({"ok": False, "error": "first_fabric invalide (red | blue)"}), 400
+        kw["first_fabric"] = ff
+    if "default_b_rule" in d:
+        from ..mcast_plans import validate_b_rule
+        if d.get("default_b_rule") is None:
+            kw["default_b_rule"] = None
+        else:
+            rule, err = validate_b_rule(d.get("default_b_rule"))
+            if err:
+                return jsonify({"ok": False, "error": err}), 400
+            kw["default_b_rule"] = rule
     db_update_media_network(net_id, **kw)
     return jsonify({"ok": True})
 

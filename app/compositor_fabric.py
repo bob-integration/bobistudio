@@ -366,14 +366,20 @@ def _guillotine_partition(cells, max_cells, area_budget, force=False):
             + _guillotine_partition(right, max_cells, area_budget))   # `force` : premier niveau seul
 
 
-def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
-    """`multiviews` = {key: params}. Renvoie un PLAN pur :
+def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5, join=None):
+    """`multiviews` = {key: params}. `join` = signatures of SHARED nodes already rendered for walls
+    kept as they are: an element with one of them tiles that node, even in a single wall.
+    Renvoie un PLAN pur :
         {"nodes":   {sig: {"kind", "out_wh", "elements": [(elem_sig, relx, rely, w, h)…],
                            "shared_by": [keys]}},
          "outputs": {key: {"tiles": [(node_sig, x, y, w, h)…]}}}
     où chaque `tile` place la sortie d'un nœud à son offset dans le mur `key`. Pur, déterministe."""
     decomps = {k: decompose_multiview(p) for k, p in multiviews.items()}
     shared = shared_elements(decomps)          # {elem_sig: [keys]} présents sur ≥2 multiviews
+    for _s in sorted(join or ()):
+        _ks = [k for k, d in decomps.items() if any(e["sig"] == _s for e in d["cells"] + d["overlays"])]
+        if _ks:
+            shared[_s] = sorted(set(shared.get(_s, [])) | set(_ks), key=str)
     nodes = {}
     # chaque output (assembleur) : `tiles` = réfs à des nœuds (shm enfants) placées à leur offset ;
     # `overlays` = overlays NON partagés rendus directement par l'assembleur (cheap, sur place).
@@ -453,7 +459,8 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
 # registre `fabric_node_alloc` (DB) déduplique (un nœud partagé = 1 conteneur) et porte le cycle de
 # vie (teardown des nœuds qui ne sont plus dans le plan).
 
-from .database import db_fabric_get, db_fabric_upsert, db_fabric_touch, db_fabric_delete, db_fabric_all
+from .database import (db_fabric_get, db_fabric_upsert, db_fabric_touch, db_fabric_delete, db_fabric_all,
+                       db_fabric_set_params)
 
 _RING = 8
 
@@ -504,8 +511,126 @@ def etat_mur(vmid):
     return e[0], round(time.monotonic() - e[1], 1)
 
 
+# ── SAVED ASSEMBLER CONFIG (fabric rework step 1, 2026-11-25) ───────────────────────────────
+# The fabric turned a wall into an assembler AT HOT only: its script file kept the logical render,
+# so any restart (redeploy, `docker start`, agent relaunch) started it as a monolith, and the next
+# pass converted it again. Measured on wall 1248 the 24/11: 14 missed deadlines for that
+# conversion, on top of its startup. The config pushed is now saved on the `asm:<vmid>` row with
+# the signature of the logical wall it was planned from; the render uses it while that signature
+# holds and every shard it reads is registered and running. The file on disk is rewritten at each
+# conversion or restore (`script_fn`), so it always says what the wall is.
+ASM_KEYS = ("default_template", "default_template_ref", "overlays", "flux_config", "meter_blocks",
+            "video_history_blocks", "audio_history_blocks")
+
+
+def wall_signature(params):
+    """What the fabric plans from: the cells and overlays (output region) and the wall blocks."""
+    d = decompose_multiview(params or {})
+    return _h({"out": d["output_sig"], "meters": d["meter_blocks"],
+               "video_hist": d["video_history_blocks"], "audio_hist": d["audio_history_blocks"]})
+
+
+def _save_assembler(vmid, logical, asm):
+    """Saves the assembler config of a wall on its `asm:` row. True when it changed."""
+    row = db_fabric_get(f"asm:{vmid}")
+    if not row:
+        return False
+    blob = json.dumps({"wall": wall_signature(logical),
+                       "asm": {k: (asm or {}).get(k) for k in ASM_KEYS}},
+                      sort_keys=True, default=str)
+    if row.get("params") == blob:
+        return False
+    db_fabric_set_params(f"asm:{vmid}", blob)
+    return True
+
+
+def saved_assembler(vmid, logical, running=None):
+    """The saved assembler config to render this wall with, or None (render it logical).
+    None when: no `asm:` row or nothing saved; the logical wall changed since (its signature);
+    a shard it reads is not in the registry, or its container is not running (`running(ref)`)."""
+    row = db_fabric_get(f"asm:{vmid}")
+    if not row or not row.get("params"):
+        return None
+    try:
+        saved = json.loads(row["params"])
+    except (TypeError, ValueError):
+        return None
+    if saved.get("wall") != wall_signature(logical):
+        log.info("fabric: wall %s changed since its assembler was saved — rendered logical", vmid)
+        return None
+    asm = saved.get("asm") or {}
+    refs = {r.get("shm"): r.get("ref") for r in db_fabric_all(row.get("node_id"))
+            if r.get("kind") in ("shard", "shared")}
+    for w in asm.get("flux_config") or []:
+        shm = _norm_path(w.get("path"))
+        if shm not in refs or (running is not None and not running(refs[shm])):
+            log.info("fabric: wall %s reads %s, not running — rendered logical", vmid, shm)
+            return None
+    return asm
+
+
+def _merge_parents(row, walls):
+    """Adds `walls` to the parents of a registered node (a new wall joining it)."""
+    try:
+        old = json.loads(row.get("parents") or "[]") or []
+    except (TypeError, ValueError):
+        old = []
+    new = sorted({str(x) for x in old} | {str(x) for x in walls or ()}, key=str)
+    if new == sorted({str(x) for x in old}, key=str):
+        return
+    db_fabric_upsert(row["signature"], row.get("node_id"), row.get("vmid"), row.get("shm"),
+                     row.get("kind"), row.get("out_w"), row.get("out_h"), ref=row.get("ref"),
+                     parents=new, tile_x=row.get("tile_x"), tile_y=row.get("tile_y"),
+                     fmt=row.get("fmt"))
+
+
+# What the fabric would do if it could re-cut the walls on air: {node_id: proposal}. Display only
+# (the Murs tool, step 4), recomputed at every pass — in process memory like `_etat_mur`.
+_proposals = {}
+
+
+def _proposal(node_id, walls, plan, kept, frozen_sigs, max_cells, held=None):
+    """The plan of every wall together, when it is better than keeping the walls on air as they
+    are (fewer containers or less area rendered), or when a « manual » wall saturates (`held`);
+    else None."""
+    held = held or {}
+    full = plan_fabric({str(v): p for v, p in walls.items()}, max_cells)
+    now = {s: tuple(n["out_wh"]) for s, n in plan["nodes"].items()}
+    now.update({s: (int(r.get("out_w") or 0), int(r.get("out_h") or 0)) for s, r in kept.items()})
+    after = {s: tuple(n["out_wh"]) for s, n in full["nodes"].items()}
+    area = lambda d: round(sum(w * h for w, h in d.values()) / 1e6, 2)      # noqa: E731
+    if not held and (set(after) == set(now) or (area(after) >= area(now) and len(after) >= len(now))):
+        _proposals.pop(node_id, None)
+        return None
+    recut = sorted([v for v, sigs in frozen_sigs.items()
+                    if sigs != {t[0] for t in full["outputs"][str(v)]["tiles"]}] + list(held))
+    if not recut:                        # nothing on air to re-cut: nothing to ask
+        _proposals.pop(node_id, None)
+        return None
+    _now_tiles = {str(v): {t[0] for t in o["tiles"]} for v, o in plan["outputs"].items()}
+    _now_tiles.update({str(v): s for v, s in frozen_sigs.items()})
+    changed = sorted(int(v) for v in walls
+                     if _now_tiles.get(str(v)) != {t[0] for t in full["outputs"][str(v)]["tiles"]})
+    create = [list(n.get("shared_by") or []) for s, n in sorted(full["nodes"].items())
+              if s not in now and db_fabric_get(s) is None]
+    prev = _proposals.get(node_id) or {}
+    prop = {"walls": sorted(int(v) for v in walls), "recut": recut, "changed": changed,
+            "saturated": sorted(int(v) for v in held),
+            "create": create,
+            "containers": [len(now), len(after)], "area_mpx": [area(now), area(after)],
+            "since": prev.get("since") if prev.get("recut") == recut else time.time()}
+    _proposals[node_id] = prop
+    return prop
+
+
+def proposals():
+    """{node_id: proposal} — see `_proposal`."""
+    return dict(_proposals)
+
+
 def _asm_empreinte(asm):
     """Empreinte de la config d'assembleur qu'on s'APPRÊTE à pousser (tous champs confondus)."""
+    asm = {k: (asm or {}).get(k) for k in ASM_KEYS}     # what is pushed; a saved config has only these
     return hashlib.sha1(json.dumps(asm, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -530,7 +655,7 @@ def _asm_deja_pousse(vmid, asm):
     Mémorise l'empreinte au passage (l'appelant pousse quand on renvoie False).
     REPLI utilisé quand aucun `etat_fn` n'est fourni — préférer `_asm_en_place`."""
     import time as _t
-    emp = hashlib.sha1(json.dumps(asm, sort_keys=True, default=str).encode()).hexdigest()
+    emp = _asm_empreinte(asm)
     vu = _asm_pousse.get(vmid)
     if vu and vu[0] == emp and (_t.monotonic() - vu[1]) < _ASM_REFRESH_S:
         return True
@@ -814,7 +939,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                      budget_ms=20.0, min_shard_cells=2, max_cells_per_shard=4,
                      fps=50, chroma=None, bit_depth=None, name_prefix="fab", budget_by_vmid=None,
                      slice_mode=False, etat_fn=None, rebind_fn=None, pret_fn=None,
-                     max_noeuds=None, perime_fn=None, restaurables=None):
+                     max_noeuds=None, perime_fn=None, restaurables=None, script_fn=None,
+                     frozen=None, regroup=False, in_place=None, hold=None):
     """mvs={vmid: logical_params}, latency_ms={vmid: own_latency_ms|None}. Callbacks :
       deploy_fn(name, params, hostname)   crée un conteneur NŒUD (shard) ;
       destroy_fn(name)                    le détruit ;
@@ -832,6 +958,15 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
     shards épinglés que six qui se disputent les mêmes cœurs physiques.
       reconfigure_fn(vmid, asm_params)    reconfigure le multiview vmid en ASSEMBLEUR (hot) ;
       restore_fn(vmid, logical_params)    le restaure en monolithe (hot) ;
+      script_fn(vmid)                     rewrites the wall's script file (no restart) after its
+                                          saved assembler config changed or was dropped ;
+      frozen                              walls on air: kept as they are (see below) ;
+      regroup                             True = plan every wall again (a proposal applied) ;
+      hold                                walls set to « manual » when they saturate: a wall of
+                                          theirs that saturates is not cut, its cut is proposed ;
+      in_place                            walls STOPPED by the caller for the cut-over: the old
+                                          nodes go first (room for the new ones), nothing is
+                                          pushed to them, the caller starts them again ;
       etat_fn(vmid) -> dict|None          lit l'état RAPPORTÉ par le mur (`/state`), sans effet de
                                           bord. Fourni → on ne repousse qu'en cas de divergence
                                           réelle (cf. `_asm_en_place`) ; absent → repli sur
@@ -840,7 +975,7 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
     global). Dédup inter-multiviews (plan commun des lourds). Idempotent. Renvoie un résumé."""
     budget_by_vmid = budget_by_vmid or {}
     res = {"sharded": [], "restored": [], "nodes_created": [], "torn_down": []}
-    heavy = {}
+    heavy, held = {}, {}
     for vmid, p in mvs.items():
         nwin = _n_visible(p)
         already = db_fabric_get(f"asm:{vmid}") is not None
@@ -861,6 +996,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             else:
                 restore_fn(vmid, p)
                 db_fabric_delete(f"asm:{vmid}")
+                if script_fn is not None:
+                    script_fn(vmid)
                 res["restored"].append(vmid)
         else:
             # PAS encore shardé : la SATURATION pilote le déclenchement (own_latency du monolithe vs
@@ -870,8 +1007,35 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             lat = latency_ms.get(vmid)
             _budget = budget_by_vmid.get(vmid, budget_ms)
             if lat is not None and lat > _budget and nwin >= min_shard_cells:
-                heavy[vmid] = p
-    plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard)
+                if vmid in (hold or ()) and not regroup:
+                    held[vmid] = p          # « manual »: proposed, not cut (step 4, 2026-11-25)
+                else:
+                    heavy[vmid] = p
+    # ── A WALL ON AIR KEEPS ITS CUT (fabric rework step 2, 2026-11-25, asked by Cyril) ────────
+    # The plan was global: a wall arriving with a cell in common re-cut the walls already on air,
+    # glitch included. A wall in `frozen` (on air, the caller says) whose saved assembler still
+    # matches is left as it is: its nodes are kept and only the other walls are planned. A new
+    # wall reuses a SHARED node of theirs by itself (`join`); a better plan that would re-cut
+    # them is only PROPOSED (`res["proposal"]`), and applied by a call with `regroup=True`.
+    frozen_p, frozen_asm, kept, frozen_sigs = {}, {}, {}, {}
+    if frozen and not regroup:
+        _by_shm = {r.get("shm"): r for r in db_fabric_all(node_id)
+                   if r.get("kind") in ("shard", "shared")}
+        for vmid in sorted(v for v in heavy if v in frozen):
+            asm0 = saved_assembler(vmid, heavy[vmid])
+            if asm0 is None:
+                continue
+            frozen_p[vmid] = heavy.pop(vmid)
+            frozen_asm[vmid] = asm0
+            for w in asm0.get("flux_config") or []:
+                r = _by_shm.get(_norm_path(w.get("path")))
+                if r:
+                    kept[r["signature"]] = r
+                    frozen_sigs.setdefault(vmid, set()).add(r["signature"])
+    _join = {s for s, r in kept.items() if r.get("kind") == "shared"}
+    if max_noeuds and kept:
+        max_noeuds = max(1, max_noeuds - len(kept))     # the kept nodes hold their cores
+    plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard, join=_join)
             if heavy else {"nodes": {}, "outputs": {}})
     # ── SHARDER EN UNE SEULE TUILE NE SERT À RIEN ────────────────────────────────────────────
     # La saturation décide de sharder, mais elle ne dit pas que la découpe SERA parallèle. Un mur
@@ -896,7 +1060,7 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         _mc = max_cells_per_shard
         while len(plan["nodes"]) > max_noeuds and _mc < 64:
             _mc *= 2
-            plan = plan_fabric({str(v): p for v, p in heavy.items()}, _mc)
+            plan = plan_fabric({str(v): p for v, p in heavy.items()}, _mc, join=_join)
         log.info("tissu : découpe ré-agrégée à %d nœud(s) (max_cells %d → %d) — le nœud n'en "
                  "épingle que %d", len(plan["nodes"]), max_cells_per_shard, _mc, max_noeuds)
         if len(plan["nodes"]) > max_noeuds:
@@ -913,6 +1077,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         if db_fabric_get(f"asm:{_v}"):
             restore_fn(_v, _p)
             db_fabric_delete(f"asm:{_v}")
+            if script_fn is not None:
+                script_fn(_v)
             _asm_pousse.pop(_v, None)
             _etat_mur.pop(str(_v), None)
             res["restored"].append(_v)
@@ -921,9 +1087,22 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                      "retour au monolithe", _v)
         res.setdefault("sharding_sans_gain", []).append(_v)
     if _solos:
-        plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard)
+        plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard, join=_join)
                 if heavy else {"nodes": {}, "outputs": {}})
-    want = set(plan["nodes"])
+    if frozen_p or held:
+        res["proposal"] = _proposal(node_id, {**heavy, **frozen_p, **held}, plan, kept, frozen_sigs,
+                                    max_cells_per_shard, held=held)
+    else:
+        _proposals.pop(node_id, None)
+    want = set(plan["nodes"]) | set(kept)
+    if in_place:
+        # Restart in place (fabric rework step 3): the node has no room for both cuts, and every
+        # wall reading the old nodes is stopped — so they go BEFORE the new ones are made.
+        for row in db_fabric_all(node_id):
+            if row["kind"] in ("shard", "shared") and row["signature"] not in want:
+                try: destroy_fn(row["ref"] or f"bobi-{name_prefix}-{row['signature']}")
+                except Exception: pass
+                db_fabric_delete(row["signature"]); res["torn_down"].append(row["signature"])
     # EMPLACEMENT de chaque nœud dans son mur : sig → [(mv_key, x, y, w, h)] (cf. rebind).
     places = {}
     for _k, _out in plan["outputs"].items():
@@ -934,6 +1113,10 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
     # 1. matérialiser les NŒUDS (shards/partagés) manquants ; dédup via registre
     sig_to_shm = {}
     shm_to_ref = {}     # {shm de sortie: ref du conteneur} — sert au contrôle de production
+    for _sig, _r in kept.items():
+        sig_to_shm[_sig] = _r["shm"]
+        shm_to_ref[_r["shm"]] = _r["ref"]
+    db_fabric_touch(list(kept))
     for sig, node in plan["nodes"].items():
         row = db_fabric_get(sig)
         if row:
@@ -942,6 +1125,7 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             # se dérive plus de la signature.
             sig_to_shm[sig] = row["shm"] or f"{name_prefix}_{sig}"
             shm_to_ref[sig_to_shm[sig]] = row["ref"]
+            _merge_parents(row, node.get("shared_by"))     # a new wall joining a kept node
             db_fabric_touch([sig]); continue
         ow, oh = node["out_wh"]
         fmt = _node_fmt(node, fps, chroma, bit_depth, slice_mode)
@@ -987,8 +1171,16 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         # personne. Ici, on vient de DÉCIDER de créer (rebind impossible ou refusé) : c'est le
         # premier instant où l'on sait que ce sera lent, donc le bon moment pour le dire.
         _marquer_reorganisation(node.get("shared_by"))
-        ref = deploy_fn(_name, build_node_params(node, shm, fps, chroma, bit_depth,
-                                                 slice_mode=slice_mode), _name) or _name
+        _params = build_node_params(node, shm, fps, chroma, bit_depth, slice_mode=slice_mode)
+        # The walls it serves, so it is created at their level (deploy._deploy); a deploy_fn
+        # that does not take them (older callers, benches) is called as before.
+        try:
+            import inspect as _insp
+            _takes_walls = "walls" in _insp.signature(deploy_fn).parameters
+        except (TypeError, ValueError):
+            _takes_walls = False
+        ref = (deploy_fn(_name, _params, _name, walls=node.get("shared_by")) if _takes_walls
+               else deploy_fn(_name, _params, _name)) or _name
         _tx, _ty = (_pl[0][1], _pl[0][2]) if len(_pl) == 1 else (None, None)
         db_fabric_upsert(sig, node_id, None, shm, node["kind"], int(ow), int(oh),
                          ref=str(ref), parents=node.get("shared_by"),
@@ -997,9 +1189,10 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         res["nodes_created"].append(sig)
     # 2. reconfigurer chaque multiview lourd en assembleur (même shm_out)
     differes = set()
-    for vmid, p in heavy.items():
-        asm = build_assembler_params(plan["outputs"][str(vmid)], p.get("shm_out"),
-                                     sig_to_shm, fps, chroma, bit_depth, slice_mode=slice_mode)
+    for vmid, p in list(heavy.items()) + sorted(frozen_p.items()):
+        asm = frozen_asm.get(vmid) or build_assembler_params(
+            plan["outputs"][str(vmid)], p.get("shm_out"), sig_to_shm, fps, chroma, bit_depth,
+            slice_mode=slice_mode)
         # IDEMPOTENCE DE L'ENVOI — pas seulement du registre. Cette boucle est appelée toutes les
         # ~30 s par la surveillance (main.py), et elle re-poussait /style + /overlays +
         # /reconfigure À CHAQUE PASSE même quand rien n'avait changé. Or côté mur chaque
@@ -1020,6 +1213,15 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         # « avons-nous changé quelque chose ? » (empreinte de ce qu'on s'apprête à pousser). Le
         # témoin d'état ne couvre PAS les overlays au-delà de (id, kind), ni les VU-mètres, ni les
         # frises — s'y fier seul rendait un déplacement d'horloge sans effet (cf. `_asm_inchange`).
+        if vmid in (in_place or ()):
+            # Stopped for the cut-over: nothing to push or wait for; saved, then started by the
+            # caller with this config (its script is rendered from the saved assembler).
+            if not db_fabric_get(f"asm:{vmid}"):
+                db_fabric_upsert(f"asm:{vmid}", node_id, vmid, p.get("shm_out") or "", "assembler", 0, 0)
+            _save_assembler(vmid, p, asm)
+            _asm_pousse.pop(vmid, None)
+            res["sharded"].append(vmid)
+            continue
         _etat = None
         if etat_fn is not None:
             try:
@@ -1032,6 +1234,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             _saute = _asm_deja_pousse(vmid, asm)
         if _saute:
             db_fabric_touch([f"asm:{vmid}"])
+            if _save_assembler(vmid, p, asm) and script_fn is not None:
+                script_fn(vmid)     # a wall sharded before the config was saved: file now says so
             _etat_mur.pop(str(vmid), None)
             res.setdefault("sharded_inchanges", []).append(vmid)
             continue
@@ -1091,6 +1295,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         _etat_mur.pop(str(vmid), None)      # la sortie a basculé : plus rien à annoncer
         if not db_fabric_get(f"asm:{vmid}"):
             db_fabric_upsert(f"asm:{vmid}", node_id, vmid, p.get("shm_out") or "", "assembler", 0, 0)
+        if _save_assembler(vmid, p, asm) and script_fn is not None:
+            script_fn(vmid)
         res["sharded"].append(vmid)
     # 3. teardown des nœuds (shard/partagé) orphelins (plus dans le plan courant). Les nœuds
     # REBINDÉS ont été ré-enregistrés sous leur nouvelle signature à l'étape 1 (donc dans `want`)
@@ -1112,7 +1318,7 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
     if etat_fn is not None:
         # `heavy` PLUS les murs qu'on vient de remettre en monolithe : ils viennent de relâcher
         # leur shard, mais leurs échantillonneurs se referment d'eux-mêmes, un peu plus tard.
-        for _v in list(heavy) + sorted(_restaures):
+        for _v in list(heavy) + sorted(frozen_p) + sorted(_restaures):
             try:
                 _e = etat_fn(_v)
             except Exception:                                              # noqa: BLE001

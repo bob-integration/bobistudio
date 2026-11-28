@@ -112,9 +112,19 @@
   .tp-imgs a { display:block; line-height:0; }
   .tp-imgs img { max-width:220px; max-height:160px; border-radius:5px; border:1px solid #3a3d42;
                  object-fit:contain; background:#0d0f12; }
+  /* Pièces jointes texte (patch, journal) : une LISTE, pas une vignette — il n'y a rien à
+     prévisualiser, et le nom du fichier est la seule chose qui renseigne. */
+  .tp-files { display:flex; flex-direction:column; gap:3px; margin-top:6px; align-items:flex-start; }
+  .tp-files a { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:3px 9px;
+                border:1px solid #3a3d42; border-radius:5px; background:#1a1d22; color:#7aa2d6;
+                font-size:12.5px; text-decoration:none; }
+  .tp-files a:hover { border-color:#2c5db1; }
+  .tp-files .tp-fsz { color:#8b9199; font-size:11.5px; }
   .tp-pend { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .tp-pend:empty { display:none; }
   .tp-pend .tp-pi { position:relative; line-height:0; }
+  .tp-pend .tp-pf { position:relative; display:flex; align-items:center; gap:6px; padding:5px 10px;
+                    border:1px dashed #3a3d42; border-radius:5px; background:#1a1d22; font-size:12.5px; }
   .tp-pend img { width:72px; height:54px; object-fit:cover; border-radius:4px; border:1px solid #3a3d42; }
   .tp-pend button { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%;
                     border:none; background:#8a3b1e; color:#fff; font-size:13px; line-height:22px;
@@ -322,8 +332,13 @@
   // fil est reconstruit au rafraîchissement — choisir une image fait perdre le focus au champ,
   // et sans ça le texte tapé et les images partiraient au prochain passage du poll.
   const drafts  = new Map();      // id → texte
-  const pending = new Map();      // id → [File]
+  const pending = new Map();      // id → [File] (images)
+  const pendTxt = new Map();      // id → [File] (patchs, journaux)
   const IMG_MAX = 6, IMG_BYTES = 10 * 1024 * 1024;
+  // Pièces jointes texte : les mêmes bornes que le serveur (app/testplan.py). Le refus affiché ici
+  // n'est qu'une politesse — c'est le CONTENU que le serveur vérifie, pas ce nom d'extension.
+  const TXT_MAX = 4, TXT_BYTES = 1024 * 1024;
+  const TXT_RE = /\.(patch|diff|log|txt)$/i;
 
   function fmtTime(ts) {
     if (!ts) return "";
@@ -657,6 +672,7 @@
       ap.id = "last-" + it.id;
       ap.innerHTML = "<b>" + escapeHtml(last.role === "dev" ? "DEV" : (last.author || "?")) + "</b> · " +
                      fmtTime(last.ts) + " — " + escapeHtml(((last.images || []).length ? "📎 " + last.images.length + " image" + (last.images.length > 1 ? "s" : "") + " " : "") +
+                       ((last.files || []).length ? "📄 " + last.files.length + " fichier" + (last.files.length > 1 ? "s" : "") + " " : "") +
                                 mdPlain(last.text).slice(0, 140));
       ap.style.display = openThreads.has(it.id) ? "none" : "block";
       div.appendChild(ap);
@@ -828,6 +844,23 @@
         });
         body.appendChild(imgs);
       }
+      if ((m.files || []).length) {
+        const fl = document.createElement("div");
+        fl.className = "tp-files";
+        m.files.forEach(f => {
+          const a = document.createElement("a");
+          // Toujours un TÉLÉCHARGEMENT : le serveur sert ces fichiers en pièce jointe, jamais
+          // dans la page. `download` évite en plus l'onglet blanc sur un navigateur complaisant.
+          a.href = "/api/tests/fichier/" + encodeURIComponent(f.name) +
+                   "?nom=" + encodeURIComponent(f.label || "");
+          a.download = f.label || "fichier.txt";
+          a.textContent = "📄 " + (f.label || "fichier.txt");
+          const sz = document.createElement("span");
+          sz.className = "tp-fsz"; sz.textContent = fmtTaille(f.bytes);
+          a.appendChild(sz); fl.appendChild(a);
+        });
+        body.appendChild(fl);
+      }
       row.appendChild(av); row.appendChild(body);
       wrap.appendChild(row);
     });
@@ -862,12 +895,13 @@
       addPending(it.id, [...(e.dataTransfer.files || [])]);
     });
     const file = document.createElement("input");
-    file.type = "file"; file.accept = "image/png,image/jpeg,image/gif,image/webp"; file.multiple = true;
+    file.type = "file"; file.multiple = true;
+    file.accept = "image/png,image/jpeg,image/gif,image/webp,text/plain,.patch,.diff,.log,.txt";
     file.hidden = true;
     file.onchange = () => { addPending(it.id, [...file.files]); file.value = ""; };
     const att = document.createElement("button");
     att.type = "button"; att.className = "tp-attach"; att.textContent = "📎";
-    att.title = "Joindre une image";
+    att.title = "Joindre une image ou un fichier texte (patch, journal)";
     att.onclick = () => file.click();
     const btn = document.createElement("button");
     btn.type = "button"; btn.textContent = "Envoyer";
@@ -893,15 +927,27 @@
   }
 
   function addPending(id, files) {
-    const list = pending.get(id) || [];
+    const list = pending.get(id) || [], txts = pendTxt.get(id) || [];
     const refus = [];
     files.forEach(f => {
-      if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) refus.push((f.name || "fichier") + " : format non accepté");
-      else if (f.size > IMG_BYTES) refus.push((f.name || "image") + " : plus de 10 Mo");
-      else if (list.length >= IMG_MAX) refus.push(IMG_MAX + " images au plus par message");
-      else list.push(f);
+      // Une image se reconnaît à son type ; un patch arrive souvent SANS type du tout (le
+      // navigateur ne connaît pas `.patch`), donc son extension sert d'aiguillage — et c'est
+      // tout : le serveur, lui, décide sur le contenu.
+      const estTexte = /^text\//.test(f.type) || TXT_RE.test(f.name || "");
+      if (/^image\/(png|jpeg|gif|webp)$/.test(f.type)) {
+        if (f.size > IMG_BYTES) refus.push((f.name || "image") + " : plus de 10 Mo");
+        else if (list.length >= IMG_MAX) refus.push(IMG_MAX + " images au plus par message");
+        else list.push(f);
+      } else if (estTexte) {
+        if (f.size > TXT_BYTES) refus.push((f.name || "fichier") + " : plus de 1 Mo");
+        else if (txts.length >= TXT_MAX) refus.push(TXT_MAX + " fichiers au plus par message");
+        else txts.push(f);
+      } else {
+        refus.push((f.name || "fichier") + " : format non accepté");
+      }
     });
     pending.set(id, list);
+    pendTxt.set(id, txts);
     const pend = document.getElementById("pend-" + id);
     if (pend) renderPending(id, pend);
     setErr(id, [...new Set(refus)].join(" · "));
@@ -920,6 +966,22 @@
       x.onclick = () => { pending.get(id).splice(k, 1); renderPending(id, pend); };
       box.appendChild(img); box.appendChild(x); pend.appendChild(box);
     });
+    (pendTxt.get(id) || []).forEach((f, k) => {
+      const box = document.createElement("div");
+      box.className = "tp-pf";
+      box.appendChild(document.createTextNode("📄 " + (f.name || "fichier.txt")));
+      const sz = document.createElement("span");
+      sz.className = "tp-fsz"; sz.textContent = fmtTaille(f.size);
+      const x = document.createElement("button");
+      x.type = "button"; x.textContent = "×"; x.title = "Retirer";
+      x.onclick = () => { pendTxt.get(id).splice(k, 1); renderPending(id, pend); };
+      box.appendChild(sz); box.appendChild(x); pend.appendChild(box);
+    });
+  }
+
+  function fmtTaille(n) {
+    n = +n || 0;
+    return n >= 1024 ? Math.round(n / 1024) + " Ko" : n + " o";
   }
 
   /* Reconstruit UN fil ouvert (changement de fenêtre) sans toucher au reste de la page ni à
@@ -939,13 +1001,15 @@
   function postReply(it, ta) {
     const text = ta.value.trim();
     const files = pending.get(it.id) || [];
-    if (!text && !files.length) return;
+    const txts = pendTxt.get(it.id) || [];
+    if (!text && !files.length && !txts.length) return;
     const name = testerEl.value.trim() || "anonyme";
     let envoi;
-    if (files.length) {
+    if (files.length || txts.length) {
       const fd = new FormData();
       fd.append("id", it.id); fd.append("text", text); fd.append("author", name); fd.append("role", "tester");
       files.forEach(f => fd.append("image", f, f.name || "image"));
+      txts.forEach(f => fd.append("fichier", f, f.name || "fichier.txt"));
       envoi = fetch("/api/tests/thread", { method: "POST", body: fd }).then(r => r.json());
     } else {
       envoi = postJSON("/api/tests/thread", { id: it.id, text: text, author: name, role: "tester" });
@@ -956,7 +1020,7 @@
       .then(r => {
         // Un refus garde le brouillon et les images : le testeur corrige au lieu de tout refaire.
         if (!r || !r.ok) { setErr(it.id, (r && r.error) || "envoi refusé"); return; }
-        ta.value = ""; drafts.delete(it.id); pending.delete(it.id);
+        ta.value = ""; drafts.delete(it.id); pending.delete(it.id); pendTxt.delete(it.id);
         editing.delete("rep-" + it.id); openThreads.add(it.id); load();
       })
       .catch(() => setErr(it.id, "envoi impossible (réseau)"))

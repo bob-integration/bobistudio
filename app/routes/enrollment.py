@@ -159,6 +159,15 @@ def _url_machines(proposee):
     from .. import web_mode
     return web_mode.url_machines(proposee, request.host)
 
+def rt_kernel_choice(v):
+    """Kernel choice of an enrollment profile → True (RT), False (normal) or "auto"."""
+    if v is True or v in ("rt", "on", "1", 1):
+        return True
+    if v is False or v in ("normal", "off", "0", 0):
+        return False
+    return "auto"
+
+
 @bp.route("/api/nodes/token", methods=["POST"])
 @require_perm("settings.edit")
 def api_node_token():
@@ -213,6 +222,10 @@ def api_node_profile():
         "mgmt_gateway": d.get("mgmt_gateway") or "",
         "mgmt_dns": d.get("mgmt_dns") or "",
         "mgmt_mac": mgmt_mac,
+        # Noyau PREEMPT_RT (pilote hôte `rt_kernel`, `install-node.sh`). Since 2026-11-23 the RT
+        # kernel is the DEFAULT: "auto" lets the node decide (RT unless a DeckLink card, keep the
+        # kernel on a reinstall); True / False force it (cf. rt_kernel_choice).
+        "rt_kernel": rt_kernel_choice(d.get("rt_kernel")),
     }
     nid = db_add_node(name, "", kind="docker")
     db_update_node(nid, status="pending", enroll_token=enroll_token, agent_token=agent_token,
@@ -320,6 +333,8 @@ def api_node_enroll():
         # Noyau compatible MTL (io2110) : réglage CLUSTER, non figé. Vide = aucun épinglage (avertissement).
         "kernel_pkg": _st.get("io2110_kernel_pkg") or "",
         "kernel_apt": _st.get("io2110_kernel_apt") or "",
+        # None (a profile written before the choice existed) is « auto » for the installer.
+        "rt_kernel": prof.get("rt_kernel"),
     })
 
 

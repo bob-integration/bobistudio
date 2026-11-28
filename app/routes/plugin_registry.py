@@ -121,17 +121,30 @@ def plugin_instances():
     from ..database import db_fabric_all
     want = (request.args.get("type") or "").strip() or None
     proj_by_id = {p["id"]: p for p in db_get_projects()}
-    # Nœuds INTERNES du tissu de composition (shards `bobi-fab-*`) : ce sont des multiviews
+    # Nœuds INTERNES du tissu de composition (`bobi-fab-*`) : ce sont des multiviews
     # matérialisés automatiquement (parallélisme/dédup), pas des murs éditables → on les masque
     # de la liste d'instances. Les ASSEMBLEURS (kind=assembler) sont les vrais murs (vmid =
-    # le mur utilisateur) → conservés. Un shard a vmid=NULL et porte le vmid du conteneur en `ref`.
-    fab_shard_vmids = set()
+    # le mur utilisateur) → conservés. Un nœud interne a vmid=NULL et porte le vmid du conteneur
+    # en `ref`.
+    #
+    # BOTH internal kinds are hidden: "shard" (serves one parent wall) AND "shared" (one tile
+    # shared by several walls). Everywhere else the fabric handles the two together; this route
+    # alone knew "shard", so every shared tile leaked into the Composition list, interleaved with
+    # the real walls by vmid. Measured here on 2026-11-27: 6 internal nodes, ALL of them "shared"
+    # — the mask was hiding nothing at all. A malformed `ref` must skip its own row only: the
+    # int() used to sit inside one try around the whole loop, so a single bad row emptied the
+    # mask and showed every internal node.
+    fab_internal_vmids = set()
     try:
-        for r in db_fabric_all():
-            if r["kind"] == "shard" and r["ref"]:
-                fab_shard_vmids.add(int(r["ref"]))
+        fab_rows = db_fabric_all()
     except Exception:
-        pass
+        fab_rows = []
+    for r in fab_rows:
+        if r["kind"] in ("shard", "shared") and r["ref"]:
+            try:
+                fab_internal_vmids.add(int(r["ref"]))
+            except (TypeError, ValueError):
+                continue
     member_pids = scoped_project_ids()   # None = accès global (pas de filtre)
     uid = (current_user() or {}).get("id")
     out = []
@@ -142,7 +155,7 @@ def plugin_instances():
             continue
         if want and t != want:
             continue
-        if c["vmid"] in fab_shard_vmids:
+        if c["vmid"] in fab_internal_vmids:
             continue
         if member_pids is not None and not (vmid_project_ids(c["vmid"]) & member_pids) \
                 and c.get("monitor_user_id") != uid:
@@ -150,6 +163,7 @@ def plugin_instances():
         pid = c.get("project_id")
         proj = proj_by_id.get(pid) if pid else None
         out.append({
+            "n_inputs": _count_inputs(t, c.get("hostname"), dc.get("params")),
             "vmid": c["vmid"], "hostname": c.get("hostname"), "instance_uuid": c.get("instance_uuid"),
             "status": c.get("status"), "type": t, "ip": c.get("ip"),
             "version": (dc.get("params") or {}).get("plugin_version"),
@@ -157,6 +171,19 @@ def plugin_instances():
             "project": {"id": proj["id"], "name": proj["name"]} if proj else None,
         })
     return jsonify(out)
+
+def _count_inputs(type_, hostname, params):
+    """Capacity of an instance = its MANDATORY input ports, as the manifest's wiring resolves them
+    against the deployed params (multiview: one per tile; mixer: `n_inputs`). Optional ports
+    (audio/ANC of a tile, meter blocks…) are left out: they ride along an input, they do not add
+    one. None when the wiring cannot be resolved — the list sorts it last instead of failing."""
+    from .. import plugins
+    try:
+        cons = plugins.derive_wiring(type_, hostname or "", params or {}).get("consumes") or []
+    except Exception:                                                      # noqa: BLE001
+        return None
+    return sum(1 for p in cons if not p.get("optional"))
+
 
 def _plugins_overview():
     """Liste des plugins (paquets) + drift, en UNE passe sur les containers.
@@ -374,7 +401,11 @@ def plugins_redeploy(type_):
         if only_outdated and (dc.get("params") or {}).get("plugin_version") == ver:
             continue
         params = dc.get("params") or {}
-        threading.Thread(target=deployer_script, args=(c["vmid"], type_, params)).start()
+        # `version` EXPLICITE : sans elle, le déploiement garde la version épinglée du conteneur
+        # (deploy.pinned_version) et ce bouton redéployait l'ANCIENNE — le drift ne se purgeait
+        # jamais (signalé le 2026-11-15, Images fixes restées en 0.19.15).
+        threading.Thread(target=deployer_script, args=(c["vmid"], type_, params),
+                         kwargs={"version": ver}).start()
         queued.append(c["vmid"])
     db_add_alert("alert.deploy.redeploiement_type", "info", kind="deploy",
                  params={"t": type_, "n": len(queued)})
@@ -397,7 +428,8 @@ def plugins_redeploy_all():
         if only_outdated and (dc.get("params") or {}).get("plugin_version") == ver:
             continue
         params = dc.get("params") or {}
-        threading.Thread(target=deployer_script, args=(c["vmid"], t, params)).start()
+        threading.Thread(target=deployer_script, args=(c["vmid"], t, params),
+                         kwargs={"version": ver}).start()      # migrer : cf. plugins_redeploy
         queued.append(c["vmid"])
     db_add_alert("alert.deploy.redeploiement_global", "info", kind="deploy",
                  params={"n": len(queued)})
@@ -428,23 +460,36 @@ def container_redeploy_version(vmid):
                      params={"vmid": vmid, "t": t})
     return jsonify({"queued": [vmid]})
 
+def _zip_plugin_dir(d, keep_versions):
+    """Zips a plugin folder for export, without what does not belong to the plugin (`.git`,
+    `__pycache__`). The git repository of a plugin weighs 70 MB for a 1 MB plugin
+    (audio_console, 2026-11-25): exported with it, the package crossed the 20 MB import cap
+    and could not be imported anywhere."""
+    import io, zipfile, os as _os
+    from .. import plugins
+    skip = set(plugins._NOT_PLUGIN_FILES) - ({"versions"} if keep_versions else set())
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, dirs, files in _os.walk(d):
+            dirs[:] = [x for x in dirs if x not in skip]
+            for fn in files:
+                if fn.endswith(".pyc") or (root == d and fn == ".git"):
+                    continue                     # .git is a FILE in a submodule checkout
+                full = _os.path.join(root, fn)
+                z.write(full, _os.path.relpath(full, d))
+    buf.seek(0)
+    return buf
+
 @bp.route("/api/plugins/<type_>/export", methods=["GET"])
 @require_perm("settings.edit")
 def plugins_export(type_):
     """Télécharge le dossier complet du plugin (flat + versions/) en .mxlplugin (zip)."""
-    import io, zipfile, os as _os
     from .. import plugins
     d = plugins.export_dir(type_)
     if not d:
         return jsonify({"error": "type inconnu"}), 404
     ver = (plugins.get(type_) or {}).get("version", "0")
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, _dirs, files in _os.walk(d):
-            for fn in files:
-                full = _os.path.join(root, fn)
-                z.write(full, _os.path.relpath(full, d))
-    buf.seek(0)
+    buf = _zip_plugin_dir(d, keep_versions=True)
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name=f"{type_}-{ver}.mxlplugin")
 
@@ -453,21 +498,12 @@ def plugins_export(type_):
 def plugins_export_version(type_, version):
     """Télécharge UNE version du plugin (script.py + meta.json + assets de cette version) en
     .mxlversion (zip). Pour la version courante (dossier plat), exclut le sous-dossier versions/."""
-    import io, zipfile, os as _os
     from .. import plugins
     d, ver = plugins.export_version_dir(type_, version)
     if not d:
         return jsonify({"error": "version inconnue"}), 404
     flat = (d == (plugins.get(type_) or {}).get("_dir"))  # version courante → dossier plat
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for root, dirs, files in _os.walk(d):
-            if flat and "versions" in dirs:
-                dirs.remove("versions")  # n'embarque pas les autres versions
-            for fn in files:
-                full = _os.path.join(root, fn)
-                z.write(full, _os.path.relpath(full, d))
-    buf.seek(0)
+    buf = _zip_plugin_dir(d, keep_versions=not flat)  # flat: never the other versions
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name=f"{type_}-{ver}.mxlversion")
 

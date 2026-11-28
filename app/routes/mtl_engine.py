@@ -73,10 +73,10 @@ def _tx_gate(vmid, op, args, data):
 @bp.route("/api/mtl/<int:vmid>/tx/<int:slot>/dest", methods=["POST"])
 @require_perm("containers.deploy")
 def api_mtl_tx_dest(vmid, slot):
-    """Règle À CHAUD la destination (mcast/port) d'un flux d'un slot TX d'un moteur MTL, par ESSENCE
-    (video|audio|anc) et leg 2022-7 (0|1). Persiste dans deploy_config.tx_slots[slot] + pousse au
-    contrôleur (:8081/tx). La vidéo (essence=video, leg=0) pilote l'émission ; audio/ANC + legs sont
-    enregistrés (structure prête, émis quand l'essence sera implémentée). Notifie NMOS."""
+    """Set LIVE the destination (mcast/port) of one flow of a TX slot of an MTL engine, per ESSENCE
+    (video|audio|anc) and 2022-7 leg (0|1). Persisted in deploy_config.tx_slots[slot] + pushed to the
+    controller (:8081/tx). Notifies NMOS. An address typed here is an operator's choice: marked
+    `<key>_manual` when it changes (allocations.set_manual_dest), the plan never rewrites it."""
     import json as _json
     from ..database import db_get_container, db_update_deploy_config
     from .. import docker_driver
@@ -115,11 +115,17 @@ def api_mtl_tx_dest(vmid, slot):
         return jsonify({"ok": False, "error": "flux lié à une ressource NMOS — éditez la ressource ou déliez le slot"}), 409
     # Règle de plage STRICTE éventuelle sur le port physique résolu pour ce slot/leg : un switch qui
     # contraint les adresses par port rejetterait physiquement une adresse hors plage.
+    from .. import allocations as _alloc
     if c.get("node_id"):
         import ipaddress as _ipa
-        from .. import allocations as _alloc
         _ifn, _netid = _alloc._egress_iface(c.get("node_id"), params, slot, leg=leg)
-        _rule = _alloc._plage_applicable(c.get("node_id"), _ifn, media_network_id=_netid, essence=essence, leg=leg)
+        # A multicast plan addresses by fabric: the address must lie in one of its blocks for the
+        # fabric of this leg's interface (A blocks on fabric a, B blocks on fabric b).
+        _plan_applies, _plan_err = _alloc.plan_dest_check(c.get("node_id"), params, slot, leg, essence, mcast)
+        if _plan_err:
+            return jsonify({"ok": False, "error": _plan_err}), 400
+        _rule = None if _plan_applies else _alloc._plage_applicable(
+            c.get("node_id"), _ifn, media_network_id=_netid, essence=essence, leg=leg)
         if _rule is not None:
             try:
                 _base = int(_ipa.IPv4Address(_rule["base_ip"]))
@@ -159,22 +165,22 @@ def api_mtl_tx_dest(vmid, slot):
         return _gate
     slots[slot] = dict(slots[slot] or {})
     if essence == "audio":
-        # Audio : liste de 2 entrées indexées par audio_idx (0 ou 1)
+        # Audio: list of entries indexed by audio_idx
         audio_idx = _aidx
         audios = list(slots[slot].get("audios") or [{}, {}])
         while len(audios) <= audio_idx:
             audios.append({})
         audios[audio_idx] = dict(audios[audio_idx])
         sfx = "_leg1" if leg == 1 else ""
-        audios[audio_idx]["multicast_ip" + sfx] = mcast
-        audios[audio_idx]["dest_port" + sfx] = port
+        # Typed by the operator: marked manual when it changes, so the plan never rewrites it.
+        _alloc.set_manual_dest(audios[audio_idx], "multicast_ip" + sfx, "dest_port" + sfx, mcast, port)
         slots[slot]["audios"] = audios
     else:
-        # Vidéo + ANC : clés préfixées (video=pas de préfixe, anc=anc_) + suffixe leg1.
+        # Video + ANC: prefixed keys (video = no prefix, anc = anc_) + leg1 suffix.
         pfx = "" if essence == "video" else essence + "_"
         sfx = "_leg1" if leg == 1 else ""
-        slots[slot]["{}multicast_ip{}".format(pfx, sfx)] = mcast
-        slots[slot]["{}dest_port{}".format(pfx, sfx)] = port
+        _alloc.set_manual_dest(slots[slot], "{}multicast_ip{}".format(pfx, sfx),
+                               "{}dest_port{}".format(pfx, sfx), mcast, port)
     params["tx_slots"] = slots
     db_update_deploy_config(vmid, dc.get("type") or "2110_io", params)
     def _push_tx():

@@ -51,6 +51,7 @@ from . import plugins
 from . import journal as _journal
 from . import allocations
 from . import cpu_weight
+from . import realtime
 
 log = logging.getLogger(__name__)
 _CAPS_ALLOWED = ("SYS_NICE",)   # capacités qu'un manifeste peut demander (cf. ensure_container)
@@ -426,6 +427,31 @@ def _env_identite_client():
     return env
 
 
+def granted_caps(deploy_type):
+    """(cap_add, ulimits) granted to a container of this type → (["SYS_NICE"], {"rtprio": "20:20"}) or ([], {}).
+
+    Capacités DÉCLARÉES par le manifeste (`resources.cap_add`, `resources.ulimits`) — LISTE BLANCHE : seule
+    SYS_NICE (ordonnancement temps réel, décidé 2026-10-17) ; toute autre est ignorée et journalisée, jamais
+    accordée. Agent-nœud ≥ 0.10.0 (`cap_add` / `ulimits`). A declared real-time ROLE (`resources.realtime`,
+    app/realtime.py) brings its own grant: the product decides it, the manifest need not spell it out, and
+    an explicit rtprio limit never goes below what the role needs."""
+    man = (plugins.get(deploy_type) or {}) if deploy_type else {}
+    res = man.get("resources") or {}
+    rt_caps, rt_ul = realtime.container_grants(man)
+    caps = [c for c in (res.get("cap_add") or []) if c in _CAPS_ALLOWED]
+    if len(caps) != len(res.get("cap_add") or []):
+        log.warning("docker_compute: %s requests capabilities outside the allow-list %s, ignored",
+                    deploy_type, sorted(set(res.get("cap_add") or []) - set(_CAPS_ALLOWED)))
+    caps += [c for c in rt_caps if c not in caps]
+    if not caps:
+        return [], {}
+    ul = {k: v for k, v in dict(rt_ul, **(res.get("ulimits") or {})).items()
+          if k == "rtprio" and isinstance(v, int) and 0 < v <= 99}
+    if rt_ul and ul.get("rtprio", 0) < rt_ul["rtprio"]:
+        ul["rtprio"] = rt_ul["rtprio"]
+    return caps, {k: "%d:%d" % (v, v) for k, v in ul.items()}
+
+
 def effective_resources(deploy_type, c):
     """Profil de ressources APPLIQUÉ au `docker run` d'un conteneur compute/média.
 
@@ -462,7 +488,9 @@ def effective_resources(deploy_type, c):
     #   dedicated → pin, with the manifest `cores` (1 when it has none); otherwise no pin.
     # Node I/O (`node_io`, a DeckLink card) keeps its own whole cores whatever its level: it is
     # the node's input/output, not a processing of the project.
-    # The weight still matters among the shared ones (normal / background / batch).
+    # The weight still matters among the shared ones (shared / background). Background carries
+    # the former Batch behaviour (`priority: batch`: never pinned, never real time, quota) since
+    # the two levels were merged on 2026-11-23.
     # `cpu_mode_override` is no longer written (migrated to the level at boot); a row that still
     # carries « reserved » is read as dedicated.
     from . import cpu_weight as _cw
@@ -472,7 +500,7 @@ def effective_resources(deploy_type, c):
     if lvl not in _cw.WEIGHTS:
         lvl = _cw.normalize(res.get("cpu_weight"))
     if lvl not in _cw.WEIGHTS:
-        lvl = ("batch" if str(res.get("priority") or "").strip().lower() == "batch"
+        lvl = ("background" if str(res.get("priority") or "").strip().lower() == "batch"
                else "dedicated" if res.get("pin") else _cw.DEFAULT)
     res["cpu_weight"] = lvl
     if res.get("node_io"):
@@ -484,11 +512,30 @@ def effective_resources(deploy_type, c):
             res["cores"] = 1
     else:
         res.pop("pin", None)
-        if lvl == "batch":
+        if lvl == "background":
             res["priority"] = "batch"
         if no_cap:
             res.pop("cores", None)
     return res
+
+
+def preflight_rt_shared(node_id, deploy_type, dedicated_ok=True):
+    """Would a NEW container of this type keep the shared pool's FIFO load within its budget?
+    (cf. `core_pool.admission_rt`). Measured, changes NOTHING.
+
+    It lands on the shared pool when its level is not Dedicated, or when it is but no core can be
+    dedicated and the user chose to create it anyway (`dedicated_ok=False`). Only a plugin with a
+    real-time role counts: the others never run in FIFO. → the `admission_rt` dict, plus `role`."""
+    from . import core_pool, plugins, realtime
+    role = realtime.role_of(plugins.get(deploy_type) or {}) if deploy_type else ""
+    res = effective_resources(deploy_type, {})
+    dedicated = bool(res.get("pin")) and str(res.get("priority") or "").lower() != "batch"
+    demande = 0.0
+    if role and not (dedicated and dedicated_ok):
+        demande, _ = core_pool.rt_load_of(None, False, res.get("cores"))
+    out = core_pool.admission_rt(node_id, demande)
+    out["role"] = role
+    return out
 
 
 def preflight_dedication(node_id, deploy_type, params=None):
@@ -1015,6 +1062,9 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     is_batch = str(res.get("priority") or "").lower() == "batch"
     want = 0
     want_floor = 0          # sans les cœurs EN PLUS (extra_cores_param) : repli si le pool ne les a pas
+    # What the container holds BEFORE it is resized below (a resize releases first): a refused
+    # change gives it back (cf. the refusal after `effective_cpuset`).
+    held_before = core_pool.allocated_for(node["id"], vmid)
     if res.get("pin") and res.get("cores") and not is_batch:
         # Vrai pinning : cœurs DÉDIÉS non chevauchants demandés au pool du nœud (idempotent).
         base = int(res["cores"])
@@ -1112,24 +1162,54 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         # the shared pool. Was limited to `batch` until 2026-11-07, which left a reset guarantee
         # orphaned.
         core_pool.release_cores(vmid)
-    try:
-        cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want,
-                                                       prefer_numa=prefer_numa,
-                                                       physical=_physical)
-        if not dedicated and want_floor and want > want_floor:
-            # Les cœurs EN PLUS n'existent pas dans le pool : garder au moins le cœur dédié de base plutôt que de
-            # replier tout le conteneur sur le pool partagé (pire qu'avant le réglage). Dit, pas tu : le conteneur
-            # publie aussi `cpuset_mismatch` (la console garde ses plugins sur son cœur).
-            db_add_alert("alert.deploy.compute.extra_cores_indisponibles", "warning", vmid=vmid,
-                         node_id=node.get("id"), kind="resource",
-                         params={"vmid": vmid, "n": node["name"], "want": want, "base": want_floor})
-            cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want_floor,
+    # Refused below unless « au mieux »: checked FIRST, so the shared pool's alerts (« deployed OVER
+    # dedicated cores ») are not raised for a container that will not be deployed. Same strict rule
+    # as `allocate_cores`; the base must fit, extra cores have their own fallback. A node without a
+    # compute pool is abstained on, as in `preflight_dedication`: never prepared, not full.
+    refuse_shared = (want > 0 and not c.get("dedicated_fallback_ok")
+                     and bool((node.get("compute_cpuset") or "").strip()))
+    if refuse_shared and core_pool.free_dedicated_capacity(
+            node["id"], vmid, physical=_physical) < (want_floor or want):
+        cpuset, dedicated = "", False
+    else:
+        try:
+            cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want,
                                                            prefer_numa=prefer_numa,
                                                            physical=_physical)
-    except core_pool.PoolSature as e:
-        db_add_alert("alert.deploy.compute.pool_sature", "error", vmid=vmid,
-                     node_id=node.get("id"), kind="deploy",
-                     params={"vmid": vmid, "n": node["name"], "e": str(e)})
+            if not dedicated and want_floor and want > want_floor:
+                # Les cœurs EN PLUS n'existent pas dans le pool : garder au moins le cœur dédié de base plutôt que de
+                # replier tout le conteneur sur le pool partagé (pire qu'avant le réglage). Dit, pas tu : le conteneur
+                # publie aussi `cpuset_mismatch` (la console garde ses plugins sur son cœur).
+                db_add_alert("alert.deploy.compute.extra_cores_indisponibles", "warning", vmid=vmid,
+                             node_id=node.get("id"), kind="resource",
+                             params={"vmid": vmid, "n": node["name"], "want": want, "base": want_floor})
+                cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want_floor,
+                                                               prefer_numa=prefer_numa,
+                                                               physical=_physical)
+        except core_pool.PoolSature as e:
+            db_add_alert("alert.deploy.compute.pool_sature", "error", vmid=vmid,
+                         node_id=node.get("id"), kind="deploy",
+                         params={"vmid": vmid, "n": node["name"], "e": str(e)})
+            db_update_status(vmid, "stopped")
+            return False
+    if refuse_shared and not dedicated:
+        # REFUSE INSTEAD OF FALLING BACK (decided with Cyril, 2026-11-23). A Dedicated container
+        # whose cores are missing used to be put on the shared pool with a warning: it believed it
+        # held cores, held none, and no counter said so. It now runs shared only by the user's
+        # explicit choice (« au mieux », `dedicated_fallback_ok`, set at creation or in its panel).
+        # A container that held cores before a resize keeps them: only the change is refused.
+        _p = {"vmid": vmid, "noms": c.get("hostname") or vmid, "n": node["name"], "want": want,
+              "libres": core_pool.free_dedicated_capacity(node["id"], vmid,
+                                                          physical=_physical)}
+        kept = held_before and core_pool.allocate_cores(node["id"], vmid, held_before,
+                                                        prefer_numa=prefer_numa,
+                                                        physical=_physical)
+        if kept:
+            db_add_alert("alert.deploy.compute.dedie_changement_refuse", "error", vmid=vmid,
+                         node_id=node.get("id"), kind="resource", params={**_p, "have": held_before})
+            return False
+        db_add_alert("alert.deploy.compute.dedie_sans_coeurs", "error", vmid=vmid,
+                     node_id=node.get("id"), kind="resource", params=_p)
         db_update_status(vmid, "stopped")
         return False
     # POIDS CPU : toujours posé, et par NIVEAU (cf. app/cpu_weight.py). Avant, seul le profil
@@ -1209,23 +1289,41 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     #   donnerait un `docker run` qui échoue, ou pire un conteneur qui démarre et ne voit rien.
     decklink_devs = []
     if deploy_type and plugins.needs_decklink(deploy_type):
+        # TWO causes, told apart (2026-11-23): an EMPTY listing is « no device »; a listing that
+        # could not be READ (timeout, agent) is not. On dell-1 a card whose command gate stayed
+        # held after a driver Oops made the 20 s listing time out, and the message said « no
+        # Blackmagic device » while `ls` by hand showed io0..io3 — the wrong lead. And the
+        # exception reached no screen: each cause is now an alert too.
+        _listed, _why = False, ""
         try:
-            _rc, _out, _ = node_driver.host_exec(
-                node, "ls -1 /dev/blackmagic/ 2>/dev/null", timeout=20)
+            _rc, _out, _err = node_driver.host_exec(
+                node, "ls -1 /dev/blackmagic/ 2>/dev/null; true", timeout=20)
             if _rc == 0:
+                _listed = True
                 decklink_devs = ["/dev/blackmagic/" + x.strip()
                                  for x in (_out or "").splitlines() if x.strip()]
+            else:
+                _why = ("rc=%s %s" % (_rc, (_err or _out or "").strip()))[:200]
         except Exception as _e:
-            log.warning("decklink %s: énumération des périphériques échouée: %s", vmid, _e)
+            _why = str(_e)[:200]
+            log.warning("decklink %s: device listing failed: %s", vmid, _e)
         if not decklink_devs:
             # ÉCHEC BRUYANT. Créer le conteneur quand même donnerait un plugin qui démarre,
             # n'énumère aucune carte et n'explique rien — la panne la plus coûteuse à
             # diagnostiquer, parce qu'elle ne ressemble pas à une panne.
-            raise RuntimeError(
-                "aucun périphérique Blackmagic sur %s : /dev/blackmagic est vide ou absent. "
-                "Carte présente ? Pilote Desktop Video installé et module chargé "
-                "(modprobe blackmagic blackmagic-io) ? Micrologiciel à jour "
-                "(DesktopVideoUpdateTool --list) ?" % (node.get("name") or node.get("host")))
+            _n = node.get("name") or node.get("host")
+            if _listed:
+                db_add_alert("alert.deploy.decklink_aucun_peripherique", "error", vmid=vmid,
+                             node_id=node.get("id"), kind="deploy", params={"vmid": vmid, "n": _n})
+                raise RuntimeError(
+                    "no Blackmagic device on %s: /dev/blackmagic is empty or missing. Card present? "
+                    "Desktop Video driver installed and module loaded (modprobe blackmagic "
+                    "blackmagic-io)? Firmware up to date (DesktopVideoUpdateTool --list)?" % _n)
+            db_add_alert("alert.deploy.decklink_liste_illisible", "error", vmid=vmid,
+                         node_id=node.get("id"), kind="deploy", params={"vmid": vmid, "n": _n, "e": _why})
+            raise RuntimeError("Blackmagic devices on %s could not be listed (%s): not « no device » — "
+                               "often a card whose driver is stuck (processes in D state); see the "
+                               "node before redeploying" % (_n, _why))
         # La bibliothèque du pilote vient de l'HÔTE : le pilote s'installe à la main et rien de
         # Blackmagic n'entre dans nos images (décision §5 du chantier DECKLINK).
         mounts.append({"host": "/usr/lib/libDeckLinkAPI.so",
@@ -1275,20 +1373,11 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             # chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
             # plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
             spec["devices"] = list(decklink_devs)
-        # Capacités DÉCLARÉES par le manifeste (`resources.cap_add`, `resources.ulimits`) — LISTE BLANCHE : seule
-        # SYS_NICE (ordonnancement temps réel du fil audio de la console, décidé 2026-10-17) ; toute autre est
-        # ignorée et journalisée, jamais accordée. Agent-nœud ≥ 0.10.0 (`cap_add` / `ulimits`).
-        _res_m = ((plugins.get(deploy_type) or {}).get("resources") or {}) if deploy_type else {}
-        _caps = [c for c in (_res_m.get("cap_add") or []) if c in _CAPS_ALLOWED]
-        if len(_caps) != len(_res_m.get("cap_add") or []):
-            log.warning("docker_compute: %s requests capabilities outside the allow-list %s, ignored",
-                        deploy_type, sorted(set(_res_m.get("cap_add") or []) - set(_CAPS_ALLOWED)))
+        _caps, _ul = granted_caps(deploy_type)
         if _caps:
             spec["cap_add"] = _caps
-            _ul = {k: v for k, v in (_res_m.get("ulimits") or {}).items()
-                   if k == "rtprio" and isinstance(v, int) and 0 < v <= 99}
             if _ul:
-                spec["ulimits"] = {k: "%d:%d" % (v, v) for k, v in _ul.items()}
+                spec["ulimits"] = _ul
         if gpu_sel:
             # EXTENSION DE CONTRAT AGENT : l'agent-nœud doit traduire spec["gpus"] en `docker run
             # --gpus "<sel>"` (cf. NODE_AGENT.md). Un agent qui l'ignore → conteneur sans GPU →
@@ -1391,6 +1480,11 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                 db_add_alert(_refus_capacite, "error", vmid=vmid,
                              node_id=node.get("id"), kind="deploy",
                              params={"vmid": vmid, "n": node.get("name"), "t": deploy_type})
+                # The refusal is ALSO the container's cause (2026-11-25). An alert scrolls away;
+                # the card and the plugin page read `status_cause`, and on the testeur's Z8 they
+                # kept showing an older, false cause (« driver missing ») while this refusal was
+                # the only thing blocking. Same code as the creation route's `error_code`.
+                db_update_status(vmid, "stopped", cause="node_without_%s_capability" % variant)
                 db_update_spec_sig(vmid, None)
                 return False
             ok, r = node_driver.run_container(node, spec)   # docker auto-crée le dossier de bind média
@@ -1525,7 +1619,15 @@ def start_compute(vmid):
         if project_ports.prepare_send(vmid, _t, _p) != _p:
             from .deploy import deployer_script
             return deployer_script(vmid, _t, _p)
-    rc, out, err = ssh_run(node["host"], f"docker start {shlex.quote(name)} 2>&1", timeout=30)
+    from . import node_driver
+    if node_driver.has_agent(node):
+        # Through the agent's own start: from 0.32.8 it first creates the /dev/nvidia* nodes the
+        # container was created with. After a reboot nvidia-modeset only appears on first use, and a
+        # bare `docker start` left dell-1's 4 GPU containers down (2026-11-15).
+        ok, _err = node_driver.container_action(node, name, "start")
+        rc = 0 if ok else 1
+    else:
+        rc, out, err = ssh_run(node["host"], f"docker start {shlex.quote(name)} 2>&1", timeout=30)
     db_update_status(vmid, "running" if rc == 0 else "stopped")
     db_add_alert("alert.deploy.compute.demarre", "info" if rc == 0 else "warning", vmid=vmid,
                  node_id=node.get("id"), kind="deploy", params={"h": name, "vmid": vmid})

@@ -392,6 +392,7 @@ def classify(vmid, params_after, op="tx_edit", params_before=None):
 # ─── Mutations de params (rejouées telles quelles à l'application différée) ────────────────────────
 
 def _mut_tx_dest(params, a):
+    from . import allocations as _alloc
     slots = list(params.get("tx_slots") or [])
     i = int(a["slot"])
     if not (0 <= i < len(slots)):
@@ -406,13 +407,13 @@ def _mut_tx_dest(params, a):
         audios = [dict(x or {}) for x in (slots[i].get("audios") or [])]
         while len(audios) <= ai:
             audios.append({})
-        audios[ai]["multicast_ip" + sfx] = mcast
-        audios[ai]["dest_port" + sfx] = port
+        # Typed by the operator: marked manual when it changes, so the plan never rewrites it.
+        _alloc.set_manual_dest(audios[ai], "multicast_ip" + sfx, "dest_port" + sfx, mcast, port)
         slots[i]["audios"] = audios
     else:
         pfx = "" if essence == "video" else essence + "_"
-        slots[i]["%smulticast_ip%s" % (pfx, sfx)] = mcast
-        slots[i]["%sdest_port%s" % (pfx, sfx)] = port
+        _alloc.set_manual_dest(slots[i], "%smulticast_ip%s" % (pfx, sfx),
+                               "%sdest_port%s" % (pfx, sfx), mcast, port)
     params["tx_slots"] = slots
     return params
 

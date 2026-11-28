@@ -124,7 +124,13 @@ def _refus_motdepasse(pwd, username=None, extras=()):
     fautes = valider_motdepasse(pwd, username, extras)
     if not fautes:
         return None
-    return jsonify({"error": "mot de passe trop faible", "regles": fautes}), 400
+    # The message names the broken rules: « trop faible » alone left the user guessing
+    # (2026-11-27, a password refused for reusing the username under the « souple » profile).
+    from ..i18n import t as _t
+    from ..auth import pwd_exigences
+    n = str(pwd_exigences()["longueur_min"])
+    return jsonify({"error": _t("setup.err_weak").format(regles="; ".join(
+        _t("compte.pwd_regle_" + f).replace("{n}", n) for f in fautes)), "regles": fautes}), 400
 
 
 @bp.route("/api/users", methods=["POST"])

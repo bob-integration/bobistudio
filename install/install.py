@@ -1229,6 +1229,12 @@ def _enroll(controller_url, token, caps_local):
     for flag, val in mapping:
         if val not in (None, ""):
             args += [flag, str(val)]
+    # Kernel: RT forced, normal forced, or nothing = install-node.sh decides (« auto », the default
+    # since 2026-11-23: RT unless a DeckLink card, a reinstall keeps its kernel).
+    if prof.get("rt_kernel") is True:
+        args.append("--rt-kernel")                               # noyau PREEMPT_RT, fixé au démarrage
+    elif prof.get("rt_kernel") is False:
+        args.append("--no-rt-kernel")
     key = prof.get("controller_ssh_key")
     if key:
         os.makedirs("/root/.ssh", mode=0o700, exist_ok=True)

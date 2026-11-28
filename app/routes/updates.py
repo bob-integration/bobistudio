@@ -170,24 +170,93 @@ def update_notice_dismiss():
     return jsonify({"ok": True})
 
 
+def _watch_payload(st):
+    """Ce que la page Réglages lit : l'état de la veille, l'HORLOGE, et le mail DE CE COMPTE.
+
+    L'abonnement est par compte (cf. `update_watch.subscribers`) : la réponse ne parle donc que
+    du compte connecté — ni l'adresse ni l'abonnement des autres administrateurs n'ont à sortir
+    d'ici. `server` dit D'OÙ vient le serveur SMTP et ce qui lui manque, parce qu'une case grisée
+    sans raison est indiscernable d'une panne."""
+    from ..auth import current_user
+    from .. import mail, update_watch
+    from ..database import db_get_setting
+    uid = str((current_user() or {}).get("id"))
+    moi = current_user() or {}
+    cfg = mail.server_config()
+    abonnes = db_get_setting(update_watch.SUBSCRIBERS_KEY, {}) or {}
+    lm = st.get("last_mail") or {}
+    return {"checked_at": st.get("checked_at"), "error": st.get("error"),
+            "available": st.get("available") or [],
+            "schedule": update_watch.schedule(),
+            "mail": {"subscribed": str(abonnes.get(uid, "")).strip().lower()
+                                   not in ("", "0", "false", "off"),
+                     "address": (moi.get("email") or "").strip(),
+                     "server": {"source": cfg["source"], "missing": mail.missing(cfg)},
+                     "last": {"at": lm.get("at"), "sent": lm.get("sent"),
+                              "failed": lm.get("failed"), "error": lm.get("error"),
+                              "gaps": lm.get("gaps")}}}
+
+
 @bp.route("/api/update/watch", methods=["GET"])
 @require_perm("settings.edit")
 def update_watch_state():
     """État de la veille pour la page Réglages : dernière vérification, erreur, trouvées."""
     from .. import update_watch
-    st = update_watch.state()
-    return jsonify({"checked_at": st.get("checked_at"), "error": st.get("error"),
-                    "available": st.get("available") or []})
+    return jsonify(_watch_payload(update_watch.state()))
 
 
 @bp.route("/api/update/watch/check", methods=["POST"])
 @require_perm("settings.edit")
 def update_watch_check():
-    """« Vérifier maintenant » — même passage que la veille, interrupteur ou pas."""
+    """« Vérifier maintenant » — même passage que la veille, interrupteur ou pas.
+
+    ⚠ Route LENTE et assumée : la passe interroge GitHub (une requête par dépôt publié en portée
+    « tout ») puis poste les mails en attente, chacun borné par `mail_timeout_s`."""
     from .. import update_watch
-    st = update_watch.check()
-    return jsonify({"checked_at": st.get("checked_at"), "error": st.get("error"),
-                    "available": st.get("available") or []})
+    return jsonify(_watch_payload(update_watch.check()))
+
+
+@bp.route("/api/update/watch/mail", methods=["POST"])
+@require_perm("settings.edit")
+def update_watch_mail():
+    """« M'envoyer un mail » — pour CE compte, à l'adresse de CE compte.
+
+    Refusé sans adresse : accepter l'abonnement d'un compte qui n'en a pas afficherait une case
+    cochée qui n'enverra jamais rien."""
+    from ..auth import current_user
+    from .. import update_watch
+    moi = current_user() or {}
+    on = bool((request.json or {}).get("on"))
+    if on and not (moi.get("email") or "").strip():
+        return jsonify({"error": "no_address"}), 400
+    update_watch.subscribe(moi.get("id"), on)
+    return jsonify(_watch_payload(update_watch.state()))
+
+
+@bp.route("/api/update/watch/mail/test", methods=["POST"])
+@require_perm("settings.edit")
+def update_watch_mail_test():
+    """Envoi d'essai à l'adresse du compte connecté, SYNCHRONE et hors abonnement : on doit
+    pouvoir valider le serveur avant de s'abonner. Le corps est celui des vraies offres —
+    tester un autre texte ne prouverait rien de ce qui sera reçu."""
+    from ..auth import current_user
+    from .. import mail, update_watch
+    moi = current_user() or {}
+    dest = (moi.get("email") or "").strip()
+    if not dest:
+        return jsonify({"error": "no_address"}), 400
+    gaps = mail.missing()
+    if gaps:
+        return jsonify({"error": "server_missing", "missing": gaps}), 400
+    exemple = [{"key": "core", "kind": "core", "name": "bobistudio", "label": "Bobi.Studio",
+                "version": "0.0.0-test", "installed": "0.0.0-test", "url": ""}]
+    sujet, corps = update_watch.compose(exemple, moi.get("lang") or "fr")
+    try:
+        mail.send(sujet, corps, [dest])
+    except Exception as e:
+        return jsonify({"error": "send_failed",
+                        "detail": ("%s: %s" % (type(e).__name__, e))[:200]}), 502
+    return jsonify({"ok": True, "to": dest})
 
 
 # ─── Enregistrement de l'installation (app/registration.py) ─────────────────────

@@ -182,6 +182,11 @@ _lignes = {601: dict(_G, vmid=601, hostname="a", node_id=NA, level="dedicated"),
            602: {"vmid": 602, "hostname": "b", "node_id": NB, "reserve_pct": None, "etat": "non_etalonne", "level": "dedicated"},
            604: {"vmid": 604, "hostname": "d", "node_id": NA, "reserve_pct": None, "etat": "non_etalonne", "level": "normal"}}
 etalonnage.ressources = lambda vmids=None, **k: [r for v, r in _lignes.items() if vmids is None or v in vmids]
+# Since 2026-11-23 a Dedicated container also needs a deadline witness with nothing missed in 24 h
+# (tests/verif_temoin_echeance.py holds that part): the members here publish a clean one.
+from app import deadlines                                                    # noqa: E402
+for v in (601, 602, 603, 604):
+    deadlines.note(v, database.db_get_container(v), {"fps": 50, "deadline": {"missed": 0, "missed_total": 0}})
 rp = project_resources.project_guarantee(pid2)
 etats = {c["vmid"]: (c["guarantee"], c["required"]) for c in rp["containers"]}
 ok(etats == {601: ("guaranteed", True), 602: ("shared", True), 603: ("stopped", False), 604: ("shared", False)},

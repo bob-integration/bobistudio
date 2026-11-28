@@ -307,7 +307,7 @@ verifie(code == 200 and CREES,
 
 print("\n7. ★ Côté interface : le drapeau est envoyé, et fermer ne vaut jamais « créer »")
 _js = js_source()
-verifie("confirme_partage: !!confirmePartage" in _js,
+verifie("confirme_partage: !!flags.partage" in _js,
         "7a. le POST porte la réponse à la porte serveur")
 verifie("no_dedicated_core" in _js and "_createDedieDialog" in _js,
         "7b. le 409 est reconnu et ouvre la fenêtre de choix")

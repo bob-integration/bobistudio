@@ -89,9 +89,10 @@ def main():
 
     # ── 1. défauts ───────────────────────────────────────────────────────────────────────────
     cfg = uw._settings()
-    verifier(cfg == {"enabled": True, "interval_h": 24, "scope": "core", "alert": True,
-                     "banner": True, "popup": False},
-             "défauts : activée, une fois par jour, cœur seul, alerte + bandeau, pas de fenêtre", cfg)
+    verifier(cfg == {"enabled": True, "interval_h": 24, "scope": "core", "hour": 4, "weekday": 0,
+                     "alert": True, "banner": True, "popup": False},
+             "défauts : activée, une fois par jour à 4 h, cœur seul, alerte + bandeau, "
+             "pas de fenêtre", cfg)
 
     # ── 2. une alerte par version publiée ────────────────────────────────────────────────────
     e = uw.check(now=1000)
@@ -152,11 +153,17 @@ def main():
     gh.muet = False
 
     # ── 6. la boucle ─────────────────────────────────────────────────────────────────────────
+    # ⚠ CONTRAT CHANGÉ LE 2026-11-12 : la veille est due quand un CRÉNEAU est passé, pas quand
+    # « maintenant − dernière vérif ≥ intervalle ». L'ancienne forme faisait de l'heure du
+    # contrôle celle du dernier DÉMARRAGE. Les créneaux eux-mêmes sont mesurés dans
+    # tests/verif_veille_horaire_mail.py ; ici on vérifie seulement que la boucle les suit.
     t = uw.state()["checked_at"]
-    verifier(not uw._due(t + 23 * 3600) and uw._due(t + 24 * 3600),
-             "fréquence 24 h : pas dû à 23 h, dû à 24 h")
+    cfg = uw._settings()
+    suivant = uw.next_slot(t, cfg["interval_h"], cfg["hour"], cfg["weekday"])
+    verifier(not uw._due(suivant - 60) and uw._due(suivant),
+             "fréquence 24 h : pas dû avant le créneau, dû au créneau")
     st.set("update_check_interval_h", 6)
-    verifier(uw._due(t + 6 * 3600), "fréquence 6 h : dû à 6 h")
+    verifier(uw._due(t + 6 * 3600), "fréquence 6 h : dû six heures plus tard")
     st.set("update_check_enabled", "0")
     verifier(not uw._due(t + 1000 * 3600), "désactivée : jamais due")
     st.set("update_check_enabled", "1")
@@ -206,9 +213,10 @@ def main():
     # ── 9. l'installation le dit, la page le montre ──────────────────────────────────────────
     page = ca.get("/settings").get_data(as_text=True)
     verifier(all(f'id="s_update_{k}"' in page for k in
-                 ("check_enabled", "check_interval_h", "check_scope", "notify_alert",
-                  "notify_banner", "notify_popup")),
-             "Réglages → Mises à jour porte les six réglages")
+                 ("check_enabled", "check_interval_h", "check_scope", "check_hour",
+                  "check_weekday", "notify_alert", "notify_banner", "notify_popup",
+                  "notify_mail")),
+             "Réglages → Mises à jour porte les neuf réglages (dont l'heure, le jour, le mail)")
     # Maquette A (2026-11-08) : les VERSIONS d'abord. Les réglages vivent dans une fenêtre,
     # sinon ils repoussent la liste des plugins tout en bas de l'onglet.
     dlg = page[page.index('<dialog id="cat-regler-dlg"'):]

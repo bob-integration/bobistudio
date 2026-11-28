@@ -13,7 +13,11 @@
    adressé avant n'y passe que si quelqu'un clique « ⊞ Plan multicast ». Le moteur d'Horace, créé
    la veille, a gardé l'ancien adressage sans que rien le dise.
 
-Les deux vérifications lisent la BASE (ce que le moteur reçoit au déploiement), pas le réseau : un
+3. LEG B OFF ITS RULE. A range with a B base (`mcast_ranges.base_ip_b`) derives the 2022-7 leg-B
+   address from leg A (same rank in the B block). A leg B that differs — and was not typed by an
+   operator — is on an address the fabric-B switch was not set up for.
+
+Les vérifications lisent la BASE (ce que le moteur reçoit au déploiement), pas le réseau : un
 émetteur tiers sur nos adresses reste invisible ici.
 
 Tout tourne dans un THREAD, jamais en ligne dans `surveillance()` : la simulation du plan lit la
@@ -35,6 +39,7 @@ _last_plan = 0.0
 _running = threading.Lock()
 _shared_alerted = {}      # vmid → frozenset des groupes signalés (re-signale si l'ensemble change)
 _plan_alerted = {}        # vmid → nb de flux hors plan signalé
+_leg_b_alerted = {}       # vmid → frozenset of flows whose leg B does not follow its rule
 
 
 def tx_destinations(params):
@@ -66,14 +71,17 @@ def flow_label(hostname, d):
 
 
 def shared_groups(engines):
-    """`engines` = {vmid: (hostname, params)}. Retourne {groupe: [(vmid, libellé)…]} pour chaque
-    adresse portée par PLUSIEURS flux — entre moteurs aussi : deux moteurs du même plateau sur la
-    même adresse se mélangent exactement de la même façon."""
+    """`engines` = {vmid: (hostname, params)}. Returns {group: [(vmid, label)…]} for each address
+    carried by SEVERAL flows — across engines too: two engines of the same plant on one address mix
+    exactly the same way. The two 2022-7 legs of ONE flow on one group (a range whose B base equals
+    its A base: same group on both fabrics) are one flow, not a share."""
     par_groupe = {}
+    flows = {}
     for vmid, (hn, params) in engines.items():
         for d in tx_destinations(params):
             par_groupe.setdefault(d["ip"], []).append((vmid, flow_label(hn, d)))
-    return {ip: fl for ip, fl in par_groupe.items() if len(fl) > 1}
+            flows.setdefault(d["ip"], set()).add((vmid, d["slot"], d["essence"], d["sub"]))
+    return {ip: fl for ip, fl in par_groupe.items() if len(flows[ip]) > 1}
 
 
 def _engines():
@@ -120,8 +128,8 @@ def check_shared(engines, add_alert):
 
 
 def check_plan(engines, add_alert, simulate):
-    """Alerte par transition quand un moteur n'est pas aligné sur le plan d'adressage.
-    `simulate(vmid)` = `allocations.plan_tx_multicast(vmid, appliquer=False)` (injecté)."""
+    """Alert by transition when an engine is not aligned with the addressing plan.
+    `simulate(vmid)` = `allocations.plan_tx_multicast(vmid, appliquer=False)` (injected)."""
     for vmid, (hn, _p) in engines.items():
         try:
             diff, err = simulate(vmid)
@@ -130,7 +138,8 @@ def check_plan(engines, add_alert, simulate):
             continue
         if err:
             continue
-        n = sum(1 for d in diff or [] if d.get("etat") == "a_changer")
+        # Leg-B rows (2022-7) follow their leg A: counted by `check_leg_b`, not as flows off plan.
+        n = sum(1 for d in diff or [] if d.get("etat") == "a_changer" and not d.get("leg"))
         avant = _plan_alerted.get(vmid, 0)
         if n and n != avant:
             add_alert("alert.net.mcast_hors_plan", "warning", vmid=vmid, kind="net",
@@ -145,6 +154,34 @@ def check_plan(engines, add_alert, simulate):
     for vmid in list(_plan_alerted):
         if vmid not in engines:
             _plan_alerted.pop(vmid, None)
+
+
+def check_leg_b(engines, add_alert, mismatches):
+    """Alert by transition when a leg-B address (2022-7) does not follow its range rule (B = base B
+    + rank of A, `mcast_ranges.base_ip_b`). `mismatches(vmid)` =
+    `allocations.leg_b_mismatches_for` (injected). Re-alerted when the set of flows changes; a
+    return to normal clears the state without a message (no resolution message is declared)."""
+    for vmid, (hn, _p) in engines.items():
+        try:
+            found = mismatches(vmid) or []
+        except Exception as e:                                             # noqa: BLE001
+            log.debug("multicast leg-B audit %s: %s", vmid, e)
+            continue
+        key = frozenset((d["slot"], d["essence"], d["sub"]) for d in found)
+        if key and key != _leg_b_alerted.get(vmid, frozenset()):
+            detail = " ; ".join("%s : %s ≠ %s" % (flow_label(hn, dict(d, leg=1)), d["ip"], d["expected"])
+                                for d in found[:DETAIL_MAX])
+            if len(found) > DETAIL_MAX:
+                detail += " ; …"
+            add_alert("alert.net.mcast_jambe_b_hors_regle", "warning", vmid=vmid, kind="net",
+                      params={"h": hn, "n": len(found), "detail": detail})
+        if key:
+            _leg_b_alerted[vmid] = key
+        else:
+            _leg_b_alerted.pop(vmid, None)
+    for vmid in list(_leg_b_alerted):
+        if vmid not in engines:
+            _leg_b_alerted.pop(vmid, None)
 
 
 def maybe_audit():
@@ -170,6 +207,8 @@ def maybe_audit():
             if do_plan:
                 from .allocations import plan_tx_multicast
                 check_plan(engines, db_add_alert, lambda v: plan_tx_multicast(v, appliquer=False))
+                from .allocations import leg_b_mismatches_for
+                check_leg_b(engines, db_add_alert, leg_b_mismatches_for)
         except Exception as e:                                             # noqa: BLE001
             log.warning("audit multicast : %s", e)
         finally:

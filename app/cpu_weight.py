@@ -26,29 +26,34 @@ l'épinglage ET le poids. Un conteneur pouvait donc être « partagé » sans po
   - il ne garantit AUCUN plancher : un conteneur à 2048 face à seize conteneurs à 1024 n'a pas
     « deux fois plus de CPU », il a deux fois plus de poids dans le partage du moment.
 
-★ QUATRE NIVEAUX NOMMÉS, JAMAIS UN NOMBRE LIBRE. 1024 est le défaut de Docker et 128 était
-écrit en dur pour le transcodeur : deux valeurs, aucune échelle. Un champ numérique libre
-aurait produit des 1000, des 1500 et des 900 dont personne ne saurait dire l'intention six mois
-plus tard — alors que « Dédié » et « Arrière-plan » se relisent.
+★ NAMED LEVELS, NEVER A FREE NUMBER. 1024 is Docker's default and 128 was hard-coded for the
+transcoder: two values, no scale. A free numeric field would have produced 1000s, 1500s and 900s
+whose intent nobody could tell six months later — while « Dédié » and « Arrière-plan » read back.
+
+★ THREE LEVELS since 2026-11-23 (decided with Cyril): Dedicated / Shared / Background. « Normal »
+became « Shared » (it says WHERE the container runs, which is what the operator chooses), and
+« Batch » was merged into « Background »: two levels below the on-air ones made a choice nobody
+could explain. Background takes Batch's weight (128), so a transcode does not take more from the
+on-air containers than before, and Batch's behaviour (never real time, quota) — see `docker_compute`.
 """
 import logging
 import shlex
 
 log = logging.getLogger(__name__)
 
-# Les quatre niveaux, du plus prioritaire au moins prioritaire. Les VALEURS sont des poids
-# `--cpu-shares` relatifs : seul leur RAPPORT compte (2048 vaut deux parts pour une de 1024).
+# The three levels, most to least prioritary. The VALUES are relative `--cpu-shares` weights:
+# only their RATIO matters (2048 is two shares for one of 1024).
 WEIGHTS = {
-    "dedicated":  2048,   # Dédié — cœurs dédiés (la place suit le niveau, 2026-11-07)
-    "normal":     1024,   # Normal — le défaut de Docker, et le nôtre
-    "background":  256,   # Arrière-plan — moniteur, passerelle, aperçus : cède aux flux d'antenne
-    "batch":       128,   # Batch — transcodage de fichiers : prend ce qui reste
+    "dedicated":  2048,   # Dédié — dedicated cores (the place follows the level, 2026-11-07)
+    "shared":     1024,   # Partagé — the shared pool; Docker's default, and ours
+    "background":  128,   # Arrière-plan — monitor, gateway, transcode: takes what is left
 }
-LEVELS = ("dedicated", "normal", "background", "batch")
-DEFAULT = "normal"
-# Former names still accepted on input (saved projects, macros, manifests of other instances):
-# « onair » was renamed « dedicated » on 2026-11-07, with the label « Antenne » → « Dédié ».
-ALIASES = {"onair": "dedicated"}
+LEVELS = ("dedicated", "shared", "background")
+DEFAULT = "shared"
+# Former names still accepted on input (saved projects, macros, manifests of other instances) and
+# migrated in the base at boot: « onair » became « dedicated » on 2026-11-07; « normal » became
+# « shared » and « batch » merged into « background » on 2026-11-23.
+ALIASES = {"onair": "dedicated", "normal": "shared", "batch": "background"}
 # Poids que Docker applique quand on ne lui demande rien : la valeur à laquelle se compare un
 # conteneur dont `HostConfig.CpuShares` vaut 0 (« non précisé »), pas une absence de poids.
 DOCKER_DEFAUT = 1024
@@ -90,7 +95,7 @@ def level_of(res):
     if lvl in WEIGHTS:
         return lvl
     if str(res.get("priority") or "").strip().lower() == "batch":
-        return "batch"
+        return "background"
     return DEFAULT
 
 
@@ -169,8 +174,12 @@ def appliquer(node_id, vmid, niveau=None):
     return True, "%s → %d" % (nom, poids)
 
 
-def regler(vmid, niveau, reset=False):
+def regler(vmid, niveau, reset=False, confirme_rt=False):
     """Pose le niveau de poids PROPRE à ce conteneur et l'applique à chaud.
+
+    Leaving « Dédié » puts the container on the shared pool: if its plugin has a real-time role,
+    that is subject to the pool's real-time budget (`core_pool.admission_rt`), refused unless
+    `confirme_rt` — the user's explicit choice — with `err = {"error": "rt_shared_full", …}`.
 
     → {"ok", "niveau", "applique", "err"}. `reset=True` rend le conteneur à son manifeste.
 
@@ -193,7 +202,13 @@ def regler(vmid, niveau, reset=False):
     # container to or from dedicated cores, hot. Refused (no room) → the level is put back as it
     # was: a level that says « dedicated » on a shared container would be the lie this rule removes.
     place = None
-    if bool(effective_resources(_type_of(c), c).get("pin")) != was_dedicated:
+    now_dedicated = bool(effective_resources(_type_of(c), c).get("pin"))
+    if was_dedicated and not now_dedicated and not confirme_rt:
+        refus = _rt_admission_refusal(c)
+        if refus:
+            db_set_resources_override(vmid, cpu_weight=(before or ""))
+            return {"ok": False, "err": refus, "rt_refused": True}
+    if now_dedicated != was_dedicated:
         ok_place, place = apply_place_hot(vmid)
         if not ok_place:
             db_set_resources_override(vmid, cpu_weight=(before or ""))
@@ -202,6 +217,27 @@ def regler(vmid, niveau, reset=False):
     ok, msg = appliquer(c.get("node_id"), vmid)
     return {"ok": True, "niveau": eff["niveau"], "valeur": eff["valeur"],
             "source": eff["source"], "applique": ok, "err": None if ok else msg, "place": place}
+
+
+def _rt_admission_refusal(c):
+    """None if `c` may join its node's shared pool, else the refusal to return (its real-time role
+    would take the pool's FIFO load past its budget). Its load is the one MEASURED on its dedicated
+    cores, else its cap, else one core (cf. `core_pool.rt_load_of`)."""
+    from . import core_pool
+    from .i18n import t as _t
+    role = core_pool._rt_role(c)
+    if not role:
+        return None
+    charge, minorant = core_pool._charge_coeurs(c)
+    demande, _ = core_pool.rt_load_of(charge, minorant, None)
+    adm = core_pool.admission_rt(c.get("node_id"), demande)
+    if adm["suffisant"]:
+        return None
+    return {"error": "rt_shared_full", "role": role,
+            "message": _t("api.containers.rt_partage_plein", t=c.get("hostname") or c.get("vmid"),
+                          n=adm["noeud"], want=adm["demande"], charge=adm["charge"],
+                          budget=adm["budget"]),
+            **{k: adm[k] for k in ("demande", "charge", "budget", "capacite", "conteneurs", "noeud")}}
 
 
 def poser_defaut(vmid, niveau):
@@ -214,7 +250,7 @@ def poser_defaut(vmid, niveau):
     sait à quoi il sert, et c'est lui qui le dit, ici, à la création.
 
     ★ ET POURQUOI « seulement s'il n'en a pas ». Sans cette garde, chaque recréation écraserait
-    le choix de l'exploitant : il relèverait son moniteur en « Normal » et le retrouverait en
+    le choix de l'exploitant : il relèverait son moniteur en « Partagé » et le retrouverait en
     « Arrière-plan » au prochain redéploiement, sans explication."""
     from .database import db_get_container, db_set_resources_override
     c = db_get_container(vmid)
@@ -223,7 +259,7 @@ def poser_defaut(vmid, niveau):
     if not niveau_valide(niveau):
         log.warning("default cpu weight %r for container %s is unknown, ignored", niveau, vmid)
         return False
-    db_set_resources_override(vmid, cpu_weight=str(niveau).strip().lower())
+    db_set_resources_override(vmid, cpu_weight=normalize(niveau))
     log.info("container %s created for an orchestrator service: default cpu weight %s",
              vmid, niveau)
     return True
@@ -297,7 +333,7 @@ def poids_appliques(node_id, force=False):
 
 # ─── Macros (fournisseur du CŒUR, cf. app/core_plugins.py:CORE_PROVIDERS) ─────────────────────
 # Règle CLAUDE.md « Exposer aux macros » : une capacité que les macros ne voient pas est une
-# capacité morte. Le poids est une action DISCRÈTE (quatre valeurs nommées) → `actions[]`, et un
+# capacité morte. Le poids est une action DISCRÈTE (trois valeurs nommées) → `actions[]`, et un
 # état lisible en condition → `states[]`.
 MACRO_PROVIDER = {
     "id": "cpu_weight",
@@ -323,8 +359,8 @@ MACRO_PROVIDER = {
 
 # Libellés des niveaux pour les menus de macros. L'INTERFACE, elle, passe par i18n
 # (`cores.weight.*`) : ces libellés-ci sont ceux du catalogue d'actions, qui n'est pas traduit.
-LABELS = {"dedicated": "Dédié (2048)", "normal": "Normal (1024)",
-          "background": "Arrière-plan (256)", "batch": "Batch (128)"}
+LABELS = {"dedicated": "Dédié (2048)", "shared": "Partagé (1024)",
+          "background": "Arrière-plan (128)"}
 
 
 def action_options(action_id, param_key, pid=None):

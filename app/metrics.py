@@ -33,6 +33,7 @@ SCRIPT_RESTART_ALERT_THRESHOLD = 3
 _restart_next_try = {}      # vmid → time.monotonic() de la prochaine tentative autorisée
 _crash_quarantine = set()   # vmids en quarantaine : plus d'auto-restart (sortie : reprise/restart manuel)
 _script_running_since = {}  # vmid → time.monotonic() du dernier passage à running:true (cf. SCRIPT_STABLE_S)
+_assembler_pushed = {}      # wall vmid → time.monotonic() of the last push-back (cf. _wall_lost_assembler)
 SCRIPT_STABLE_S                = 60.0   # marche continue requise pour considérer la reprise CONFIRMÉE
                                         # (et seulement alors remettre compteur/backoff à zéro)
 SCRIPT_RESTART_BACKOFF_S       = 5.0    # délai initial, doublé à chaque échec consécutif
@@ -61,6 +62,36 @@ class _EnVol:
 
 
 _redeploy_inflight = _EnVol()
+
+
+ASSEMBLER_PUSH_MIN_S = 20.0
+
+
+def _wall_lost_assembler(vmid, m):
+    """A SHARDED wall that reads none of its shards has lost its assembler config.
+
+    That config is pushed hot, so a restarted script (by hand, crash loop, watchdog) comes back as
+    a monolith reading its sources at full size, and the fabric only noticed on its next 30 s pass.
+    Measured 2026-11-23, wall 1248 on dell-1: 30 to 63 s with EVERY frame about one period late
+    (output 17 ms instead of 5 ms). Read from what the wall publishes — the source of each tile on
+    :8080 — not from a restart signal: the agent's `started_at` is missing on images older than
+    2026-10-29, and a restart quicker than a poll is never seen stopped. Returns True if pushed."""
+    tiles = m.get("tuiles") if isinstance(m, dict) else None
+    if not isinstance(tiles, dict) or not tiles:
+        return False
+    if any(str((t or {}).get("src") or "").startswith("fab_") for t in tiles.values()
+           if isinstance(t, dict)):
+        return False
+    now = time.monotonic()
+    if now - _assembler_pushed.get(vmid, -1e9) < ASSEMBLER_PUSH_MIN_S:
+        return False                       # the fabric's own pass may be restoring a monolith
+    from . import deploy as _dp
+    if not _dp.is_sharded_wall(vmid):
+        return False
+    _assembler_pushed[vmid] = now
+    _dp._fabric_refresh_wall(vmid)
+    log.info("wall %s reads none of its shards: assembler config pushed back", vmid)
+    return True
 
 
 def reset_crash_loop(vmid):
@@ -794,10 +825,22 @@ def _signal_purger_mutes():
 
 
 # PRESSION MÉMOIRE D'UN CONTENEUR — seuils sur `memory.current / memory.max` du cgroup.
-# 85 % = il reste de la marge mais la tendance mérite un œil ; 95 % = le noyau a commencé à
+# 70 % = past it, direct reclaim can already block the threads (decklink_io, 2026-10-30: captures
+# at 21 fps with no OOM) — was 85 until 2026-11-23; 95 % = le noyau a commencé à
 # récupérer les pages du conteneur pour tenir sous le plafond.
-MEM_PRESSION_WARN_PCT   = 85
+MEM_PRESSION_WARN_PCT   = 70
 MEM_PRESSION_ERREUR_PCT = 95
+
+
+def _note_memory(vmid, c, s):
+    """The hourly memory peak of the instance (app/memory_watch.py, 2026-11-23)."""
+    try:
+        from . import memory_watch
+        _dc = (c or {}).get("deploy_config")
+        _dc = json.loads(_dc) if isinstance(_dc, str) else (_dc or {})
+        memory_watch.note(vmid, c, s, type_=(_dc or {}).get("type"))
+    except Exception as e:                                     # noqa: BLE001 (never break the poll)
+        log.debug("memory peak of %s not recorded: %s", vmid, e)
 
 
 def _verifier_pression_memoire(vmid, hn, s):
@@ -1672,6 +1715,26 @@ def get_metrics(ip, port=8080, avec_statut=False):
 # script that does not publish it (mixer ≤ 0.23.44, streamer, 2110_io…) is never flagged.
 version_running_cache = {}    # vmid → plugin_version published on :8080 (absent = not published)
 _version_gap_alerted = {}     # vmid → (running, recorded) already reported (edge-triggered)
+
+
+rt_state_cache = {}   # vmid → {"priority": int, "error": str}: what the script OBTAINED (app/realtime.py)
+
+
+def note_rt_state(vmid, m):
+    """Record the real-time priority the script publishes on :8080 (`rt_priority`, applied, and
+    `rt_priority_error`). Silent :8080 → state kept; a script that publishes nothing → forgotten."""
+    if not isinstance(m, dict):
+        return
+    if m.get("fps") is None and len(m) == 1:
+        return
+    if "rt_priority" not in m:
+        rt_state_cache.pop(vmid, None)
+        return
+    try:
+        pr = int(m.get("rt_priority") or 0)
+    except (TypeError, ValueError):
+        pr = 0
+    rt_state_cache[vmid] = {"priority": pr, "error": str(m.get("rt_priority_error") or "")}
 
 
 def note_running_version(vmid, cont, m):
@@ -2711,6 +2774,7 @@ def rafraichir_metrics(vmid, status_data=None):
                 if s.get("cpu_count") is not None:
                     cpu_count_cache[vmid] = int(s["cpu_count"])
                 _verifier_pression_memoire(vmid, hn, s)
+                _note_memory(vmid, _c, s)
         except Exception:
             pass
         # Flush périodique des épisodes de panne (auto-throttlé : no-op tant que PANNES_FLUSH_S
@@ -2894,6 +2958,7 @@ def rafraichir_metrics(vmid, status_data=None):
                 # `_c` qui porte l'identité. Le confondre lèverait UnboundLocalError — avalé par
                 # le `except` ci-dessous, donc une alarme muette de plus.
                 _verifier_pression_memoire(vmid, (_c or {}).get("hostname"), s)
+                _note_memory(vmid, _c, s)
         except Exception:
             pass
 
@@ -2905,6 +2970,16 @@ def rafraichir_metrics(vmid, status_data=None):
     # Publié par le script (multiview 0.69.0) ; absent ailleurs → None, l'UI n'affiche rien.
     m = get_metrics(ip)
     note_running_version(vmid, _c, m)
+    note_rt_state(vmid, m)
+    try:
+        from . import deadlines
+        deadlines.note(vmid, _c, m)
+    except Exception as e:                                     # noqa: BLE001 (never break the poll)
+        log.warning("deadline witness vmid=%s: %s", vmid, e)
+    try:
+        _wall_lost_assembler(vmid, m)
+    except Exception as e:                                     # noqa: BLE001 (never break the poll)
+        log.warning("wall %s: assembler push-back failed: %s", vmid, e)
     _fc = m.get("fps_content")
     fps_content_cache[vmid] = float(_fc) if isinstance(_fc, (int, float)) else None
     # Cadence PRÉCISE (Δframe_index / Δpoll) — calculée AVANT les fenêtres glissantes, qu'elle

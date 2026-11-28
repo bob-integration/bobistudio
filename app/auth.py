@@ -382,7 +382,11 @@ PWD_VARIETE = ((PWD_LONGUEUR_MIN, 3), (16, 2), (20, 1))
 # PARTOUT, y compris en souple : ils ne coûtent rien à un utilisateur de bonne foi (personne ne
 # choisit « azerty » par commodité de frappe, on le choisit parce qu'on n'a pas envie de
 # choisir) et ce sont exactement les premiers essais d'une attaque.
+# Seule exception : « aucune », choix assumé de l'exploitant (2026-11-27, certains clients le
+# demandent) — un mot de passe non vide suffit, ces trois contrôles compris (`controles`).
 PWD_PROFILS = {
+    # No constraint at all, the operator's explicit choice: any non-empty password.
+    "aucune":   {"longueur_min": 1,  "variete": ((1, 1),), "controles": False},
     # Réseau de production isolé, pas de route vers l'extérieur, accès physique contrôlé.
     "souple":   {"longueur_min": 8,  "variete": ((8, 1),)},
     # Défaut. Aligné sur ce que le NIST appelle une exigence raisonnable pour un secret mémorisé.
@@ -411,10 +415,11 @@ def pwd_exigences(profil=None):
     p = PWD_PROFILS.get(profil or pwd_profil(), PWD_PROFILS[PWD_PROFIL_DEFAUT])
     return {"profil": profil or pwd_profil(),
             "longueur_min": p["longueur_min"],
-            "variete": [list(x) for x in p["variete"]]}
+            "variete": [list(x) for x in p["variete"]],
+            "controles": p.get("controles", True)}
 
 def pwd_profils_publics():
-    """Les TROIS profils, sous forme sérialisable. Sert l'écran de premier démarrage, où le
+    """Tous les profils, sous forme sérialisable. Sert l'écran de premier démarrage, où le
     profil se choisit en même temps que le mot de passe : sans la table complète, changer de
     profil dans le sélecteur imposerait un aller-retour serveur pour ré-afficher les règles."""
     return {nom: pwd_exigences(nom) for nom in PWD_PROFILS}
@@ -485,6 +490,8 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
             break
     if len(pwd) >= lmin and _classes(pwd) < besoin:
         fautes.append("variete")
+    if not ex.get("controles", True):
+        return fautes
 
     noyau = _noyau(pwd)
     if noyau in PWD_INTERDITS:

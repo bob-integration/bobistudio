@@ -134,7 +134,7 @@ def staged_replica():
     return meta
 
 
-def push_replica():
+def _push_replica():
     """Côté ACTIF : snapshot + envoi mTLS vers l'autre contrôleur (cf. app/ha_tls.py). Met à
     jour `_last_push` (statut UI). → (ok|None, msg) — None = réplication désactivée (pas de pair).
 
@@ -156,6 +156,13 @@ def push_replica():
                                      en_tetes={"Content-Type": "application/octet-stream",
                                                "Content-Length": str(size)})
         j = json.loads(txt.decode() or "{}") if txt else {}
+        # The standby reports its own disk in the answer, success or refusal alike: it runs no
+        # sampler, so this is the only place where it gets judged (cf. node_health).
+        try:
+            from . import node_health
+            node_health.check_standby_disk(j.get("disk"))
+        except Exception as e:                                   # noqa: BLE001
+            log.debug("standby disk report: %s", e)
         if statut == 200 and j.get("ok"):
             lv2 = push_lv2()
             _set_push(True, f"{size} o → {url} (mTLS)" + (" · " + lv2 if lv2 else ""), size)
@@ -165,7 +172,12 @@ def push_replica():
         # au disjoncteur.
         msg = ("le standby ne reconnaît pas ce contrôleur (appairage à refaire ?)"
                if statut == 403 else j.get("error") or f"HTTP {statut} depuis le standby")
-        _set_push(False, msg)
+        # A refusal the standby names by a CODE gets our own wording: its `error` text is
+        # English, and it used to land verbatim inside the French alert (VM test, 2026-11-28).
+        code = j.get("code")
+        if code == "no_space":
+            msg = "plus de place sur le disque du contrôleur de secours"
+        _set_push(False, msg, code=code)
         return False, msg
     except PermissionError as e:
         _set_push(False, str(e))
@@ -178,6 +190,36 @@ def push_replica():
             os.remove(tmp)
         except OSError:
             pass
+
+
+def push_replica():
+    """Replica push, every alert it raises written as a MACHINE alert (user NULL): the disk of the
+    standby and a failed replication are not the doing of whoever clicked "replicate now"."""
+    from .database import machine_actor
+    with machine_actor():
+        return _push_replica()
+
+
+def push_and_alert():
+    """`push_replica` + the replication-failure alert, shared by the loop and the manual route.
+    One anti-spam signature for both paths: a failure already alerted by one is not alerted again
+    by the other, and a success clears it. -> (ok|None, msg)."""
+    global _last_fail_sig
+    from .database import db_add_alert, machine_actor
+    ok, msg = push_replica()
+    sig = f"{ok}:{msg}"
+    if ok is False and sig != _last_fail_sig:
+        # Coded reason -> a sub-key, rendered in each reader's language.
+        motif = ([["alert.node.ha_motif_no_space", {}]]
+                 if _last_push.get("code") == "no_space" else msg)
+        url = (settings.get("ha_standby_url") or "").strip()
+        with machine_actor():
+            db_add_alert("alert.node.ha_replication_echec", "warning", kind="node",
+                         params={"url": url, "msg": motif})
+        _last_fail_sig = sig
+    elif ok:
+        _last_fail_sig = None
+    return ok, msg
 
 
 _lv2_pushed = {"digest": None}
@@ -305,9 +347,9 @@ def start_watchdog():
              settings.get("ha_watchdog_interval_s"))
 
 
-def _set_push(ok, msg, nbytes=0):
+def _set_push(ok, msg, nbytes=0, code=None):
     _last_push.update({"at": datetime.now().isoformat(timespec="seconds"),
-                       "ok": ok, "msg": msg, "bytes": nbytes})
+                       "ok": ok, "msg": msg, "bytes": nbytes, "code": code})
 
 
 def replication_status():
@@ -328,8 +370,6 @@ def _replication_loop():
     """Boucle de poussée — DÉMARRÉE UNIQUEMENT par un contrôleur actif (cf. main.py). Pousse
     toutes les `ha_replicate_interval_min` minutes ; idle (log unique) si pas d'URL standby ;
     n'alerte qu'au passage en échec (anti-spam)."""
-    global _last_fail_sig
-    from .database import db_add_alert
     logged_idle = False
     while True:
         try:
@@ -340,14 +380,7 @@ def _replication_loop():
                     logged_idle = True
             else:
                 logged_idle = False
-                ok, msg = push_replica()
-                sig = f"{ok}:{msg}"
-                if ok is False and sig != _last_fail_sig:
-                    db_add_alert("alert.node.ha_replication_echec", "warning", kind="node",
-                                 params={"url": url, "msg": msg})
-                    _last_fail_sig = sig
-                elif ok:
-                    _last_fail_sig = None
+                push_and_alert()
         except Exception as e:
             log.error("Boucle de réplication HA : %s", e)
         time.sleep(max(60, int(settings.get("ha_replicate_interval_min") or 5) * 60))
@@ -399,6 +432,13 @@ def apply_replica_to(src, target):
     return safety
 
 
+# Settings that describe THIS machine, not the cluster. The replica is the other controller's
+# database, where they describe the other one: its peer URL is this very controller. 2026-11-28 on
+# VMs: a promoted standby took that URL over, pushed its replicas to ITSELF, the demoted controller
+# received nothing, and the next failover was refused (« aucun replica stagé valide »).
+MACHINE_LOCAL_KEYS = ("ha_standby_url", "vip_interface")
+
+
 def promote():
     """STANDBY → ACTIVE : applique le dernier replica stagé sur la DB live (après backup de sûreté),
     bascule le rôle, puis redémarre le service (il repart en pilotant). Retourne (ok, msg)."""
@@ -409,10 +449,16 @@ def promote():
         return False, "déjà actif (rien à promouvoir)"
     if not (os.path.exists(STAGING_DB) and _is_valid_sqlite(STAGING_DB)):
         return False, "aucun replica stagé valide — réplication non reçue ?"
+    from .database import db_get_setting
+    local = {k: db_get_setting(k) for k in MACHINE_LOCAL_KEYS}
     try:
         safety = apply_replica_to(STAGING_DB, DB_PATH)
     except Exception as e:
         return False, f"application du replica échouée : {e}"
+    # This thread's connection still points at the replaced file: reopen, or every write below
+    # (role, machine-local settings, alert) lands in the old, unlinked database.
+    from .database import db_reopen
+    db_reopen()
     # Marque le replica comme appliqué (trace).
     try:
         meta = staged_replica() or {}
@@ -422,6 +468,9 @@ def promote():
     except Exception:
         pass
     db_set_setting("control_role", "active")
+    for k, val in local.items():
+        # An empty local value is written too: better no replication than replication to oneself.
+        db_set_setting(k, val if val is not None else "")
     db_add_alert("alert.node.ha_promote", "warning", kind="node",
                  params={"safety": os.path.basename(safety)})
     # VIP : la priorité VRRP suit le rôle → re-rendre AVANT le redémarrage (si la VIP n'est pas
@@ -430,6 +479,19 @@ def promote():
     _vip.refresh_for_role()
     updater.restart_service()
     return True, "promu actif — redémarrage en cours (déplace la VIP de management)"
+
+
+def set_aside_stale_replica():
+    """A controller that is demoted still holds the replica it staged BEFORE its own active period.
+    Promoting it later would roll the cluster back to that day, and a standby reads its registry
+    settings from it (2026-11-28, VMs: the demoted controller configured its registry from a
+    replica older than the switch to NFS). Set aside, never deleted: kept for diagnosis."""
+    for path in (STAGING_DB, STAGING_META):
+        if os.path.exists(path):
+            try:
+                os.replace(path, path + ".before-demote")
+            except OSError as e:
+                log.error("demote: stale replica %s not set aside: %s", path, e)
 
 
 def demote():
@@ -441,6 +503,15 @@ def demote():
         return False, "déjà en veille (rien à rétrograder)"
     db_set_setting("control_role", "standby")
     db_add_alert("alert.node.ha_demote", "warning", kind="node")
+    set_aside_stale_replica()
+    # The registry stops HERE, before the restart: on shared storage (NFS) a demoted controller's
+    # Zot kept the data lock while the other one was promoted (2026-11-28, VMs: the promoted Zot
+    # looped on « boltdb file is already in use »). The standby's boot reconciles it afterwards.
+    try:
+        from . import registry
+        registry.stop()
+    except Exception as e:                                       # noqa: BLE001
+        log.error("demote: image registry not stopped: %s", e)
     from . import vip as _vip
     _vip.refresh_for_role()
     updater.restart_service()

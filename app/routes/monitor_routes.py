@@ -156,6 +156,7 @@ def container_preview_status(vmid):
     # `gateway_ready` est DANS la réponse : sans passerelle, l'UI doit dire pourquoi le bouton
     # ne servira à rien, pas laisser l'exploitant cliquer et attendre.
     st["gateway_ready"] = monitor.gateway_ready()
+    st["unavailable"] = (monitor.unavailable() or (None,))[0]
     return jsonify(st)
 
 @bp.route("/api/containers/<int:vmid>/preview", methods=["POST"])

@@ -66,7 +66,35 @@ def move_block(r):
 
 
 # Per container, in order of severity.
-GUARANTEE_STATES = ("stopped", "undersized", "reserved_unmeasured", "shared", "guaranteed")
+# The two `deadline_*` states only apply once the cores are guaranteed (app/deadlines.py, decided
+# with Cyril on 2026-11-23): cores reserved are not a proof, deadlines held are. No witness
+# published = no proof = not guaranteed.
+# `node_unfit` (2026-11-23, app/node_aptitude.py): the node's sheet has a red line (frequency held
+# under the nominal, governor not `performance`) — cores reserved on a machine that does not give
+# them their speed are not a guarantee.
+# `shards_not_guaranteed` (2026-11-23): a Dedicated wall cut by the compositor fabric is only as
+# guaranteed as the shards it reads — each must be Dedicated, hold its cores and miss no deadline.
+GUARANTEE_STATES = ("stopped", "undersized", "reserved_unmeasured", "shared", "node_unfit",
+                    "shards_not_guaranteed", "deadline_missed", "deadline_unwatched", "guaranteed")
+
+
+def weak_shards(wall_vmid, shards_by_wall=None):
+    """Shards of this wall that are not guaranteed: not Dedicated, no cores held, or a deadline
+    verdict against them. [] for a wall that is not sharded."""
+    from . import core_pool, deadlines
+    from .compositor_fabric import shards_par_parent
+    from .cpu_weight import for_container
+    sb = shards_par_parent() if shards_by_wall is None else shards_by_wall
+    weak = []
+    for sv in sb.get(wall_vmid) or []:
+        sc = db_get_container(sv)
+        if not sc:
+            continue
+        lvl = (for_container(sc, "multiview") or {}).get("niveau")
+        holds = bool(sc.get("node_id")) and core_pool.allocated_for(sc["node_id"], sv) > 0
+        if lvl != "dedicated" or not holds or deadlines.verdict_of(sc):
+            weak.append(sv)
+    return weak
 
 
 # ── Is the project guaranteed? ──────────────────────────────────────────────────────────────────
@@ -103,6 +131,7 @@ def project_guarantee(pid):
                and _type_of(c) not in PROJECT_EXCLUDED_TYPES]
     rows = {r["vmid"]: r for r in etalonnage.ressources(vmids={c.get("vmid") for c in members})}
     out = []
+    _shards = None
     for c in members:
         r = rows.get(c.get("vmid"))
         if r is None:
@@ -115,6 +144,21 @@ def project_guarantee(pid):
             r = dict(r, guarantee=guarantee_state(r))
         r["node_io"] = is_node_io(c)
         r["required"] = (r.get("level") == "dedicated") and not r["node_io"]
+        if r["required"] and r["guarantee"] == "guaranteed" and c.get("node_id"):
+            from . import node_aptitude
+            r["node_unfit"] = node_aptitude.unfit_lines(c["node_id"])
+            if r["node_unfit"]:
+                r["guarantee"] = "node_unfit"
+        if r["required"] and r["guarantee"] == "guaranteed":
+            if _shards is None:
+                from .compositor_fabric import shards_par_parent
+                _shards = shards_par_parent()
+            r["weak_shards"] = weak_shards(c.get("vmid"), _shards)
+            if r["weak_shards"]:
+                r["guarantee"] = "shards_not_guaranteed"
+        if r["required"] and r["guarantee"] == "guaranteed":
+            from . import deadlines
+            r["guarantee"] = deadlines.verdict_of(c) or "guaranteed"
         out.append(r)
     required = [r for r in out if r["required"]]
     counts = {s: 0 for s in GUARANTEE_STATES}

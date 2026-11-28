@@ -49,7 +49,7 @@ static int g_threads = 1;
 
 EXPORT void mvk_set_threads(int n) { g_threads = n < 1 ? 1 : n; }
 EXPORT int  mvk_get_threads(void) { return g_threads; }
-EXPORT int  mvk_abi_version(void) { return 7; }   /* 2=+rgba2yuv 3=+mixf/mixmap 4=+spl_* 5=+spl_gradient 6=+spl_blur2/rotmap/rotring 7=+spl_prefuse/outer */
+EXPORT int  mvk_abi_version(void) { return 8; }   /* 2=+rgba2yuv 3=+mixf/mixmap 4=+spl_* 5=+spl_gradient 6=+spl_blur2/rotmap/rotring 7=+spl_prefuse/outer 8=+kchroma/klin (mixer keyers) */
 
 /* --- blend : dst = (dst·(255−α) + src·α) / 255 --------------------------------------- */
 /* Équivalent bit-exact de script.py blend() : accumulation uint32, division entière.     */
@@ -913,4 +913,277 @@ EXPORT void mvk_spl_outer_u16(uint16_t *restrict out, ptrdiff_t o_stride,
         uint16_t *o = out + (size_t)r * o_stride;
         for (int c = 0; c < w; c++) o[c] = (uint16_t)(y * vx[c]);
     }
+}
+
+/* --- Keyers à DÉCOUPE du mélangeur (ABI 8, 2026-11-28) -------------------------------------
+ * Chroma et linear : la découpe (lecture de table) et le composite (mélange entier du fill sur le
+ * PGM) en UNE passe par plan — l'alpha n'est jamais matérialisé, ni le fill prélevé. Le numpy du
+ * mixer faisait, par bande : index (U8<<8|V8) → take dans la table → 3 vues d'octets → gather de
+ * l'alpha → gather du fill → blend, soit 6 à 8 passes mémoire (p50 11-12 ms par image 1080p en
+ * chroma, 2026-11-12). Arithmétique ENTIÈRE identique à plugins/mixer/script.py (_blend8 :
+ * (dst·(255−α) + src·α) // 255) → résultat OCTET POUR OCTET identique au numpy, qui reste le
+ * repli (compté) et la référence (tests/verif_mixer_chroma_noyau.py).
+ *
+ * Géométrie : comme mvk_place, les INDEX nearest (lignes, colonnes source) sont calculés par
+ * l'appelant (fly + masque du keyer) ; dst est le rectangle VISIBLE de la bande (h × w). Les index
+ * sont VALIDÉS ici (pré-passe O(h + w)) contre les dimensions des plans source : un index hors
+ * plan → 0 renvoyé, RIEN écrit (le repli numpy de l'appelant reprend la bande en entier).
+ *   chroma, luma : l'alpha d'un pixel = table[chroma de l'échantillon qui le porte] — ligne
+ *                  rows[r]/ch, colonne cols[c]/cw du plan chroma du fill ;
+ *   chroma, U/V  : l'alpha ET le fill corrigé du débordement par la même lecture de table ;
+ *   linear, luma : alpha = lut[min(key, n−1)] (np.take mode="clip") ;
+ *   linear, U/V  : alpha prélevé au pixel luma de la ligne krows[r] et de la colonne kcols[c]
+ *                  (la ligne luma de la rangée chroma, la colonne luma PAIRE — convention du mixer).
+ * Tables 8 bits : `packed` uint32[65536] = α | U' << 8 | V' << 16. 10/12 bits : index sur les 8
+ * bits hauts ((U>>sh)<<8 | V>>sh, sur 16 bits comme numpy), α uint8[65536] et écarts int16
+ * optionnels (NULL = pas de débordement à retirer) ajoutés puis bornés à [0, maxv]. */
+
+static int kidx_ok(const int32_t *idx, int n, int lim)
+{
+    for (int i = 0; i < n; i++)
+        if (idx[i] < 0 || idx[i] >= lim) return 0;
+    return 1;
+}
+
+/* Mélange entier du mixer, (d·(255−α) + s·α) // 255. 8 bits : x ≤ 255·255 = 65025, où
+ * (x + 1 + (x >> 8)) >> 8 == x // 255 EXACTEMENT (vérifié sur tout l'intervalle) — une division en
+ * moins par pixel. 10/12 bits : division (le compilateur la remplace par une multiplication). */
+#define KDIV8(x)  (((x) + 1u + ((x) >> 8)) >> 8)
+#define KDIV16(x) ((x) / 255u)
+static int klut_ident(const uint8_t *lut)
+{
+    for (int i = 0; i < 256; i++)
+        if (lut[i] != i) return 0;
+    return 1;
+}
+
+static int kcons(const int32_t *idx, int n)
+{
+    for (int i = 1; i < n; i++)
+        if (idx[i] != idx[0] + i) return 0;
+    return 1;
+}
+
+/* Deux temps par tronçon de KCH pixels d'une ligne : (1) les lectures de table (scalaires) posent
+ * l'alpha et la source dans des tampons de pile contigus ; (2) le mélange de trois tableaux contigus,
+ * que le compilateur vectorise (comme mvk_blend). Mesuré 2026-11-28 (E5-2680 v3, un fil) : le
+ * mélange scalaire coûtait ~3,4 ns par pixel, le mélange vectorisé ~0,9. */
+#define KCH 512
+#define KMIX(T, DIV, d, s, a, n) do {                                                       \
+        for (int q_ = 0; q_ < (n); q_++) {                                                   \
+            const uint32_t a_ = (a)[q_];                                                     \
+            (d)[q_] = (T)DIV((uint32_t)(d)[q_] * (255u - a_) + (uint32_t)(s)[q_] * a_);      \
+        }                                                                                    \
+    } while (0)
+
+/* Chroma, luma : l'alpha d'un pixel vient de l'échantillon chroma qui le porte. Les pixels voisins
+ * partagent cet échantillon (4:2:x) : une lecture de table par échantillon, pas par pixel. */
+#define KCHROMA_Y_BODY(T, DIV, LOOKUP)                                                       \
+    if (h <= 0 || w <= 0) return 1;                                                          \
+    if ((cw != 1 && cw != 2) || (ch != 1 && ch != 2)) return 0;                              \
+    const int cws = cw >> 1, chs = ch >> 1;   /* 1 ou 2 : un décalage, pas une division */    \
+    if (!kidx_ok(rows, h, src_h) || !kidx_ok(cols, w, src_w)) return 0;                      \
+    for (int r = 0; r < h; r++) if ((rows[r] >> chs) >= src_hc) return 0;                    \
+    for (int c = 0; c < w; c++) if ((cols[c] >> cws) >= src_wc) return 0;                    \
+    const int cons = kcons(cols, w), xcons = cols[0];                                        \
+    _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
+    for (int r = 0; r < h; r++) {                                                            \
+        T *d = dst + (size_t)r * d_stride;                                                   \
+        const T *sy = fy + (size_t)rows[r] * fy_stride;                                      \
+        const size_t co = (size_t)(rows[r] >> chs) * fc_stride;                              \
+        const T *su = fu + co, *sv = fv + co;                                                \
+        uint8_t ab[KCH], ac[KCH]; T sb[KCH];                                                 \
+        int prev = -1; uint8_t a = 0;                                                        \
+        for (int c0 = 0; c0 < w; c0 += KCH) {                                                \
+            const int n = w - c0 < KCH ? w - c0 : KCH;                                       \
+            if (cons) {                                                                      \
+                /* colonnes consécutives (plein cadre, cas courant) : une lecture de table par \
+                 * échantillon chroma, puis l'alpha étendu aux pixels ; la source est lue en place */ \
+                const int xs = xcons + c0, xc0 = xs >> cws, nc = ((xs + n - 1) >> cws) - xc0 + 1; \
+                for (int j = 0; j < nc; j++) { const int xc = xc0 + j; ac[j] = (uint8_t)(LOOKUP); } \
+                if (cws) for (int q = 0; q < n; q++) ab[q] = ac[((xs + q) >> 1) - xc0];      \
+                else for (int q = 0; q < n; q++) ab[q] = ac[q];                              \
+                KMIX(T, DIV, d + c0, sy + xs, ab, n);                                        \
+                continue;                                                                    \
+            }                                                                                \
+            for (int q = 0; q < n; q++) {                                                    \
+                const int x = cols[c0 + q], xc = x >> cws;                                   \
+                if (xc != prev) { prev = xc; a = (uint8_t)(LOOKUP); }                        \
+                ab[q] = a; sb[q] = sy[x];                                                    \
+            }                                                                                \
+            KMIX(T, DIV, d + c0, sb, ab, n);                                                 \
+        }                                                                                    \
+    }                                                                                        \
+    return 1;
+
+EXPORT int mvk_kchroma_y_u8(uint8_t *restrict dst, ptrdiff_t d_stride,
+                            const uint8_t *restrict fy, ptrdiff_t fy_stride,
+                            const uint8_t *restrict fu, const uint8_t *restrict fv, ptrdiff_t fc_stride,
+                            const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                            int src_h, int src_w, int src_hc, int src_wc, int cw, int ch,
+                            const uint32_t *restrict packed)
+{
+    KCHROMA_Y_BODY(uint8_t, KDIV8, packed[((uint32_t)su[xc] << 8) | sv[xc]] & 0xFFu)
+}
+
+EXPORT int mvk_kchroma_y_u16(uint16_t *restrict dst, ptrdiff_t d_stride,
+                             const uint16_t *restrict fy, ptrdiff_t fy_stride,
+                             const uint16_t *restrict fu, const uint16_t *restrict fv, ptrdiff_t fc_stride,
+                             const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                             int src_h, int src_w, int src_hc, int src_wc, int cw, int ch,
+                             const uint8_t *restrict alpha, int sh)
+{
+    KCHROMA_Y_BODY(uint16_t, KDIV16,
+                   alpha[(((((uint32_t)su[xc] >> sh) << 8) & 0xFFFFu) | ((uint32_t)sv[xc] >> sh)) & 0xFFFFu])
+}
+
+#define KCHROMA_C_LOOP(T, DIV, PICK)                                                         \
+    _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
+    for (int r = 0; r < h; r++) {                                                            \
+        T *pu = du_ + (size_t)r * d_stride, *pv = dv_ + (size_t)r * d_stride;                \
+        const size_t co = (size_t)rows[r] * fc_stride;                                       \
+        const T *su = fu + co, *sv = fv + co;                                                \
+        uint8_t ab[KCH]; T ub[KCH], vb[KCH];                                                 \
+        for (int c0 = 0; c0 < w; c0 += KCH) {                                                \
+            const int n = w - c0 < KCH ? w - c0 : KCH;                                       \
+            for (int q = 0; q < n; q++) {                                                    \
+                const int x = cols[c0 + q];                                                  \
+                PICK                                                                         \
+            }                                                                                \
+            KMIX(T, DIV, pu + c0, ub, ab, n);                                                \
+            KMIX(T, DIV, pv + c0, vb, ab, n);                                                \
+        }                                                                                    \
+    }                                                                                        \
+    return 1;
+
+EXPORT int mvk_kchroma_c_u8(uint8_t *restrict du_, uint8_t *restrict dv_, ptrdiff_t d_stride,
+                            const uint8_t *restrict fu, const uint8_t *restrict fv, ptrdiff_t fc_stride,
+                            const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                            int src_hc, int src_wc, const uint32_t *restrict packed)
+{
+    if (h <= 0 || w <= 0) return 1;
+    if (!kidx_ok(rows, h, src_hc) || !kidx_ok(cols, w, src_wc)) return 0;
+    KCHROMA_C_LOOP(uint8_t, KDIV8,
+        const uint32_t e = packed[((uint32_t)su[x] << 8) | sv[x]];
+        ab[q] = (uint8_t)(e & 0xFFu); ub[q] = (uint8_t)(e >> 8); vb[q] = (uint8_t)(e >> 16);)
+}
+
+EXPORT int mvk_kchroma_c_u16(uint16_t *restrict du_, uint16_t *restrict dv_, ptrdiff_t d_stride,
+                             const uint16_t *restrict fu, const uint16_t *restrict fv, ptrdiff_t fc_stride,
+                             const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                             int src_hc, int src_wc, const uint8_t *restrict alpha,
+                             const int16_t *restrict tu, const int16_t *restrict tv, int sh, int maxv)
+{
+    if (h <= 0 || w <= 0) return 1;
+    if (!kidx_ok(rows, h, src_hc) || !kidx_ok(cols, w, src_wc)) return 0;
+    KCHROMA_C_LOOP(uint16_t, KDIV16,
+        const uint32_t i = (((((uint32_t)su[x] >> sh) << 8) & 0xFFFFu) | ((uint32_t)sv[x] >> sh)) & 0xFFFFu;
+        int32_t cu = su[x]; int32_t cv = sv[x];
+        if (tu) { cu += tu[i]; cu = cu < 0 ? 0 : (cu > maxv ? maxv : cu); }
+        if (tv) { cv += tv[i]; cv = cv < 0 ? 0 : (cv > maxv ? maxv : cv); }
+        ab[q] = alpha[i]; ub[q] = (uint16_t)cu; vb[q] = (uint16_t)cv;)
+}
+
+#define KLIN_Y_BODY(T, DIV)                                                                  \
+    if (h <= 0 || w <= 0) return 1;                                                          \
+    if (lut_n < 1 || !kidx_ok(rows, h, src_h) || !kidx_ok(cols, w, src_w)) return 0;         \
+    const int cons = kcons(cols, w), xcons = cols[0];                                        \
+    const uint32_t kmax = (uint32_t)lut_n - 1;                                               \
+    /* 8 bits, table IDENTITÉ (key plein échelle tel quel : le _key d'Images fixes) : le key EST \
+     * l'alpha, le mélange se fait directement sur les trois lignes, sans tampon. */          \
+    const int ident = sizeof(T) == 1 && lut_n == 256 && klut_ident(lut);                     \
+    _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
+    for (int r = 0; r < h; r++) {                                                            \
+        T *d = dst + (size_t)r * d_stride;                                                   \
+        const T *sf = fy + (size_t)rows[r] * f_stride;                                       \
+        const T *sk = ky + (size_t)rows[r] * k_stride;                                       \
+        uint8_t ab[KCH]; T sb[KCH];                                                          \
+        for (int c0 = 0; c0 < w; c0 += KCH) {                                                \
+            const int n = w - c0 < KCH ? w - c0 : KCH;                                       \
+            if (cons) {                                                                      \
+                const T *skc = sk + xcons + c0;                                              \
+                if (ident) {                                                                 \
+                    KMIX(T, DIV, d + c0, sf + xcons + c0, (const uint8_t *)skc, n);          \
+                    continue;                                                                \
+                }                                                                            \
+                for (int q = 0; q < n; q++) {                                                \
+                    const uint32_t k = skc[q];                                               \
+                    ab[q] = lut[k > kmax ? kmax : k];                                        \
+                }                                                                            \
+                KMIX(T, DIV, d + c0, sf + xcons + c0, ab, n);                                \
+                continue;                                                                    \
+            }                                                                                \
+            for (int q = 0; q < n; q++) {                                                    \
+                const int x = cols[c0 + q];                                                  \
+                const uint32_t k = sk[x];                                                    \
+                ab[q] = lut[k > kmax ? kmax : k]; sb[q] = sf[x];                             \
+            }                                                                                \
+            KMIX(T, DIV, d + c0, sb, ab, n);                                                 \
+        }                                                                                    \
+    }                                                                                        \
+    return 1;
+
+EXPORT int mvk_klin_y_u8(uint8_t *restrict dst, ptrdiff_t d_stride,
+                         const uint8_t *restrict fy, ptrdiff_t f_stride,
+                         const uint8_t *restrict ky, ptrdiff_t k_stride,
+                         const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                         int src_h, int src_w, const uint8_t *restrict lut, int lut_n)
+{
+    KLIN_Y_BODY(uint8_t, KDIV8)
+}
+
+EXPORT int mvk_klin_y_u16(uint16_t *restrict dst, ptrdiff_t d_stride,
+                          const uint16_t *restrict fy, ptrdiff_t f_stride,
+                          const uint16_t *restrict ky, ptrdiff_t k_stride,
+                          const int32_t *restrict rows, const int32_t *restrict cols, int h, int w,
+                          int src_h, int src_w, const uint8_t *restrict lut, int lut_n)
+{
+    KLIN_Y_BODY(uint16_t, KDIV16)
+}
+
+#define KLIN_C_BODY(T, DIV)                                                                  \
+    if (h <= 0 || w <= 0) return 1;                                                          \
+    if (lut_n < 1 || !kidx_ok(rows, h, src_hc) || !kidx_ok(cols, w, src_wc) ||               \
+        !kidx_ok(krows, h, src_h) || !kidx_ok(kcols, w, src_w)) return 0;                    \
+    const uint32_t kmax = (uint32_t)lut_n - 1;                                               \
+    _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
+    for (int r = 0; r < h; r++) {                                                            \
+        T *pu = du_ + (size_t)r * d_stride, *pv = dv_ + (size_t)r * d_stride;                \
+        const size_t co = (size_t)rows[r] * fc_stride;                                       \
+        const T *su = fu + co, *sv = fv + co;                                                \
+        const T *sk = ky + (size_t)krows[r] * k_stride;                                      \
+        uint8_t ab[KCH]; T ub[KCH], vb[KCH];                                                 \
+        for (int c0 = 0; c0 < w; c0 += KCH) {                                                \
+            const int n = w - c0 < KCH ? w - c0 : KCH;                                       \
+            for (int q = 0; q < n; q++) {                                                    \
+                const int x = cols[c0 + q];                                                  \
+                const uint32_t k = sk[kcols[c0 + q]];                                        \
+                ab[q] = lut[k > kmax ? kmax : k]; ub[q] = su[x]; vb[q] = sv[x];              \
+            }                                                                                \
+            KMIX(T, DIV, pu + c0, ub, ab, n);                                                \
+            KMIX(T, DIV, pv + c0, vb, ab, n);                                                \
+        }                                                                                    \
+    }                                                                                        \
+    return 1;
+
+EXPORT int mvk_klin_c_u8(uint8_t *restrict du_, uint8_t *restrict dv_, ptrdiff_t d_stride,
+                         const uint8_t *restrict fu, const uint8_t *restrict fv, ptrdiff_t fc_stride,
+                         const uint8_t *restrict ky, ptrdiff_t k_stride,
+                         const int32_t *restrict rows, const int32_t *restrict cols,
+                         const int32_t *restrict krows, const int32_t *restrict kcols, int h, int w,
+                         int src_hc, int src_wc, int src_h, int src_w,
+                         const uint8_t *restrict lut, int lut_n)
+{
+    KLIN_C_BODY(uint8_t, KDIV8)
+}
+
+EXPORT int mvk_klin_c_u16(uint16_t *restrict du_, uint16_t *restrict dv_, ptrdiff_t d_stride,
+                          const uint16_t *restrict fu, const uint16_t *restrict fv, ptrdiff_t fc_stride,
+                          const uint16_t *restrict ky, ptrdiff_t k_stride,
+                          const int32_t *restrict rows, const int32_t *restrict cols,
+                          const int32_t *restrict krows, const int32_t *restrict kcols, int h, int w,
+                          int src_hc, int src_wc, int src_h, int src_w,
+                          const uint8_t *restrict lut, int lut_n)
+{
+    KLIN_C_BODY(uint16_t, KDIV16)
 }

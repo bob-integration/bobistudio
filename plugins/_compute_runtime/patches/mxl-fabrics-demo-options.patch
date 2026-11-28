@@ -1,0 +1,50 @@
+diff --git a/tools/mxl-fabrics-demo/demo.cpp b/tools/mxl-fabrics-demo/demo.cpp
+index 900fac6..69aa3cc 100644
+--- a/tools/mxl-fabrics-demo/demo.cpp
++++ b/tools/mxl-fabrics-demo/demo.cpp
+@@ -23,6 +23,16 @@
+ #include "mxl/flowinfo.h"
+ #include "../../lib/fabrics/ofi/src/internal/Base64.hpp"
+ 
++// bobi.studio: JSON options handed to mxlFabricsInitiatorSetup / mxlFabricsTargetSetup (`cqDepth`,
++// MXL PR #736). Upstream demo passes nullptr, so the completion queue keeps its default depth and an
++// audio flow wider than 31 channels overflows it on the initiator side. Empty = nullptr, as before.
++static std::string g_fabricsOptions;
++
++static char const* fabricsOptions()
++{
++    return g_fabricsOptions.empty() ? nullptr : g_fabricsOptions.c_str();
++}
++
+ /*
+     Example how to use:
+ 
+@@ -332,7 +342,7 @@ public:
+         };
+         // clang-format on
+ 
+-        status = mxlFabricsInitiatorSetup(_initiator, &initiatorConfig, nullptr);
++        status = mxlFabricsInitiatorSetup(_initiator, &initiatorConfig, fabricsOptions());
+         if (status != MXL_STATUS_OK)
+         {
+             MXL_ERROR("Failed to setup fabrics initiator with status '{}'", static_cast<int>(status));
+@@ -732,7 +742,7 @@ public:
+             .writer = _writer,
+         };
+         // clang-format on
+-        status = mxlFabricsTargetSetup(_target, &targetConfig, nullptr, &_targetInfo);
++        status = mxlFabricsTargetSetup(_target, &targetConfig, fabricsOptions(), &_targetInfo);
+         if (status != MXL_STATUS_OK)
+         {
+             MXL_ERROR("Failed to setup fabrics target with status '{}'", static_cast<int>(status));
+@@ -963,6 +973,10 @@ int main(int argc, char** argv)
+     std::string flowOptionsFile;
+     app.add_option("--flow-options", flowOptionsFile, "Flow options file. (Only used when invoking a Target)");
+ 
++    app.add_option("--fabrics-options",
++        g_fabricsOptions,
++        "JSON options for the fabrics initiator or target setup (e.g. cqDepth). Empty = library defaults.");
++
+     bool runAsInitiator = false;
+     auto runAsInitiatorOpt = app.add_flag("-i,--initiator",
+         runAsInitiator,
