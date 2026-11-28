@@ -29,6 +29,14 @@ import sys
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
+# A throwaway database BEFORE the first access: the report reads alerts, containers and settings,
+# and without this it opened the CI's production database (public CI, 2026-11-28).
+import tempfile                                                               # noqa: E402
+from app import config as _cfg_iso, database as _dbm_iso                       # noqa: E402
+_cfg_iso.DB_PATH = _dbm_iso.DB_PATH = os.path.join(tempfile.mkdtemp(prefix="verif-rapport-"), "principale.db")
+_dbm_iso._tls.__dict__.pop("conn", None)
+_dbm_iso.init_db()
+
 import app.crash_tail as CT                                                   # noqa: E402
 import app.database as DB                                                     # noqa: E402
 import app.node_driver as ND                                                  # noqa: E402
