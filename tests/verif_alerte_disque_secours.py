@@ -64,10 +64,18 @@ nh.DB_PATH = "/etc/principale.db"            # same filesystem as /
 rep = nh.local_disk_report()["disks"]
 if set(rep) != {"root"}:
     fails.append("database on the root filesystem listed twice: %r" % sorted(rep))
-nh.DB_PATH = _cfg_iso.DB_PATH                # tmpfs: a filesystem of its own
-rep = nh.local_disk_report()["disks"]
-if set(rep) != {"root", "data"}:
-    fails.append("database on its own filesystem not listed: %r" % sorted(rep))
+# A directory on a filesystem of its own: the temp dir is one here, not on a CI runner, where
+# /tmp sits on the root partition (public CI, 2026-11-28) — /dev/shm is a tmpfs on both.
+_own_fs = next((d for d in (_os_iso.path.dirname(_cfg_iso.DB_PATH), "/dev/shm")
+                if _os_iso.path.isdir(d) and _os_iso.stat(d).st_dev != _os_iso.stat("/").st_dev), None)
+if _own_fs is None:
+    print("  skip: no filesystem other than / on this machine (database-on-its-own-fs check)")
+else:
+    nh.DB_PATH = _os_iso.path.join(_own_fs, "principale.db")
+    rep = nh.local_disk_report()["disks"]
+    if set(rep) != {"root", "data"}:
+        fails.append("database on its own filesystem not listed: %r" % sorted(rep))
+    nh.DB_PATH = _cfg_iso.DB_PATH
 
 # ── Active side: push_replica judges the report ─────────────────────────────────────────
 alerts = []
